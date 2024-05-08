@@ -1,14 +1,15 @@
 ﻿using Assistant.Net.Utils;
 using Discord;
+using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace Assistant.Net
 {
     public class Program
     {
         private static DiscordSocketClient? _client;
+        private static IServiceProvider? _services;
 
         private static readonly DiscordSocketConfig _socketConfig = new()
         {
@@ -20,20 +21,21 @@ namespace Assistant.Net
         public static async Task Main(string[] args)
         {
 
-            using IHost host = Host.CreateDefaultBuilder()
-                .ConfigureServices((_, services) =>
-            services
-            .AddSingleton(x => new DiscordSocketClient(_socketConfig)))
-            .Build();
+            _services = new ServiceCollection()
+                .AddSingleton(_socketConfig)
+                .AddSingleton<DiscordSocketClient>()
+                .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))
+                .AddSingleton<InteractionHandler>()
+                .BuildServiceProvider();
 
-            using IServiceScope serviceScope = host.Services.CreateScope();
-            IServiceProvider provider = serviceScope.ServiceProvider;
-
-            _client = provider.GetRequiredService<DiscordSocketClient>();
+            _client = _services.GetRequiredService<DiscordSocketClient>();
 
             _client.Log += LogAsync;
 
             var config = Config.LoadFromFile("config.toml");
+
+            await _services.GetRequiredService<InteractionHandler>()
+            .InitializeAsync();
 
             await _client.LoginAsync(TokenType.Bot, config.client.token);
             await _client.StartAsync();
