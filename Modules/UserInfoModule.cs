@@ -10,36 +10,21 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
 
     private static Color GetTopRoleColor(SocketUser user)
     {
-        if (user is not SocketGuildUser)
-        {
+        if (user is not SocketGuildUser guildUser)
             return Color.DarkMagenta;
-        }
-        var gUser = user as SocketGuildUser;
-        if (gUser == null)
-        {
-            return Color.DarkMagenta;
-        }
-        var topRole = (gUser.Roles.OrderByDescending(x => x.Position).FirstOrDefault());
-        if (topRole == null)
-        {
-            return Color.DarkMagenta;
-        }
-        return topRole.Color;
+
+        var topRole = guildUser.Roles.OrderByDescending(x => x.Position).FirstOrDefault();
+        return topRole?.Color ?? Color.DarkMagenta;
     }
 
     private static string GetAvailableClients(SocketUser user)
     {
-        var clients = new List<string>();
-        for (int i = 0; i < user.ActiveClients.Count; i++)
-        {
-            clients.Add(user.ActiveClients.ElementAt(i).ToString());
-        }
+        var clients = user.ActiveClients.Select(client => client.ToString()).ToList();
         var status = user.Status.ToString();
-        if (clients.Count > 0)
-        {
-            return status + " on " + string.Join(", ", clients);
-        }
-        return status;
+
+        return clients.Count > 0
+            ? $"{status} on {string.Join(", ", clients)}"
+            : status;
     }
 
     private static string GetThumbnailUrl(SocketUser user)
@@ -48,32 +33,12 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
 
         foreach (IActivity activity in user.Activities)
         {
-            if (activity.Type == ActivityType.CustomStatus)
-            {
-                if (activity is not CustomStatusGame activityType)
-                    continue;
-                if (activityType.Emote is GuildEmote)
-                {
-                    if (activityType.Emote is not GuildEmote emote)
-                        continue;
-                    url = emote.Url;
-                }
-            }
-            else if (activity.Type == ActivityType.Listening)
-            {
-                if (activity is not SpotifyGame activityType)
-                    continue;
-                url = activityType.AlbumArtUrl;
-            }
-            else if (activity.Type == ActivityType.Playing)
-            {
-                if (activity is not RichGame activityType)
-                    continue;
-                if (activityType.LargeAsset != null)
-                {
-                    url = activityType.LargeAsset.GetImageUrl();
-                }
-            }
+            if (activity is CustomStatusGame customStatusGame && customStatusGame.Emote is GuildEmote emote)
+                url = emote.Url;
+            else if (activity is SpotifyGame spotifyGame)
+                url = spotifyGame.AlbumArtUrl;
+            else if (activity is RichGame richGame && richGame.LargeAsset != null)
+                url = richGame.LargeAsset.GetImageUrl();
         }
 
         return url;
@@ -81,7 +46,6 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
 
     private static Embed GetEmbed(SocketUser user)
     {
-
         var embed = new EmbedBuilder
         {
             Color = GetTopRoleColor(user),
@@ -93,53 +57,50 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
             ThumbnailUrl = GetThumbnailUrl(user)
         };
 
-        if (user is SocketGuildUser gUser)
+        if (user is SocketGuildUser guildUser)
         {
-            var guild = gUser.Guild;
-            bool isOwner = guild.OwnerId == gUser.Id && (gUser.JoinedAt - guild.CreatedAt) < TimeSpan.FromSeconds(5);
-            if (gUser.JoinedAt is DateTimeOffset joinedAt)
+            var guild = guildUser.Guild;
+            bool isOwner = guild.OwnerId == guildUser.Id && (guildUser.JoinedAt - guild.CreatedAt) < TimeSpan.FromSeconds(5);
+
+            if (guildUser.JoinedAt is DateTimeOffset joinedAt)
             {
                 embed.AddField(isOwner ? $"Created {guild.Name} on" : $"Joined {guild.Name} on",
-                    new TimestampTag(joinedAt, TimestampTagStyles.LongDateTime).ToString() + "\n" + new TimestampTag(joinedAt, TimestampTagStyles.Relative).ToString()
-                    , true);
+                    $"{new TimestampTag(joinedAt, TimestampTagStyles.LongDateTime)}\n{new TimestampTag(joinedAt, TimestampTagStyles.Relative)}",
+                    true);
             }
-
         }
+
         embed.AddField("Account created on",
-                new TimestampTag(user.CreatedAt, TimestampTagStyles.LongDateTime).ToString() + "\n" + new TimestampTag(user.CreatedAt, TimestampTagStyles.Relative).ToString(),
-                true);
+            $"{new TimestampTag(user.CreatedAt, TimestampTagStyles.LongDateTime)}\n{new TimestampTag(user.CreatedAt, TimestampTagStyles.Relative)}",
+            true);
 
-        if (user is SocketGuildUser user1 && user1.Nickname != null)
-        {
-            embed.AddField("Nickname", user1.Nickname, true);
-        }
+        if (user is SocketGuildUser guildUser1 && guildUser1.Nickname != null)
+            embed.AddField("Nickname", guildUser1.Nickname, true);
 
         embed.AddField("Status", GetAvailableClients(user), true);
 
         foreach (IActivity activity in user.Activities)
         {
-            if (activity.Type is ActivityType.CustomStatus)
+            switch (activity.Type)
             {
-                embed.AddField("Custom Status", activity.Name, true);
-            }
-            else if (activity.Type is ActivityType.Listening)
-            {
-                SpotifyGame? activityType = activity as SpotifyGame;
-                if (activityType == null)
-                    continue;
-                embed.AddField("Spotify",
-                    $"Listening to [{activityType.TrackTitle}]({activityType.TrackUrl}) by {activityType.Artists.First()}",
-                    true);
-            }
-            else
-            {
-                embed.AddField(activity.Type.ToString(), activity.Name, true);
+                case ActivityType.CustomStatus:
+                    embed.AddField("Custom Status", activity.Name, true);
+                    break;
+                case ActivityType.Listening:
+                    if (activity is SpotifyGame spotifyGame)
+                        embed.AddField("Spotify",
+                            $"Listening to [{spotifyGame.TrackTitle}]({spotifyGame.TrackUrl}) by {spotifyGame.Artists.First()}",
+                            true);
+                    break;
+                default:
+                    embed.AddField(activity.Type.ToString(), activity.Name, true);
+                    break;
             }
         }
 
-        if (user is SocketGuildUser user2)
+        if (user is SocketGuildUser guildUser2)
         {
-            IEnumerable<string>? roles = user2.Roles.OrderByDescending(x => x.Position).Select(x => x.Mention);
+            var roles = guildUser2.Roles.OrderByDescending(x => x.Position).Select(x => x.Mention);
             if (roles.Any())
                 embed.AddField($"Roles [{roles.Count()}]", string.Join(", ", roles), true);
         }
