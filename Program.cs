@@ -1,5 +1,6 @@
 ﻿using Assistant.Net.Utils;
 using Discord;
+using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,11 +21,15 @@ namespace Assistant.Net
 
         public static async Task Main(string[] args)
         {
+            var config = Config.LoadFromFile("config.toml");
 
             _services = new ServiceCollection()
                 .AddSingleton(_socketConfig)
+                .AddSingleton(config)
                 .AddSingleton<DiscordSocketClient>()
-                .AddSingleton(x => new InteractionService(x.GetRequiredService<DiscordSocketClient>()))
+                .AddSingleton<CommandService>()
+                .AddSingleton<PrefixHandler>()
+                .AddSingleton<InteractionService>()
                 .AddSingleton<InteractionHandler>()
                 .BuildServiceProvider();
 
@@ -32,10 +37,12 @@ namespace Assistant.Net
 
             _client.Log += LogAsync;
 
-            var config = Config.LoadFromFile("config.toml");
 
             await _services.GetRequiredService<InteractionHandler>()
-            .InitializeAsync();
+                .InitializeAsync();
+
+            await _services.GetRequiredService<PrefixHandler>()
+                .InitializeAsync();
 
             await _client.LoginAsync(TokenType.Bot, config.client.token);
             await _client.StartAsync();
