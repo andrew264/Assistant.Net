@@ -6,14 +6,7 @@ namespace Assistant.Net.Modules;
 
 public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public InteractionService Commands { get; set; }
-
-    private readonly InteractionHandler _handler;
-
-    public UserInfoModule(InteractionHandler handler)
-    {
-        _handler = handler;
-    }
+    public required InteractionService Commands { get; set; }
 
     private static Color GetTopRoleColor(SocketUser user)
     {
@@ -86,7 +79,7 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
         return url;
     }
 
-    private Embed getEmbed(SocketUser user)
+    private static Embed GetEmbed(SocketUser user)
     {
 
         var embed = new EmbedBuilder
@@ -162,11 +155,8 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
     [SlashCommand("userinfo", "Get information about a user.")]
     public async Task UserInfoAsync([Summary(description: "The user to get information about")] SocketUser? user = null)
     {
-        if (user == null)
-        {
-            user = Context.User;
-        }
-        await RespondAsync(embeds: [getEmbed(user)]);
+        user ??= Context.User;
+        await RespondAsync(embeds: [GetEmbed(user)]);
     }
 
 }
