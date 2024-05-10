@@ -120,4 +120,16 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
         await RespondAsync(embeds: [GetEmbed(user)]);
     }
 
+    [UserCommand("Who is this cute fella?")]
+    public async Task UserInfoAsync(IUser user)
+    {
+        if (user is not SocketUser socketUser)
+        {
+            await RespondAsync("I can't get information about this user.", ephemeral: true);
+            return;
+        }
+        await DeferAsync(ephemeral: true);
+        await FollowupAsync(embeds: [GetEmbed(socketUser)]);
+    }
+
 }
