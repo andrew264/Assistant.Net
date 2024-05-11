@@ -68,20 +68,19 @@ public class InteractionHandler
         }
     }
 
-    private async Task HandleInteractionExecute(ICommandInfo commandInfo, IInteractionContext context, IResult result)
+    private Task HandleInteractionExecute(ICommandInfo commandInfo, IInteractionContext context, IResult result)
     {
         if (!result.IsSuccess)
             switch (result.Error)
             {
                 case InteractionCommandError.UnmetPrecondition:
-                    await context.Interaction.RespondAsync($"Unmet Precondition: {result.ErrorReason}", ephemeral: true);
-                    break;
+                    return context.Interaction.RespondAsync($"Unmet Precondition: {result.ErrorReason}", ephemeral: true);
                 case InteractionCommandError.Exception:
-                    await LogAsync(new LogMessage(LogSeverity.Error, "Interaction", result.ErrorReason));
-                    await context.Interaction.RespondAsync("An error occurred while executing the command.", ephemeral: true);
-                    break;
+                    Console.WriteLine(new LogMessage(LogSeverity.Error, "Interaction", result.ErrorReason));
+                    return context.Interaction.RespondAsync("An error occurred while executing the command.", ephemeral: true);
                 default:
                     break;
             }
+        return Task.CompletedTask;
     }
 }
