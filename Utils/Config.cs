@@ -19,6 +19,8 @@ namespace Assistant.Net.Utils
         public string status { get; set; }
         public string activity_type { get; set; }
         public string activity_text { get; set; }
+        public ulong home_guild_id { get; set; }
+        public ulong dm_category_id { get; set; }
 
         public UserStatus getStatus()
         {

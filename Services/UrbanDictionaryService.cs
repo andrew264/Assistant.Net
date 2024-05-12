@@ -3,16 +3,12 @@ using System.Text.RegularExpressions;
 
 namespace Assistant.Net.Services;
 
-public class UrbanDictionaryService
+public class UrbanDictionaryService(HttpClient client)
 {
     public readonly string API_URL = "https://api.urbandictionary.com/v0/define?term=";
     public readonly string API_RANDOM_URL = "https://api.urbandictionary.com/v0/random";
-    public readonly HttpClient _client;
+    public readonly HttpClient _client = client;
 
-    public UrbanDictionaryService(HttpClient client)
-    {
-        _client = client;
-    }
     public async Task<string> GetDefinitionAsync(string word)
     {
         string url = string.IsNullOrWhiteSpace(word) ? API_RANDOM_URL : API_URL + Uri.EscapeDataString(word);
