@@ -17,6 +17,7 @@ public class Program
     {
         GatewayIntents = GatewayIntents.AllUnprivileged | GatewayIntents.GuildMembers | GatewayIntents.GuildPresences | GatewayIntents.MessageContent,
         AlwaysDownloadUsers = true,
+        MessageCacheSize = 1000,
     };
 
 
