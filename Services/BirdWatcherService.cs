@@ -6,9 +6,9 @@ using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using System.Text;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Services;
 
-public class BirdWatcherModule : ModuleBase<SocketCommandContext>
+public class BirdWatcherService : ModuleBase<SocketCommandContext>
 {
     private readonly Config _config;
     private readonly DiscordSocketClient _client;
@@ -17,7 +17,7 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
     private readonly ulong GuildID;
     private readonly ulong ChannelID;
 
-    public BirdWatcherModule(IServiceProvider services)
+    public BirdWatcherService(IServiceProvider services)
     {
         _config = services.GetRequiredService<Config>();
         _client = services.GetRequiredService<DiscordSocketClient>();
@@ -95,7 +95,7 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
         if (channel is not IGuildChannel guildChannel || guildChannel.Guild.Id != GuildID) return;
 
         var sb = new StringBuilder()
-            .AppendLine($"**Message deleted in <#{channel.Id}>**")
+            .AppendLine($"### Message deleted in <#{channel.Id}>")
             .AppendLine($"```{message.Content}```");
 
         await SendMessageAsync(message.Author, sb.ToString());
@@ -110,7 +110,7 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
 
         var sb = new StringBuilder()
             .AppendLine($"### Nickname change")
-            .AppendLine($"`@{beforeUser.DisplayName}` **->** `@{after.DisplayName}`");
+            .AppendLine($"- `@{beforeUser.DisplayName}` **->** `@{after.DisplayName}`");
 
         await SendMessageAsync(after, sb.ToString());
     }
@@ -121,7 +121,7 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
 
         var sb = new StringBuilder()
             .AppendLine($"### Username change")
-            .AppendLine($"`@{before.Username}` **->** `@{after.Username}`");
+            .AppendLine($"- `@{before.Username}` **->** `@{after.Username}`");
 
         await SendMessageAsync(after, sb.ToString());
     }
@@ -135,13 +135,13 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
         if (!CompareClient(before.ActiveClients, after.ActiveClients))
         {
             sb.AppendLine($"### Clients change")
-              .AppendLine($"`{GetClientString(before.ActiveClients)}` **->** `{GetClientString(after.ActiveClients)}`");
+              .AppendLine($"- `{GetClientString(before.ActiveClients)}` **->** `{GetClientString(after.ActiveClients)}`");
         }
 
         if (before.Status != after.Status)
         {
             sb.AppendLine($"### Status change")
-              .AppendLine($"`{before.Status}` **->** `{after.Status}`");
+              .AppendLine($"- `{before.Status}` **->** `{after.Status}`");
         }
 
         if (sb.Length > 0)
@@ -159,17 +159,17 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
         if (before.VoiceChannel == null && after.VoiceChannel != null)
         {
             sb.AppendLine($"### Joined VC")
-              .AppendLine($"`{after.VoiceChannel.Mention}`");
+              .AppendLine($"- {after.VoiceChannel.Mention}");
         }
         else if (before.VoiceChannel != null && after.VoiceChannel == null)
         {
             sb.AppendLine($"### Left VC")
-              .AppendLine($"`{before.VoiceChannel.Mention}`");
+              .AppendLine($"- {before.VoiceChannel.Mention}");
         }
         else if (before.VoiceChannel != null && after.VoiceChannel != null && before.VoiceChannel != after.VoiceChannel)
         {
             sb.AppendLine($"### Switched VC")
-              .AppendLine($"`{before.VoiceChannel.Mention}` **->** `{after.VoiceChannel.Mention}`");
+              .AppendLine($"- {before.VoiceChannel.Mention} **->** {after.VoiceChannel.Mention}");
         }
 
         if (sb.Length > 0)
@@ -184,10 +184,10 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
 
         var sb = new StringBuilder()
             .AppendLine($"### User banned")
-            .AppendLine($"`@{user.Username}` | {user.Mention}")
-            .AppendLine($"User ID: `{user.Id}`")
-            .AppendLine($"Clients: `{GetClientString(user.ActiveClients)}`")
-            .AppendLine($"Status: `{user.Status}`");
+            .AppendLine($"- `@{user.Username}` | {user.Mention}")
+            .AppendLine($"- **User ID**: `{user.Id}`")
+            .AppendLine($"- **Clients**: `{GetClientString(user.ActiveClients)}`")
+            .AppendLine($"- **Status**: `{user.Status}`");
 
         await SendMessageAsync(user, sb.ToString());
     }
@@ -198,10 +198,10 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
 
         var sb = new StringBuilder()
             .AppendLine($"### User left guild")
-            .AppendLine($"`@{user.Username}` | {user.Mention}")
-            .AppendLine($"User ID: `{user.Id}`")
-            .AppendLine($"Clients: `{GetClientString(user.ActiveClients)}`")
-            .AppendLine($"Status: `{user.Status}`");
+            .AppendLine($"- `@{user.Username}` | {user.Mention}")
+            .AppendLine($"- **User ID**: `{user.Id}`")
+            .AppendLine($"- **Clients**: `{GetClientString(user.ActiveClients)}`")
+            .AppendLine($"- **Status**: `{user.Status}`");
 
         await SendMessageAsync(user, sb.ToString());
     }
@@ -212,10 +212,10 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
 
         var sb = new StringBuilder()
             .AppendLine($"### User joined guild")
-            .AppendLine($"`@{user.Username}` | {user.Mention}")
-            .AppendLine($"User ID: `{user.Id}`")
-            .AppendLine($"Clients: `{GetClientString(user.ActiveClients)}`")
-            .AppendLine($"Status: `{user.Status}`");
+            .AppendLine($"- `@{user.Username}` | {user.Mention}")
+            .AppendLine($"- **User ID**: `{user.Id}`")
+            .AppendLine($"- **Clients**: `{GetClientString(user.ActiveClients)}`")
+            .AppendLine($"- **Status**: `{user.Status}`");
 
         await SendMessageAsync(user, sb.ToString());
     }
@@ -226,10 +226,10 @@ public class BirdWatcherModule : ModuleBase<SocketCommandContext>
 
         var sb = new StringBuilder()
             .AppendLine($"### User unbanned")
-            .AppendLine($"`@{user.Username}` | {user.Mention}")
-            .AppendLine($"User ID: `{user.Id}`")
-            .AppendLine($"Clients: `{GetClientString(user.ActiveClients)}`")
-            .AppendLine($"Status: `{user.Status}`");
+            .AppendLine($"- `@{user.Username}` | {user.Mention}")
+            .AppendLine($"- **User ID**: `{user.Id}`")
+            .AppendLine($"- **Clients**: `{GetClientString(user.ActiveClients)}`")
+            .AppendLine($"- **Status**: `{user.Status}`");
 
         await SendMessageAsync(user, sb.ToString());
     }
