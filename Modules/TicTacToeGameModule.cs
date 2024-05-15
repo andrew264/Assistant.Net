@@ -63,7 +63,6 @@ public class TicTacToeGameModule : InteractionModuleBase<SocketInteractionContex
         }
 
         game.MakeMove(choice);
-        Console.WriteLine(game);
 
         await DeferAsync();
         var winner = game.CheckWinner();
@@ -93,20 +92,31 @@ public class TicTacToeGameModule : InteractionModuleBase<SocketInteractionContex
     }
 }
 
-public class TicTacToeGame(IUser player1, IUser player2, string gameId)
+public class TicTacToeGame
 {
     private const int X = -1;
     private const int O = 1;
 
-    public IUser Player1 { get; } = player1;
-    public IUser Player2 { get; } = player2;
-    public IUser CurrentPlayer { get; private set; } = player1;
+    public IUser Player1 { get; }
+    public IUser Player2 { get; }
+    public IUser CurrentPlayer { get; private set; }
     public int[,] Board { get; } = new int[3, 3];
     public int Moves { get; private set; }
     public bool IsBoardFull => Moves == 9;
 
 
-    private readonly string _gameId = gameId;
+    private readonly string _gameId;
+
+    public TicTacToeGame(IUser player1, IUser player2, string gameId)
+    {
+        Player1 = player1;
+        Player2 = player2;
+        CurrentPlayer = player1;
+        _gameId = gameId;
+
+        if (CurrentPlayer.IsBot)
+            MakeMove(GetBestMoveForBot());
+    }
 
     public bool IsPlayerInGame(IUser user)
     {
@@ -165,6 +175,9 @@ public class TicTacToeGame(IUser player1, IUser player2, string gameId)
         Board[row, col] = CurrentPlayer == Player1 ? X : O;
         CurrentPlayer = OtherPlayer(CurrentPlayer);
         Moves++;
+
+        if (CurrentPlayer.IsBot)
+            MakeMove(GetBestMoveForBot());
     }
 
     public IUser OtherPlayer(IUser user)
@@ -204,6 +217,85 @@ public class TicTacToeGame(IUser player1, IUser player2, string gameId)
             return Player1;
 
         return null;
+    }
+
+    public int GetBestMoveForBot()
+    {
+        if (Moves == 0)  // First move is random
+            return new Random().Next(1, 10);
+        int bestMove = -1;
+        int bestValue = int.MinValue;
+
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                if (Board[i, j] == 0)
+                {
+                    Board[i, j] = O;
+                    int moveValue = Minimax(Board, 0, false);
+                    Board[i, j] = 0;
+
+                    if (moveValue > bestValue)
+                    {
+                        bestMove = i * 3 + j + 1;
+                        bestValue = moveValue;
+                    }
+                }
+            }
+        }
+        return bestMove;
+    }
+
+    private int Minimax(int[,] board, int depth, bool isMaximizing)
+    {
+        var winner = CheckWinner();
+        if (winner != null)
+        {
+            return winner == Player2 ? 10 - depth : depth - 10;
+        }
+
+        if (IsBoardFull)
+        {
+            return 0;
+        }
+
+        if (isMaximizing)
+        {
+            int best = int.MinValue;
+
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    if (board[i, j] == 0)
+                    {
+                        board[i, j] = O;
+                        best = Math.Max(best, Minimax(board, depth + 1, false));
+                        board[i, j] = 0;
+                    }
+                }
+            }
+            return best;
+        }
+        else
+        {
+            int best = int.MaxValue;
+
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    if (board[i, j] == 0)
+                    {
+                        board[i, j] = X;
+                        best = Math.Min(best, Minimax(board, depth + 1, true));
+                        board[i, j] = 0;
+                    }
+                }
+            }
+            return best;
+        }
     }
 
     public override string ToString()
