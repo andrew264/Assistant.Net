@@ -13,8 +13,17 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
         if (user is not SocketGuildUser guildUser)
             return Color.DarkMagenta;
 
-        var topRole = guildUser.Roles.OrderByDescending(x => x.Position).FirstOrDefault();
-        return topRole?.Color ?? Color.DarkMagenta;
+        var Roles = guildUser.Roles.OrderByDescending(x => x.Position);
+        var color = Color.DarkMagenta;
+        foreach (var role in Roles)
+        {
+            if (role.Color.RawValue != 0)
+            {
+                color = role.Color;
+                break;
+            }
+        }
+        return color;
     }
 
     private static string GetAvailableClients(SocketUser user)
@@ -101,6 +110,7 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
         if (user is SocketGuildUser guildUser2)
         {
             var roles = guildUser2.Roles.OrderByDescending(x => x.Position).Select(x => x.Mention);
+            roles = roles.Take(roles.Count() - 1);
             if (roles.Any())
                 embed.AddField($"Roles [{roles.Count()}]", string.Join(", ", roles), true);
         }
@@ -117,7 +127,8 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
     public async Task UserInfoAsync([Summary(description: "The user to get information about")] SocketUser? user = null)
     {
         user ??= Context.User;
-        await RespondAsync(embeds: [GetEmbed(user)]);
+        var viewAvatarComponent = new ComponentBuilder().WithButton("View Avatar", style: ButtonStyle.Link, url: user.GetAvatarUrl(ImageFormat.Auto, size: 2048));
+        await RespondAsync(embeds: [GetEmbed(user)], components: viewAvatarComponent.Build());
     }
 
     [UserCommand("Who is this cute fella?")]
