@@ -34,4 +34,127 @@ public class TestModule : ModuleBase<SocketCommandContext>
 
         await Context.Channel.SendMessageAsync(embed: embed, components: component);
     }
+
+    private static Task<IMessage?> MessageValidToDeleteAsync(IMessage message, string[] AllTags)
+    {
+        return Task.Run(() =>
+        {
+            for (int i = 0; i < AllTags.Length; i++)
+            {
+                if (message.Author.Id.ToString().Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
+                    (message.Author.GlobalName != null && message.Author.GlobalName.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase)) ||
+                    message.Author.Username.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
+                    message.Content.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
+                {
+                    return message;
+                }
+
+                if (message.Attachments.Count > 0)
+                {
+                    foreach (var attachment in message.Attachments)
+                    {
+                        if (attachment.Filename.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
+                        {
+                            return message;
+                        }
+                    }
+                }
+
+                if (message.Embeds.Count > 0)
+                {
+                    foreach (var embed in message.Embeds)
+                    {
+                        if (embed.Description != null && embed.Description.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
+                        {
+                            return message;
+                        }
+
+                        for (int j = 0; j < embed.Fields.Length; j++)
+                        {
+                            if (embed.Fields[j].Name.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
+                                embed.Fields[j].Value.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
+                            {
+                                return message;
+                            }
+                        }
+
+                        if (embed.Title != null && embed.Title.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
+                        {
+                            return message;
+                        }
+
+                        if (embed.Author.HasValue && embed.Author.Value.Name.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
+                        {
+                            return message;
+                        }
+
+                        if (embed.Footer.HasValue && embed.Footer.Value.Text.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
+                        {
+                            return message;
+                        }
+                    }
+                }
+            }
+            return null;
+        });
+    }
+
+
+    [RequireOwner]
+    [Command("yeet", Aliases = ["purge", "begon"])]
+    [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.ManageMessages)]
+    public async Task PurgeMessagesAsync([Remainder] string tags)
+    {
+        await Context.Message.DeleteAsync();
+        string[] AllTags = tags.Split(',').Select(x => x.Trim().ToLower()).ToArray();
+        if (AllTags.Length == 0)
+        {
+            await ReplyAsync("No tags provided.");
+            return;
+        }
+        if (Context.Channel is not ITextChannel channel)
+        {
+            await ReplyAsync("This command can only be used in a guild channel");
+            return;
+        }
+        var messages = await channel.GetMessagesAsync(10_000).FlattenAsync();
+        var tasks = messages.Select(message => MessageValidToDeleteAsync(message, AllTags)).ToArray();
+        var results = await Task.WhenAll(tasks);
+
+        var toDelete = results.Where(validMessage => validMessage != null).ToList();
+
+        if (toDelete.Count == 0)
+        {
+            await ReplyAsync("No messages found with the specified tags.");
+            return;
+        }
+
+        var group1 = toDelete.Where(x => (DateTimeOffset.UtcNow - x.Timestamp).TotalDays < 14).ToList();
+        var group2 = toDelete.Where(x => (DateTimeOffset.UtcNow - x.Timestamp).TotalDays >= 14).ToList();
+        try
+        {
+            if (group1.Count > 0)
+                await channel.DeleteMessagesAsync(group1);
+            if (group2.Count > 0)
+                foreach (var message in group2)
+                    if (message is not null)
+                        try
+                        {
+                            await message.DeleteAsync();
+                        }
+                        catch (Exception)
+                        {
+                            continue;
+                        }
+        }
+        catch (Exception e)
+        {
+            await ReplyAsync($"Failed to delete messages: {e.Message}");
+        }
+
+        var msg = await channel.SendMessageAsync($"Deleted {toDelete.Count} messages.");
+        _ = Task.Delay(5000).ContinueWith(async _ => await msg.DeleteAsync());
+    }
+
 }
