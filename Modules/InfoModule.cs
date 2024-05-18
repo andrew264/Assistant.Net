@@ -1,10 +1,12 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Assistant.Net.Modules;
 
-public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
+public class InfoModule : InteractionModuleBase<SocketInteractionContext>
 {
     public required InteractionService Commands { get; set; }
 
@@ -24,6 +26,11 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
             }
         }
         return color;
+    }
+
+    private static string GetFormatedTime(DateTimeOffset time)
+    {
+        return $"{new TimestampTag(time, TimestampTagStyles.LongDateTime)}\n{new TimestampTag(time, TimestampTagStyles.Relative)}";
     }
 
     private static string GetAvailableClients(SocketUser user)
@@ -53,7 +60,7 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
         return url;
     }
 
-    private static Embed GetEmbed(SocketUser user)
+    private static Embed GetUserEmbed(SocketUser user)
     {
         var embed = new EmbedBuilder
         {
@@ -72,16 +79,10 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
             bool isOwner = guild.OwnerId == guildUser.Id && (guildUser.JoinedAt - guild.CreatedAt) < TimeSpan.FromSeconds(5);
 
             if (guildUser.JoinedAt is DateTimeOffset joinedAt)
-            {
-                embed.AddField(isOwner ? $"Created {guild.Name} on" : $"Joined {guild.Name} on",
-                    $"{new TimestampTag(joinedAt, TimestampTagStyles.LongDateTime)}\n{new TimestampTag(joinedAt, TimestampTagStyles.Relative)}",
-                    true);
-            }
+                embed.AddField(isOwner ? $"Created {guild.Name} on" : $"Joined {guild.Name} on", GetFormatedTime(joinedAt), true);
         }
 
-        embed.AddField("Account created on",
-            $"{new TimestampTag(user.CreatedAt, TimestampTagStyles.LongDateTime)}\n{new TimestampTag(user.CreatedAt, TimestampTagStyles.Relative)}",
-            true);
+        embed.AddField("Account created on", GetFormatedTime(user.CreatedAt), true);
 
         if (user is SocketGuildUser guildUser1 && guildUser1.Nickname != null)
             embed.AddField("Nickname", guildUser1.Nickname, true);
@@ -128,7 +129,7 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
     {
         user ??= Context.User;
         var viewAvatarComponent = new ComponentBuilder().WithButton("View Avatar", style: ButtonStyle.Link, url: user.GetAvatarUrl(ImageFormat.Auto, size: 2048));
-        await RespondAsync(embeds: [GetEmbed(user)], components: viewAvatarComponent.Build());
+        await RespondAsync(embeds: [GetUserEmbed(user)], components: viewAvatarComponent.Build());
     }
 
     [UserCommand("Who is this cute fella?")]
@@ -140,7 +141,88 @@ public class UserInfoModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
         await DeferAsync(ephemeral: true);
-        await FollowupAsync(embeds: [GetEmbed(socketUser)]);
+        await FollowupAsync(embeds: [GetUserEmbed(socketUser)]);
     }
 
+    [RequireContext(ContextType.Guild)]
+    [SlashCommand("serverinfo", "Get information about the server.")]
+    public async Task ServerInfoAsync()
+    {
+        var guild = Context.Guild;
+        var embed = new EmbedBuilder
+        {
+            Color = Color.DarkBlue,
+            Author = new EmbedAuthorBuilder
+            {
+                Name = guild.Name,
+                IconUrl = guild.IconUrl ?? ""
+            },
+            Description = guild.Description ?? "No description provided.",
+            ThumbnailUrl = guild.BannerUrl ?? guild.IconUrl ?? ""
+        };
+
+        embed.AddField("Owner", guild.Owner.Mention, true);
+        embed.AddField("Created on", GetFormatedTime(guild.CreatedAt), true);
+
+        embed.AddField("Members", guild.MemberCount, true);
+        embed.AddField("Online", guild.Users.Count(x => x.Status != UserStatus.Offline), true);
+        embed.AddField("Bots", guild.Users.Count(x => x.IsBot), true);
+
+        embed.AddField("Text Channels", guild.Channels.Count(x => x is ITextChannel), true);
+        embed.AddField("Voice Channels", guild.Channels.Count(x => x is IVoiceChannel), true);
+        if (guild.CategoryChannels.Count > 0)
+            embed.AddField("Categories", guild.CategoryChannels.Count, true);
+
+        embed.AddField("Roles", guild.Roles.Count - 1, true);
+        embed.AddField("Emojis", guild.Emotes.Count, true);
+        embed.AddField("Boosts", guild.PremiumSubscriptionCount, true);
+        if (guild.PremiumSubscriptionCount > 0)
+            embed.AddField("Boost Level", guild.PremiumTier, true);
+        embed.AddField("Admins", guild.Users.Count(x => x.GuildPermissions.Administrator), true);
+
+        embed.Footer = new EmbedFooterBuilder
+        {
+            Text = $"ID: {guild.Id}"
+        };
+
+        await RespondAsync(embeds: [embed.Build()]);
+    }
+
+    [SlashCommand("botinfo", "Get information about the bot.")]
+    public async Task BotInfoAsync()
+    {
+        var application = await Context.Client.GetApplicationInfoAsync();
+        var embed = new EmbedBuilder
+        {
+            Color = GetTopRoleColor(Context.Client.CurrentUser),
+            Author = new EmbedAuthorBuilder
+            {
+                Name = application.Name,
+                IconUrl = application.IconUrl
+            },
+            Description = application.Description ?? "No description provided.",
+            ThumbnailUrl = application.IconUrl
+        };
+
+        embed.AddField("Created on", GetFormatedTime(application.CreatedAt), true);
+        embed.AddField("Uptime", GetFormatedTime(Process.GetCurrentProcess().StartTime), true);
+        embed.AddField("Owner", application.Owner.Mention, true);
+
+        embed.AddField("Guilds", Context.Client.Guilds.Count, true);
+        embed.AddField("Users", Context.Client.Guilds.Sum(x => x.MemberCount), true);
+        embed.AddField("Channels", Context.Client.Guilds.Sum(x => x.Channels.Count), true);
+
+        embed.AddField("Latency", $"{Context.Client.Latency}ms", true);
+        embed.AddField("Library Version", DiscordConfig.Version, true);
+        embed.AddField("Runtime", RuntimeInformation.FrameworkDescription, true);
+        embed.AddField("Memory", $"{GC.GetTotalMemory(forceFullCollection: false) / 1024 / 1024:N0} MB", true);
+
+
+        embed.Footer = new EmbedFooterBuilder
+        {
+            Text = $"ID: {application.Id}"
+        };
+
+        await RespondAsync(embeds: [embed.Build()]);
+    }
 }
