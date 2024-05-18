@@ -1,10 +1,14 @@
 ﻿using Discord;
 using Discord.Commands;
+using Discord.Webhook;
 
 namespace Assistant.Net.Modules;
 
 public class TestModule : ModuleBase<SocketCommandContext>
 {
+    public required HttpClient _httpClient { get; set; }
+
+
     [Command("test")]
     public async Task TestAsync()
         => await ReplyAsync("Test command executed!");
@@ -157,4 +161,53 @@ public class TestModule : ModuleBase<SocketCommandContext>
         _ = Task.Delay(5000).ContinueWith(async _ => await msg.DeleteAsync());
     }
 
+    private static async Task<DiscordWebhookClient> GetOrCreateWebhookAsync(ITextChannel channel)
+    {
+        var webhooks = await channel.GetWebhooksAsync();
+        var webhook = webhooks.FirstOrDefault(x => x.Name == "Assistant");
+
+        if (webhook != null)
+            return new DiscordWebhookClient(webhook);
+
+        var newWebhook = await channel.CreateWebhookAsync("Assistant");
+        return new DiscordWebhookClient(newWebhook);
+    }
+
+    [RequireOwner]
+    [Command("echo")]
+    [RequireContext(ContextType.Guild)]
+    [RequireBotPermission(GuildPermission.ManageWebhooks)]
+    public async Task EchoAsync([Remainder] string message = "")
+    {
+        if (string.IsNullOrWhiteSpace(message) && Context.Message.Attachments.Count == 0)
+        {
+            await ReplyAsync("No message provided.");
+            return;
+        }
+
+        if (Context.Channel is not ITextChannel channel)
+        {
+            await ReplyAsync("This command can only be used in a guild channel.");
+            return;
+        }
+
+        var webhook = await GetOrCreateWebhookAsync(channel);
+
+        if (Context.Message.Attachments.Count == 0)
+        {
+            await Context.Message.DeleteAsync();
+            await webhook.SendMessageAsync(message, username: Context.User.Username, avatarUrl: Context.User.GetAvatarUrl(size: 128));
+        }
+        else
+        {
+            var fileAttachments = await Task.WhenAll(Context.Message.Attachments.Select(async attachment =>
+            {
+                var stream = await _httpClient.GetStreamAsync(attachment.Url);
+                return new FileAttachment(stream, attachment.Filename);
+            }));
+
+            await Context.Message.DeleteAsync();
+            await webhook.SendFilesAsync(fileAttachments, text: message, username: Context.User.Username, avatarUrl: Context.User.GetAvatarUrl(size: 128));
+        }
+    }
 }
