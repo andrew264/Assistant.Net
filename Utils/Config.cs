@@ -7,6 +7,7 @@ namespace Assistant.Net.Utils
     {
         public Client client { get; set; }
         public MicrosoftTranslatorConfig translator { get; set; }
+        public RedditConfig reddit { get; set; }
 
         public static Config LoadFromFile(string filePath)
         {
@@ -53,5 +54,13 @@ namespace Assistant.Net.Utils
     {
         public string key { get; set; }
         public string region { get; set; }
+    }
+
+    public class RedditConfig
+    {
+        public string client_id { get; set; }
+        public string client_secret { get; set; }
+        public string refresh_token { get; set; }
+        public string user_agent { get; set; }
     }
 }

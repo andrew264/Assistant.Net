@@ -2,6 +2,7 @@
 using Discord;
 using Discord.Interactions;
 using Discord.Webhook;
+using Reddit.Controllers;
 
 namespace Assistant.Net.Modules;
 
@@ -12,6 +13,22 @@ public class UtilityModule : InteractionModuleBase<SocketInteractionContext>
     public required UrbanDictionaryService UrbanDictionary { get; set; }
 
     public required MicrosoftTranslatorService MicrosoftTranslator { get; set; }
+
+    public required RedditService Reddit { get; set; }
+
+    private static readonly List<string> _memeSubreddits =
+    [
+        "memes",
+        "dankmemes",
+        "wholesomememes",
+        "me_irl",
+        "meirl",
+        "2meirl4meirl",
+        "comedyheaven",
+        "terriblefacebookmemes",
+        "funny",
+    ];
+    private static readonly List<string> _gifSites = ["redgifs.com", "v.redd.it", "imgur.com", "gfycat.com"];
 
 
     [SlashCommand("ping", "Pings the bot and returns its latency.")]
@@ -74,6 +91,55 @@ public class UtilityModule : InteractionModuleBase<SocketInteractionContext>
         await DeferAsync();
         var translation = await MicrosoftTranslator.TranslateAsync(message.Content, Languages.en.ToString());
         await ModifyOriginalResponseAsync(x => x.Content = translation);
+    }
+
+    private Reddit.Things.Post FetchTopRedditPost(string subreddit, string uploaded = "week", bool over18 = false)
+    {
+        var sub = Reddit.Client.Subreddit(subreddit);
+        List<Post>? topPosts = sub.Posts.GetTop(uploaded, limit: 25);
+        if (over18)
+            topPosts = [.. topPosts.Where(x => x.NSFW)];
+        return topPosts.ElementAt(new Random().Next(0, topPosts.Count)).Listing;
+    }
+
+    [SlashCommand("meme", "Get a random meme from Reddit")]
+    public async Task GetMemeAsync()
+    {
+        await DeferAsync();
+        var post = FetchTopRedditPost(_memeSubreddits.ElementAt(new Random().Next(0, _memeSubreddits.Count)));
+        var embed = new EmbedBuilder
+        {
+            Color = new Color(0xFF5700),
+            Title = post.Title,
+            Author = new EmbedAuthorBuilder
+            {
+                Name = $"Uploaded by u/{post.Author} on {post.Subreddit}",
+                Url = "https://reddit.com" + post.Permalink,
+            },
+            Footer = new EmbedFooterBuilder
+            {
+                Text = $"👍 {post.Ups} | 💬 {post.NumComments} | 🕒 {post.CreatedUTC}",
+            }
+        };
+        if (_gifSites.Any(x => post.URL.Contains(x)))
+        {
+            await ModifyOriginalResponseAsync(x => x.Embed = embed.Build());
+            await Context.Channel.SendMessageAsync(post.URL);
+        }
+        else if (post.URL.Contains("www.reddit.com/gallery"))
+        {
+            var component = new ComponentBuilder().WithButton("View Gallery", style: ButtonStyle.Link, emote: new Emoji("🖼️"), url: post.URL);
+            await ModifyOriginalResponseAsync(x =>
+            {
+                x.Embed = embed.Build();
+                x.Components = component.Build();
+            });
+        }
+        else
+        {
+            embed.ImageUrl = post.URL;
+            await ModifyOriginalResponseAsync(x => x.Embed = embed.Build());
+        }
     }
 }
 
