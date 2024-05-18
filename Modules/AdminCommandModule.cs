@@ -31,7 +31,7 @@ public class AdminCommandModule : InteractionModuleBase<SocketInteractionContext
             return;
         }
         await channel.DeleteMessagesAsync(messages);
-        await ModifyOriginalResponseAsync(x => x.Content = $"Deleted {count} messages");
+        await ModifyOriginalResponseAsync(x => x.Content = $"Deleted {count - 1} messages");
     }
 
     [MessageCommand("Delete messages below")]
