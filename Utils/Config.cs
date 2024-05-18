@@ -6,6 +6,7 @@ namespace Assistant.Net.Utils
     public class Config
     {
         public Client client { get; set; }
+        public MicrosoftTranslatorConfig translator { get; set; }
 
         public static Config LoadFromFile(string filePath)
         {
@@ -46,5 +47,11 @@ namespace Assistant.Net.Utils
                 _ => ActivityType.Playing
             };
         }
+    }
+
+    public class MicrosoftTranslatorConfig
+    {
+        public string key { get; set; }
+        public string region { get; set; }
     }
 }

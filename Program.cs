@@ -35,6 +35,7 @@ public class Program
             .AddSingleton<InteractionHandler>()
             .AddSingleton<HttpClient>()
             .AddSingleton<UrbanDictionaryService>()
+            .AddSingleton<MicrosoftTranslatorService>()
             .BuildServiceProvider();
 
         _client = _services.GetRequiredService<DiscordSocketClient>();
