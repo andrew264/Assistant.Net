@@ -8,6 +8,7 @@ namespace Assistant.Net.Modules;
 
 public class InfoModule : InteractionModuleBase<SocketInteractionContext>
 {
+    public required HttpClient _httpClient { get; set; }
     public required InteractionService Commands { get; set; }
 
     private static Color GetTopRoleColor(SocketUser user)
@@ -201,7 +202,7 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
                 IconUrl = application.IconUrl
             },
             Description = application.Description ?? "No description provided.",
-            ThumbnailUrl = application.IconUrl
+            ThumbnailUrl = Context.Client.CurrentUser.GetAvatarUrl() ?? application.IconUrl
         };
 
         embed.AddField("Created on", GetFormatedTime(application.CreatedAt), true);
@@ -224,5 +225,27 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
         };
 
         await RespondAsync(embeds: [embed.Build()]);
+    }
+
+    [SlashCommand("avatar", "Get the avatar of a user.")]
+    public async Task AvatarAsync([Summary(description: "The user to get the avatar of")] SocketUser? user = null)
+    {
+        await DeferAsync();
+        user ??= Context.User;
+        var component = new ComponentBuilder().WithButton("Download", style: ButtonStyle.Link, url: user.GetAvatarUrl(size: 2048));
+        using var avatarStream = await _httpClient.GetStreamAsync(user.GetAvatarUrl(ImageFormat.Auto, size: 2048));
+        var fileFormat = user.AvatarId.StartsWith("a_") ? "gif" : "png";
+        await ModifyOriginalResponseAsync(x =>
+        {
+            x.Content = $"# {user.GlobalName ?? user.Username}'s Avatar";
+            x.Attachments = new[] { new FileAttachment(stream: avatarStream, $"{user.Id}.{fileFormat}") };
+            x.Components = component.Build();
+        });
+    }
+
+    [UserCommand("Show me your face!")]
+    public async Task AvatarAsync(IUser user)
+    {
+        await RespondAsync(text: $"# [{user.GlobalName ?? user.Username}'s Avatar]({user.GetAvatarUrl(size: 2048)})", ephemeral: true);
     }
 }
