@@ -74,7 +74,7 @@ public class InteractionHandler
             switch (result.Error)
             {
                 case InteractionCommandError.UnmetPrecondition:
-                    return context.Interaction.RespondAsync($"Unmet Precondition: {result.ErrorReason}", ephemeral: true);
+                    return context.Interaction.RespondAsync($"{result.ErrorReason}", ephemeral: true);
                 case InteractionCommandError.Exception:
                     Console.WriteLine(new LogMessage(LogSeverity.Error, "Interaction", result.ErrorReason));
                     return context.Interaction.RespondAsync("An error occurred while executing the command.", ephemeral: true);

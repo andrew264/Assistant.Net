@@ -25,8 +25,23 @@ public class UtilityModule : InteractionModuleBase<SocketInteractionContext>
         "meirl",
         "2meirl4meirl",
         "comedyheaven",
-        "terriblefacebookmemes",
         "funny",
+    ];
+
+    private static readonly List<string> _nsfwSubreddits =
+    [
+        "nsfw",
+        "gonewild",
+        "NSFW_GIF",
+        "legalteens",
+        "realgirls",
+        "rule34",
+        "ass",
+        "girlsinyogapants",
+        "boobies",
+        "celebnsfw",
+        "lesbians",
+        "NSFW_HTML5"
     ];
     private static readonly List<string> _gifSites = ["redgifs.com", "v.redd.it", "imgur.com", "gfycat.com"];
 
@@ -102,18 +117,15 @@ public class UtilityModule : InteractionModuleBase<SocketInteractionContext>
         return topPosts.ElementAt(new Random().Next(0, topPosts.Count)).Listing;
     }
 
-    [SlashCommand("meme", "Get a random meme from Reddit")]
-    public async Task GetMemeAsync()
+    private static (Embed, MessageComponent?, string?) CreateRedditEmbed(Reddit.Things.Post post)
     {
-        await DeferAsync();
-        var post = FetchTopRedditPost(_memeSubreddits.ElementAt(new Random().Next(0, _memeSubreddits.Count)));
         var embed = new EmbedBuilder
         {
             Color = new Color(0xFF5700),
             Title = post.Title,
             Author = new EmbedAuthorBuilder
             {
-                Name = $"Uploaded by u/{post.Author} on {post.Subreddit}",
+                Name = $"Uploaded by u/{post.Author} on r/{post.Subreddit}",
                 Url = "https://reddit.com" + post.Permalink,
             },
             Footer = new EmbedFooterBuilder
@@ -123,23 +135,54 @@ public class UtilityModule : InteractionModuleBase<SocketInteractionContext>
         };
         if (_gifSites.Any(x => post.URL.Contains(x)))
         {
-            await ModifyOriginalResponseAsync(x => x.Embed = embed.Build());
-            await Context.Channel.SendMessageAsync(post.URL);
+            return (embed.Build(), null, post.URL);
         }
         else if (post.URL.Contains("www.reddit.com/gallery"))
         {
             var component = new ComponentBuilder().WithButton("View Gallery", style: ButtonStyle.Link, emote: new Emoji("🖼️"), url: post.URL);
-            await ModifyOriginalResponseAsync(x =>
-            {
-                x.Embed = embed.Build();
-                x.Components = component.Build();
-            });
+            return (embed.Build(), component.Build(), null);
         }
         else
         {
             embed.ImageUrl = post.URL;
-            await ModifyOriginalResponseAsync(x => x.Embed = embed.Build());
+            return (embed.Build(), null, null);
         }
+    }
+
+    [SlashCommand("meme", "Get a random meme from Reddit")]
+    public async Task GetMemeAsync([Summary(description: "Sort by")] RedditSort sort = RedditSort.week)
+    {
+        await DeferAsync();
+        var post = FetchTopRedditPost(_memeSubreddits.ElementAt(new Random().Next(0, _memeSubreddits.Count)),
+            uploaded: sort.ToString());
+
+        var (embed, component, url) = CreateRedditEmbed(post);
+        await ModifyOriginalResponseAsync(x =>
+        {
+            x.Embed = embed;
+            x.Components = component;
+        });
+        if (url != null)
+            await Context.Channel.SendMessageAsync(post.URL);
+    }
+
+    [RequireNsfwOrDm]
+    [SlashCommand("nsfw", "Get a random NSFW post from Reddit")]
+    public async Task GetNsfwPostAsync([Summary(description: "Sort by")] RedditSort sort = RedditSort.week)
+    {
+        await DeferAsync();
+        var post = FetchTopRedditPost(_nsfwSubreddits.ElementAt(new Random().Next(0, _nsfwSubreddits.Count)),
+            uploaded: sort.ToString(),
+            over18: true);
+
+        var (embed, component, url) = CreateRedditEmbed(post);
+        await ModifyOriginalResponseAsync(x =>
+        {
+            x.Embed = embed;
+            x.Components = component;
+        });
+        if (url != null)
+            await Context.Channel.SendMessageAsync(post.URL);
     }
 }
 
@@ -155,4 +198,27 @@ public enum Languages
     [ChoiceDisplay("German")] de,
     [ChoiceDisplay("Malayalam")] ml,
     [ChoiceDisplay("Bengali")] bn,
+}
+
+public enum RedditSort
+{
+    [ChoiceDisplay("Hour")] hour,
+    [ChoiceDisplay("Day")] day,
+    [ChoiceDisplay("Week")] week,
+    [ChoiceDisplay("Month")] month,
+    [ChoiceDisplay("Year")] year,
+    [ChoiceDisplay("All Time")] all
+}
+
+public class RequireNsfwOrDmAttribute : PreconditionAttribute
+{
+    public override Task<PreconditionResult> CheckRequirementsAsync(IInteractionContext context, ICommandInfo command, IServiceProvider services)
+    {
+        if ((context.Channel is ITextChannel textChannel && textChannel.IsNsfw) || (context.Channel is IDMChannel))
+        {
+            return Task.FromResult(PreconditionResult.FromSuccess());
+        }
+
+        return Task.FromResult(PreconditionResult.FromError(ErrorMessage ?? "This command works only in an NSFW channel or in DMs."));
+    }
 }
