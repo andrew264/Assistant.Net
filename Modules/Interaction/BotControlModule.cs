@@ -1,7 +1,7 @@
 ﻿using Discord;
 using Discord.Interactions;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Interaction;
 
 [Group("change", "Change Bot's stuff")]
 [CommandContextType([InteractionContextType.BotDm])]

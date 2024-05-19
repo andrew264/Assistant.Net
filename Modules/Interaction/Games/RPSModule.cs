@@ -3,11 +3,10 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using System.Text;
 
-namespace Assistant.Net.Modules;
-public class RPSGameModule : InteractionModuleBase<SocketInteractionContext>
+namespace Assistant.Net.Modules.Interaction.Games;
+public class RPSModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required InteractionService Commands { get; set; }
-    private static Dictionary<string, GameState> GameStates = new();
+    private static readonly Dictionary<string, GameState> GameStates = [];
 
     [SlashCommand("rps", "Play a Game of Rock Paper Scissors")]
     public async Task RPSGameAsync(
@@ -79,19 +78,19 @@ public class RPSGameModule : InteractionModuleBase<SocketInteractionContext>
                     .WithLabel("rock")
                     .WithCustomId("rock")
                     .WithEmote(new Emoji("🪨"))
-                    .WithStyle((winnerChoice == RPSChoices.Rock) ? ButtonStyle.Success : (loserChoice == RPSChoices.Rock) ? ButtonStyle.Danger : ButtonStyle.Secondary)
+                    .WithStyle(winnerChoice == RPSChoices.Rock ? ButtonStyle.Success : loserChoice == RPSChoices.Rock ? ButtonStyle.Danger : ButtonStyle.Secondary)
                     .WithDisabled(true))
                 .WithButton(new ButtonBuilder()
                     .WithLabel("paper")
                     .WithCustomId("paper")
                     .WithEmote(new Emoji("📃"))
-                    .WithStyle((winnerChoice == RPSChoices.Paper) ? ButtonStyle.Success : (loserChoice == RPSChoices.Paper) ? ButtonStyle.Danger : ButtonStyle.Secondary)
+                    .WithStyle(winnerChoice == RPSChoices.Paper ? ButtonStyle.Success : loserChoice == RPSChoices.Paper ? ButtonStyle.Danger : ButtonStyle.Secondary)
                     .WithDisabled(true))
                 .WithButton(new ButtonBuilder()
                     .WithLabel("scissors")
                     .WithEmote(new Emoji("✂️"))
                     .WithCustomId("scissors")
-                    .WithStyle((winnerChoice == RPSChoices.Scissors) ? ButtonStyle.Success : (loserChoice == RPSChoices.Scissors) ? ButtonStyle.Danger : ButtonStyle.Secondary)
+                    .WithStyle(winnerChoice == RPSChoices.Scissors ? ButtonStyle.Success : loserChoice == RPSChoices.Scissors ? ButtonStyle.Danger : ButtonStyle.Secondary)
                     .WithDisabled(true));
 
             await DeferAsync();
@@ -143,9 +142,9 @@ public class RPSGameModule : InteractionModuleBase<SocketInteractionContext>
             if (user1Choice == user2Choice)
                 return null;
 
-            return (user1Choice == RPSChoices.Rock && user2Choice == RPSChoices.Scissors) ||
-                   (user1Choice == RPSChoices.Paper && user2Choice == RPSChoices.Rock) ||
-                   (user1Choice == RPSChoices.Scissors && user2Choice == RPSChoices.Paper)
+            return user1Choice == RPSChoices.Rock && user2Choice == RPSChoices.Scissors ||
+                   user1Choice == RPSChoices.Paper && user2Choice == RPSChoices.Rock ||
+                   user1Choice == RPSChoices.Scissors && user2Choice == RPSChoices.Paper
                 ? user1
                 : user2;
         }

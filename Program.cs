@@ -1,4 +1,5 @@
-﻿using Assistant.Net.Services;
+﻿using Assistant.Net.Handlers;
+using Assistant.Net.Services;
 using Assistant.Net.Utils;
 using Discord;
 using Discord.Commands;

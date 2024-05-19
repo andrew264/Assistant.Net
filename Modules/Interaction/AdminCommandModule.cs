@@ -1,13 +1,11 @@
 ﻿using Discord;
 using Discord.Interactions;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Interaction;
 
 [CommandContextType([InteractionContextType.Guild])]
 public class AdminCommandModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required InteractionService Commands { get; set; }
-
     [SlashCommand("clear", "Clears the specified amount of messages")]
     [RequireBotPermission(GuildPermission.ManageMessages)]
     [RequireUserPermission(GuildPermission.Administrator)]

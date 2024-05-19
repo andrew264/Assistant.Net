@@ -5,9 +5,8 @@ using System.Text;
 
 namespace Assistant.Net.Modules;
 
-public class TicTacToeGameModule : InteractionModuleBase<SocketInteractionContext>
+public class TicTacToeModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required InteractionService Commands { get; set; }
     private static readonly Dictionary<string, TicTacToeGame> GameStates = [];
 
     [SlashCommand("tictactoe", "Play a Game of Tic Tac Toe")]

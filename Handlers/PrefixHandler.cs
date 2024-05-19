@@ -5,7 +5,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
-namespace Assistant.Net;
+namespace Assistant.Net.Handlers;
 
 public class PrefixHandler
 {

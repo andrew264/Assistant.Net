@@ -1,11 +1,10 @@
 ﻿using Discord.Interactions;
 using Discord.WebSocket;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Interaction.Games;
 
-public class MiniGameModule : InteractionModuleBase<SocketInteractionContext>
+public class MiniGamesModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required InteractionService Commands { get; set; }
     private static readonly Random random = new();
     private static readonly List<string> flames = ["Friends", "Lovers", "Angry", "Married", "Enemies", "Siblings"];
 

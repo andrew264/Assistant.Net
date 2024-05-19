@@ -3,11 +3,10 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using System.Text;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Interaction.Games;
 
-public class HandCricketGameModule : InteractionModuleBase<SocketInteractionContext>
+public class HandCricketModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required InteractionService Commands { get; set; }
     private static readonly Dictionary<string, HandCricketGame> GameStates = [];
 
     [SlashCommand("handcricket", "Play a Game of Hand Cricket")]
@@ -331,7 +330,7 @@ class HandCricketGame
         {
             var total = Player1Toss + Player2Toss;
             var isEven = total % 2 == 0;
-            TossWinner = (isEven && Player1Choice == HandCricketChoice.Even) || (!isEven && Player1Choice == HandCricketChoice.Odd) ? Player1 : Player2;
+            TossWinner = isEven && Player1Choice == HandCricketChoice.Even || !isEven && Player1Choice == HandCricketChoice.Odd ? Player1 : Player2;
             Phase = GamePhase.ChooseToBatOrBowl;
         }
     }

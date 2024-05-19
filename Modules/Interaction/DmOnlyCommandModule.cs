@@ -1,13 +1,11 @@
 ﻿using Discord;
 using Discord.Interactions;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Interaction;
 
 [CommandContextType([InteractionContextType.BotDm])]
 public class DmOnlyCommandModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required InteractionService Commands { get; set; }
-
     [SlashCommand("clear-dm", "Delete messages sent by the bot in DM")]
     public async Task ClearDmMessagesAsync()
     {

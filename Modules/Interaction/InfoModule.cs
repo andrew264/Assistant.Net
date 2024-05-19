@@ -4,12 +4,11 @@ using Discord.WebSocket;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Interaction;
 
 public class InfoModule : InteractionModuleBase<SocketInteractionContext>
 {
     public required HttpClient _httpClient { get; set; }
-    public required InteractionService Commands { get; set; }
 
     private static Color GetTopRoleColor(SocketUser user)
     {
@@ -77,7 +76,7 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
         if (user is SocketGuildUser guildUser)
         {
             var guild = guildUser.Guild;
-            bool isOwner = guild.OwnerId == guildUser.Id && (guildUser.JoinedAt - guild.CreatedAt) < TimeSpan.FromSeconds(5);
+            bool isOwner = guild.OwnerId == guildUser.Id && guildUser.JoinedAt - guild.CreatedAt < TimeSpan.FromSeconds(5);
 
             if (guildUser.JoinedAt is DateTimeOffset joinedAt)
                 embed.AddField(isOwner ? $"Created {guild.Name} on" : $"Joined {guild.Name} on", GetFormatedTime(joinedAt), true);

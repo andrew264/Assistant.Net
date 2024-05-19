@@ -5,7 +5,7 @@ using Discord.Webhook;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Prefix;
 
 public class DMRelayModule : ModuleBase<SocketCommandContext>
 {
@@ -57,7 +57,7 @@ public class DMRelayModule : ModuleBase<SocketCommandContext>
         return await DMChannel.CreateWebhookAsync("Assistant", avatar);
     }
 
-    private async Task<FileAttachment[]> GetFileAttachments(IEnumerable<Discord.Attachment>? attachments)
+    private async Task<FileAttachment[]> GetFileAttachments(IEnumerable<Attachment>? attachments)
     {
         var fileAttachments = new List<FileAttachment>();
         if (attachments == null) return [.. fileAttachments];

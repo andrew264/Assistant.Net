@@ -3,7 +3,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using System.Reflection;
 
-namespace Assistant.Net;
+namespace Assistant.Net.Handlers;
 
 public class InteractionHandler
 {

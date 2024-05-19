@@ -2,7 +2,7 @@
 using Discord.Commands;
 using Discord.Webhook;
 
-namespace Assistant.Net.Modules;
+namespace Assistant.Net.Modules.Prefix;
 
 public class TestModule : ModuleBase<SocketCommandContext>
 {
@@ -46,7 +46,7 @@ public class TestModule : ModuleBase<SocketCommandContext>
             for (int i = 0; i < AllTags.Length; i++)
             {
                 if (message.Author.Id.ToString().Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
-                    (message.Author.GlobalName != null && message.Author.GlobalName.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase)) ||
+                    message.Author.GlobalName != null && message.Author.GlobalName.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
                     message.Author.Username.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
                     message.Content.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
                 {
