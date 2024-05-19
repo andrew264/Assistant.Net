@@ -1,6 +1,5 @@
 ﻿using Assistant.Net.Handlers;
 using Assistant.Net.Services;
-using Assistant.Net.Utils;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;
@@ -24,7 +23,7 @@ public class Program
 
     public static async Task Main(string[] args)
     {
-        var config = Config.LoadFromFile("config.toml");
+        var config = BotConfig.LoadFromFile("config.toml");
 
         _services = new ServiceCollection()
             .AddSingleton(_socketConfig)

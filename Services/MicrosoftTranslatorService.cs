@@ -1,11 +1,10 @@
-﻿using Assistant.Net.Utils;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using System.Net.Http.Json;
 using System.Text;
 
 namespace Assistant.Net.Services;
 
-public class MicrosoftTranslatorService(HttpClient client, Config config)
+public class MicrosoftTranslatorService(HttpClient client, BotConfig config)
 {
     public readonly string ENDPOINT = "https://api.cognitive.microsofttranslator.com/translate?api-version=3.0";
     public readonly HttpClient _client = client;

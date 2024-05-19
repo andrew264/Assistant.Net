@@ -1,5 +1,4 @@
-﻿using Assistant.Net.Utils;
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,9 +11,9 @@ public class PrefixHandler
     private readonly CommandService _commands;
     private readonly DiscordSocketClient _discord;
     private readonly IServiceProvider _services;
-    private readonly Config _config;
+    private readonly BotConfig _config;
 
-    public PrefixHandler(IServiceProvider services, Config config)
+    public PrefixHandler(IServiceProvider services, BotConfig config)
     {
         _commands = services.GetRequiredService<CommandService>();
         _discord = services.GetRequiredService<DiscordSocketClient>();

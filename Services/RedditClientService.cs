@@ -1,9 +1,8 @@
-﻿using Assistant.Net.Utils;
-using Reddit;
+﻿using Reddit;
 
 namespace Assistant.Net.Services;
 
-public class RedditService(Config config)
+public class RedditService(BotConfig config)
 {
 
     public RedditClient Client = new(config.reddit.client_id,

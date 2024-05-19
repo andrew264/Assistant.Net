@@ -7,7 +7,6 @@ namespace Assistant.Net.Modules.Interaction;
 [CommandContextType([InteractionContextType.BotDm])]
 public class BotControlModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required InteractionService Commands { get; set; }
     public required HttpClient _httpClient { get; set; }
 
     [RequireOwner]

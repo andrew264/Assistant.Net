@@ -1,5 +1,4 @@
-﻿using Assistant.Net.Utils;
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using Discord.Webhook;
 using Discord.WebSocket;
@@ -9,7 +8,7 @@ namespace Assistant.Net.Modules.Prefix;
 
 public class DMRelayModule : ModuleBase<SocketCommandContext>
 {
-    private readonly Config _config;
+    private readonly BotConfig _config;
     private readonly DiscordSocketClient _client;
     private readonly HttpClient _httpClient;
     private readonly ulong GuildID;
@@ -17,7 +16,7 @@ public class DMRelayModule : ModuleBase<SocketCommandContext>
 
     public DMRelayModule(IServiceProvider services)
     {
-        _config = services.GetRequiredService<Config>();
+        _config = services.GetRequiredService<BotConfig>();
         _client = services.GetRequiredService<DiscordSocketClient>();
         _httpClient = services.GetRequiredService<HttpClient>();
         GuildID = _config.client.home_guild_id;
