@@ -60,17 +60,12 @@ public class BirdWatcherService : ModuleBase<SocketCommandContext>
     {
         var webhook = await GetOrCreateWebhookAsync();
         if (webhook != null)
-        {
             await webhook.SendMessageAsync(text: content, username: user.Username, avatarUrl: user.GetDisplayAvatarUrl());
-        }
     }
 
     private async Task HandleMessageEditAsync(Cacheable<IMessage, ulong> before, SocketMessage after, ISocketMessageChannel channel)
     {
-        if (after.Author.IsBot || after.Author.IsWebhook || channel is not IGuildChannel messageChannel || messageChannel.Guild.Id != GuildID)
-        {
-            return;
-        }
+        if (after.Author.IsBot || after.Author.IsWebhook || channel is not IGuildChannel messageChannel || messageChannel.Guild.Id != GuildID) return;
 
         var beforeMessage = await before.GetOrDownloadAsync();
         if (beforeMessage == null || beforeMessage.Content == after.Content) return;
@@ -155,25 +150,17 @@ public class BirdWatcherService : ModuleBase<SocketCommandContext>
         var sb = new StringBuilder();
 
         if (before.VoiceChannel == null && after.VoiceChannel != null)
-        {
             sb.AppendLine($"### Joined VC")
               .AppendLine($"- {after.VoiceChannel.Mention}");
-        }
         else if (before.VoiceChannel != null && after.VoiceChannel == null)
-        {
             sb.AppendLine($"### Left VC")
               .AppendLine($"- {before.VoiceChannel.Mention}");
-        }
         else if (before.VoiceChannel != null && after.VoiceChannel != null && before.VoiceChannel != after.VoiceChannel)
-        {
             sb.AppendLine($"### Switched VC")
               .AppendLine($"- {before.VoiceChannel.Mention} **->** {after.VoiceChannel.Mention}");
-        }
 
         if (sb.Length > 0)
-        {
             await SendMessageAsync(user, sb.ToString());
-        }
     }
 
     private async Task HandleUserBannedAsync(SocketUser user, SocketGuild guild)

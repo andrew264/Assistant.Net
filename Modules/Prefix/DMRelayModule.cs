@@ -62,8 +62,8 @@ public class DMRelayModule : ModuleBase<SocketCommandContext>
         if (attachments == null) return [.. fileAttachments];
         foreach (var attachment in attachments)
         {
-            using var stream = _httpClient.GetStreamAsync(attachment.Url);
-            fileAttachments.Add(new FileAttachment(stream: await stream, attachment.Filename));
+            using var stream = await _httpClient.GetStreamAsync(attachment.Url);
+            fileAttachments.Add(new FileAttachment(stream: stream, attachment.Filename));
         }
         return [.. fileAttachments];
     }
@@ -77,8 +77,8 @@ public class DMRelayModule : ModuleBase<SocketCommandContext>
             try { sticker.GetStickerUrl(); }  // Throws if sticker is a gif
             catch (ArgumentException) { continue; }
 
-            using var stream = _httpClient.GetStreamAsync(sticker.GetStickerUrl());
-            fileAttachments.Add(new FileAttachment(stream: await stream, sticker.Name + $".{sticker.Format.ToString().ToLower()}"));
+            using var stream = await _httpClient.GetStreamAsync(sticker.GetStickerUrl());
+            fileAttachments.Add(new FileAttachment(stream: stream, sticker.Name + $".{sticker.Format.ToString().ToLower()}"));
         }
         return [.. fileAttachments];
     }

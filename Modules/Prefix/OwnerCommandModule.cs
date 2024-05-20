@@ -49,55 +49,33 @@ public class TestModule : ModuleBase<SocketCommandContext>
                     message.Author.GlobalName != null && message.Author.GlobalName.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
                     message.Author.Username.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
                     message.Content.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
-                {
                     return message;
-                }
 
                 if (message.Attachments.Count > 0)
-                {
                     foreach (var attachment in message.Attachments)
-                    {
                         if (attachment.Filename.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
-                        {
                             return message;
-                        }
-                    }
-                }
 
                 if (message.Embeds.Count > 0)
-                {
                     foreach (var embed in message.Embeds)
                     {
                         if (embed.Description != null && embed.Description.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
-                        {
                             return message;
-                        }
 
                         for (int j = 0; j < embed.Fields.Length; j++)
-                        {
                             if (embed.Fields[j].Name.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase) ||
                                 embed.Fields[j].Value.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
-                            {
                                 return message;
-                            }
-                        }
 
                         if (embed.Title != null && embed.Title.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
-                        {
                             return message;
-                        }
 
                         if (embed.Author.HasValue && embed.Author.Value.Name.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
-                        {
                             return message;
-                        }
 
                         if (embed.Footer.HasValue && embed.Footer.Value.Text.Contains(AllTags[i], StringComparison.CurrentCultureIgnoreCase))
-                        {
                             return message;
-                        }
-                    }
-                }
+                    };
             }
             return null;
         });
