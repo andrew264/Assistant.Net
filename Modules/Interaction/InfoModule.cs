@@ -2,6 +2,7 @@
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Microsoft.Extensions.DependencyInjection;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
@@ -9,9 +10,19 @@ namespace Assistant.Net.Modules.Interaction;
 
 public class InfoModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required HttpClient _httpClient { get; set; }
+    public required HttpClient _httpClient;
+    public required MongoDbService _mongoDbService;
+    private readonly DiscordSocketClient _client;
 
-    public required MongoDbService _mongoDbService { get; set; }
+    public InfoModule(IServiceProvider services)
+    {
+        _httpClient = services.GetRequiredService<HttpClient>();
+        _mongoDbService = services.GetRequiredService<MongoDbService>();
+        _client = services.GetRequiredService<DiscordSocketClient>();
+
+        _client.ModalSubmitted += ModalHandler;
+    }
+
 
     private static Color GetTopRoleColor(SocketUser user)
     {
@@ -78,7 +89,7 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
                 IconUrl = user.GetAvatarUrl()
             },
             ThumbnailUrl = GetThumbnailUrl(user),
-            Description = string.IsNullOrEmpty(description) ? "" : $"{user.Mention}\n{description}"
+            Description = string.IsNullOrEmpty(description) ? "" : $"{user.Mention}: {description}"
         };
 
         if (user is SocketGuildUser guildUser)
@@ -259,4 +270,32 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
     {
         await RespondAsync(text: $"# [{user.GlobalName ?? user.Username}'s Avatar]({user.GetAvatarUrl(size: 2048)})", ephemeral: true);
     }
+
+    [SlashCommand("intro", "Add or Update your description.")]
+    public async Task IntroAsync()
+    {
+        var (_, description) = await _mongoDbService.GetUserLastSeenAndDescription(Context.User.Id);
+        var mb = new ModalBuilder()
+            .WithTitle("Introduction")
+            .WithCustomId("intro:modal")
+            .AddTextInput("Description", "intro:description", TextInputStyle.Paragraph, placeholder: "i watch cat videos!", required: false, maxLength: 1024, value: description);
+        await RespondWithModalAsync(mb.Build());
+    }
+
+    private async Task ModalHandler(SocketModal modal)
+    {
+        if (modal.Data.CustomId != "intro:modal")
+        {
+            await modal.RespondAsync("Something went wrong!", ephemeral: true);
+            return;
+        }
+
+        var descriptionComponent = modal.Data.Components
+            .FirstOrDefault(x => x.CustomId == "intro:description");
+        string description = descriptionComponent?.Value ?? "";
+
+        await _mongoDbService.SetUserDescription(modal.User.Id, description);
+        await modal.RespondAsync(text: "Your description has been updated!", ephemeral: true);
+    }
+
 }
