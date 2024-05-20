@@ -8,6 +8,7 @@ public class BotConfig
     public Client client { get; set; }
     public MicrosoftTranslatorConfig translator { get; set; }
     public RedditConfig reddit { get; set; }
+    public MongoDbConfig mongodb { get; set; }
 
     public static BotConfig LoadFromFile(string filePath)
     {
@@ -62,4 +63,10 @@ public class RedditConfig
     public string client_secret { get; set; }
     public string refresh_token { get; set; }
     public string user_agent { get; set; }
+}
+
+public class MongoDbConfig
+{
+    public string connection_string { get; set; }
+    public string database_name { get; set; }
 }

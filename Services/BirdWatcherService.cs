@@ -12,6 +12,7 @@ public class BirdWatcherService : ModuleBase<SocketCommandContext>
     private readonly BotConfig _config;
     private readonly DiscordSocketClient _client;
     private readonly HttpClient _httpClient;
+    private readonly MongoDbService _mongoDbService;
 
     private readonly ulong GuildID;
     private readonly ulong ChannelID;
@@ -21,6 +22,7 @@ public class BirdWatcherService : ModuleBase<SocketCommandContext>
         _config = services.GetRequiredService<BotConfig>();
         _client = services.GetRequiredService<DiscordSocketClient>();
         _httpClient = services.GetRequiredService<HttpClient>();
+        _mongoDbService = services.GetRequiredService<MongoDbService>();
 
         GuildID = _config.client.home_guild_id;
         ChannelID = _config.client.logging_channel_id;
@@ -132,21 +134,18 @@ public class BirdWatcherService : ModuleBase<SocketCommandContext>
         var sb = new StringBuilder();
 
         if (!CompareClient(before.ActiveClients, after.ActiveClients))
-        {
             sb.AppendLine($"### Clients change")
               .AppendLine($"- `{GetClientString(before.ActiveClients)}` **->** `{GetClientString(after.ActiveClients)}`");
-        }
+
+        if (before.Status == UserStatus.Offline || after.Status == UserStatus.Offline)
+            await _mongoDbService.UpdateUserLastSeen(user.Id);
 
         if (before.Status != after.Status)
-        {
             sb.AppendLine($"### Status change")
               .AppendLine($"- `{before.Status}` **->** `{after.Status}`");
-        }
 
         if (sb.Length > 0)
-        {
             await SendMessageAsync(user, sb.ToString());
-        }
     }
 
     private async Task HandleVoiceStateChangeAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)

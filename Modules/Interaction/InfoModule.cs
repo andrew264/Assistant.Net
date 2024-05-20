@@ -1,4 +1,5 @@
-﻿using Discord;
+﻿using Assistant.Net.Services;
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using System.Diagnostics;
@@ -9,6 +10,8 @@ namespace Assistant.Net.Modules.Interaction;
 public class InfoModule : InteractionModuleBase<SocketInteractionContext>
 {
     public required HttpClient _httpClient { get; set; }
+
+    public required MongoDbService _mongoDbService { get; set; }
 
     private static Color GetTopRoleColor(SocketUser user)
     {
@@ -32,6 +35,9 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
     {
         return $"{new TimestampTag(time, TimestampTagStyles.LongDateTime)}\n{new TimestampTag(time, TimestampTagStyles.Relative)}";
     }
+
+    private static string RelativeTime(DateTimeOffset time)
+        => $"{new TimestampTag(time, TimestampTagStyles.Relative)}";
 
     private static string GetAvailableClients(SocketUser user)
     {
@@ -60,8 +66,9 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
         return url;
     }
 
-    private static Embed GetUserEmbed(SocketUser user)
+    private async Task<Embed> GetUserEmbed(SocketUser user)
     {
+        var (lastSeen, description) = await _mongoDbService.GetUserLastSeenAndDescription(user.Id);
         var embed = new EmbedBuilder
         {
             Color = GetTopRoleColor(user),
@@ -70,7 +77,8 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
                 Name = user.Username,
                 IconUrl = user.GetAvatarUrl()
             },
-            ThumbnailUrl = GetThumbnailUrl(user)
+            ThumbnailUrl = GetThumbnailUrl(user),
+            Description = string.IsNullOrEmpty(description) ? "" : $"{user.Mention}\n{description}"
         };
 
         if (user is SocketGuildUser guildUser)
@@ -86,6 +94,10 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
 
         if (user is SocketGuildUser guildUser1 && guildUser1.Nickname != null)
             embed.AddField("Nickname", guildUser1.Nickname, true);
+
+        bool isOnline = user.Status != UserStatus.Offline;
+        if (lastSeen.HasValue)
+            embed.AddField(isOnline ? "Online for" : "Last Seen", RelativeTime(lastSeen.Value), true);
 
         embed.AddField("Status", GetAvailableClients(user), true);
 
@@ -129,7 +141,7 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
     {
         user ??= Context.User;
         var viewAvatarComponent = new ComponentBuilder().WithButton("View Avatar", style: ButtonStyle.Link, url: user.GetAvatarUrl(ImageFormat.Auto, size: 2048));
-        await RespondAsync(embeds: [GetUserEmbed(user)], components: viewAvatarComponent.Build());
+        await RespondAsync(embeds: [await GetUserEmbed(user)], components: viewAvatarComponent.Build());
     }
 
     [UserCommand("Who is this cute fella?")]
@@ -141,7 +153,7 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
             return;
         }
         await DeferAsync(ephemeral: true);
-        await FollowupAsync(embeds: [GetUserEmbed(socketUser)]);
+        await FollowupAsync(embeds: [await GetUserEmbed(socketUser)]);
     }
 
     [RequireContext(ContextType.Guild)]

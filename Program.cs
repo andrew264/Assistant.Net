@@ -37,6 +37,7 @@ public class Program
             .AddSingleton<UrbanDictionaryService>()
             .AddSingleton<MicrosoftTranslatorService>()
             .AddSingleton<RedditService>()
+            .AddSingleton<MongoDbService>()
             .BuildServiceProvider();
 
         _client = _services.GetRequiredService<DiscordSocketClient>();
