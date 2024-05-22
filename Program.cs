@@ -4,6 +4,7 @@ using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
+using Lavalink4NET.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Assistant.Net;
@@ -38,6 +39,7 @@ public class Program
             .AddSingleton<MicrosoftTranslatorService>()
             .AddSingleton<RedditService>()
             .AddSingleton<MongoDbService>()
+            .AddLavalink()
             .BuildServiceProvider();
 
         _client = _services.GetRequiredService<DiscordSocketClient>();
