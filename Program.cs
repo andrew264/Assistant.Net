@@ -42,7 +42,7 @@ public class Program
             services.AddSingleton<DiscordSocketClient>();
             services.AddSingleton<CommandService>();
             services.AddSingleton<PrefixHandler>();
-            services.AddSingleton<InteractionService>();
+            services.AddSingleton(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()));
             services.AddSingleton<InteractionHandler>();
             services.AddSingleton<HttpClient>();
             services.AddSingleton<UrbanDictionaryService>();

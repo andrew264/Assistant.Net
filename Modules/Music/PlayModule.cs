@@ -3,7 +3,6 @@ using Discord.Interactions;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
 using Lavalink4NET.Players;
-using Lavalink4NET.Players.Vote;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 
@@ -12,7 +11,16 @@ namespace Assistant.Net.Modules.Music;
 [CommandContextType([InteractionContextType.Guild])]
 public class PlayModule : InteractionModuleBase<SocketInteractionContext>
 {
-    public required IAudioService _audioService { get; set; }
+    public readonly IAudioService _audioService;
+    private readonly ulong HomeGuildId;
+    private readonly (string, ActivityType) DefaultActivity;
+
+    public PlayModule(IAudioService audioService, BotConfig config)
+    {
+        _audioService = audioService;
+        HomeGuildId = config.client.home_guild_id;
+        DefaultActivity = (config.client.activity_text, config.client.getActivityType());
+    }
 
     [SlashCommand("play", description: "Plays music")]
     public async Task Play(string query)
@@ -33,7 +41,6 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
             await FollowupAsync("No tracks found.").ConfigureAwait(false);
             return;
         }
-
         var position = await player.PlayAsync(track).ConfigureAwait(false);
 
         if (position == 0)
@@ -50,13 +57,28 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
         return $"[{track.Title}](<{track.Uri}>)";
     }
 
-    private async ValueTask<VoteLavalinkPlayer?> GetPlayerAsync(bool connectToVoiceChannel = true)
+    private async ValueTask<CustomPlayer?> GetPlayerAsync(bool connectToVoiceChannel = true)
     {
         var retrieveOptions = new PlayerRetrieveOptions(
             ChannelBehavior: connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None);
 
+        static ValueTask<CustomPlayer> CreatePlayerAsync(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ArgumentNullException.ThrowIfNull(properties);
+
+            return ValueTask.FromResult(new CustomPlayer(properties));
+        }
+        bool IsHomeGuild = Context.Guild.Id == HomeGuildId;
+        var options = new CustomPlayerOptions()
+        {
+            IsHomeGuild = IsHomeGuild,
+            DiscordClient = IsHomeGuild ? Context.Client : null,
+            DefaultActivity = DefaultActivity
+        };
+
         var result = await _audioService.Players
-            .RetrieveAsync(Context, playerFactory: PlayerFactory.Vote, retrieveOptions: retrieveOptions)
+            .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(Context, CreatePlayerAsync, options, retrieveOptions)
             .ConfigureAwait(false);
 
         if (!result.IsSuccess)
