@@ -9,6 +9,7 @@ public class BotConfig
     public MicrosoftTranslatorConfig translator { get; set; }
     public RedditConfig reddit { get; set; }
     public MongoDbConfig mongodb { get; set; }
+    public LavalinkConfig lavalink { get; set; }
 
     public static BotConfig LoadFromFile(string filePath)
     {
@@ -69,4 +70,10 @@ public class MongoDbConfig
 {
     public string connection_string { get; set; }
     public string database_name { get; set; }
+}
+
+public class LavalinkConfig
+{
+    public string host { get; set; }
+    public string password { get; set; }
 }
