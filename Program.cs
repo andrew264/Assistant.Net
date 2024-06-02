@@ -6,6 +6,8 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Extensions;
+using Lavalink4NET.Integrations.LyricsJava.Extensions;
+using Lavalink4NET.Integrations.SponsorBlock.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -14,7 +16,7 @@ namespace Assistant.Net;
 public class Program
 {
     private static DiscordSocketClient? _client;
-    private static IHost? host;
+    private static IHost? app;
 
     private static readonly DiscordSocketConfig _socketConfig = new()
     {
@@ -33,43 +35,42 @@ public class Program
     {
         var config = BotConfig.LoadFromFile("config.toml");
 
-        IHostBuilder builder = Host.CreateDefaultBuilder(args);
-        builder.ConfigureServices((context, services) =>
+        HostApplicationBuilder builder = new(args);
+        builder.Services.AddSingleton(_socketConfig);
+        builder.Services.AddSingleton(config);
+        builder.Services.AddSingleton(_interactionConfig);
+        builder.Services.AddSingleton<DiscordSocketClient>();
+        builder.Services.AddSingleton<CommandService>();
+        builder.Services.AddSingleton<PrefixHandler>();
+        builder.Services.AddSingleton(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()));
+        builder.Services.AddSingleton<InteractionHandler>();
+        builder.Services.AddSingleton<HttpClient>();
+        builder.Services.AddSingleton<UrbanDictionaryService>();
+        builder.Services.AddSingleton<MicrosoftTranslatorService>();
+        builder.Services.AddSingleton<RedditService>();
+        builder.Services.AddSingleton<MongoDbService>();
+        builder.Services.AddLavalink();
+        builder.Services.ConfigureLavalink(options =>
         {
-            services.AddSingleton(_socketConfig);
-            services.AddSingleton(config);
-            services.AddSingleton(_interactionConfig);
-            services.AddSingleton<DiscordSocketClient>();
-            services.AddSingleton<CommandService>();
-            services.AddSingleton<PrefixHandler>();
-            services.AddSingleton(p => new InteractionService(p.GetRequiredService<DiscordSocketClient>()));
-            services.AddSingleton<InteractionHandler>();
-            services.AddSingleton<HttpClient>();
-            services.AddSingleton<UrbanDictionaryService>();
-            services.AddSingleton<MicrosoftTranslatorService>();
-            services.AddSingleton<RedditService>();
-            services.AddSingleton<MongoDbService>();
-            services.AddLavalink();
-            services.ConfigureLavalink(options =>
-            {
-                options.Label = "Assistant.Net";
-                options.HttpClientName = config.lavalink.host;
-                options.Passphrase = config.lavalink.password;
-                options.BaseAddress = new Uri($"http://{options.HttpClientName}:2333");
-                options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
-            });
-
+            options.Label = "Assistant.Net";
+            options.HttpClientName = config.lavalink.host;
+            options.Passphrase = config.lavalink.password;
+            options.BaseAddress = new Uri($"http://{options.HttpClientName}:2333");
+            options.ResumptionOptions = new LavalinkSessionResumptionOptions(TimeSpan.FromSeconds(60));
         });
-        host = builder.Build();
+        app = builder.Build();
 
-        _client = host.Services.GetRequiredService<DiscordSocketClient>();
+        _client = app.Services.GetRequiredService<DiscordSocketClient>();
         _client.Log += LogAsync;
 
+        app.UseLyricsJava();
+        app.UseSponsorBlock();
 
-        await host.Services.GetRequiredService<InteractionHandler>()
+
+        await app.Services.GetRequiredService<InteractionHandler>()
             .InitializeAsync();
 
-        await host.Services.GetRequiredService<PrefixHandler>()
+        await app.Services.GetRequiredService<PrefixHandler>()
             .InitializeAsync();
 
         await _client.LoginAsync(TokenType.Bot, config.client.token);
@@ -77,7 +78,7 @@ public class Program
         await _client.SetGameAsync(config.client.activity_text, type: config.client.getActivityType());
         await _client.SetStatusAsync(config.client.getStatus());
 
-        await host.RunAsync();
+        await app.RunAsync();
 
     }
 

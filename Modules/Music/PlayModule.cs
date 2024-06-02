@@ -2,9 +2,12 @@
 using Discord.Interactions;
 using Lavalink4NET;
 using Lavalink4NET.DiscordNet;
+using Lavalink4NET.Integrations.SponsorBlock;
+using Lavalink4NET.Integrations.SponsorBlock.Extensions;
 using Lavalink4NET.Players;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
+using System.Collections.Immutable;
 
 namespace Assistant.Net.Modules.Music;
 
@@ -14,6 +17,13 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
     public readonly IAudioService _audioService;
     private readonly ulong HomeGuildId;
     private readonly (string, ActivityType) DefaultActivity;
+    private readonly ImmutableArray<SegmentCategory> categories = [
+    SegmentCategory.Intro,
+    SegmentCategory.Sponsor,
+    SegmentCategory.SelfPromotion,
+    SegmentCategory.Interaction,
+    SegmentCategory.Outro,
+    ];
 
     public PlayModule(IAudioService audioService, BotConfig config)
     {
@@ -41,6 +51,9 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
             await FollowupAsync("No tracks found.").ConfigureAwait(false);
             return;
         }
+        await player
+            .UpdateSponsorBlockCategoriesAsync(categories)
+            .ConfigureAwait(false);
         var position = await player.PlayAsync(track).ConfigureAwait(false);
 
         if (position == 0)
