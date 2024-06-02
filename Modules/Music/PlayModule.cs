@@ -45,7 +45,6 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
         var track = await _audioService.Tracks
             .LoadTrackAsync(query, TrackSearchMode.YouTube)
             .ConfigureAwait(false);
-
         if (track == null)
         {
             await FollowupAsync("No tracks found.").ConfigureAwait(false);
