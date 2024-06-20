@@ -83,7 +83,7 @@ public class DMRelayModule : ModuleBase<SocketCommandContext>
         return [.. fileAttachments];
     }
 
-    [Command("dm")]
+    [Command("dm", RunMode = RunMode.Async)]
     [RequireOwner]
     public async Task DMRelay(SocketUser socketUser, [Remainder] string message = "")
     {

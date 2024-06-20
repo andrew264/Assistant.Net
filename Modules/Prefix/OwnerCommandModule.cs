@@ -9,12 +9,12 @@ public class TestModule : ModuleBase<SocketCommandContext>
     public required HttpClient _httpClient { get; set; }
 
 
-    [Command("test")]
+    [Command("test", RunMode = RunMode.Async)]
     public async Task TestAsync()
         => await ReplyAsync("Test command executed!");
 
     [RequireOwner]
-    [Command("reaction_roles")]
+    [Command("reaction_roles", RunMode = RunMode.Async)]
     [RequireContext(ContextType.Guild)]
     public async Task ColorAsync()
     {
@@ -83,7 +83,7 @@ public class TestModule : ModuleBase<SocketCommandContext>
 
 
     [RequireOwner]
-    [Command("yeet", Aliases = ["purge", "begon"])]
+    [Command("yeet", Aliases = ["purge", "begon"], RunMode = RunMode.Async)]
     [RequireContext(ContextType.Guild)]
     [RequireBotPermission(GuildPermission.ManageMessages)]
     public async Task PurgeMessagesAsync([Remainder] string tags)
@@ -152,7 +152,7 @@ public class TestModule : ModuleBase<SocketCommandContext>
     }
 
     [RequireOwner]
-    [Command("echo")]
+    [Command("echo", RunMode = RunMode.Async)]
     [RequireContext(ContextType.Guild)]
     [RequireBotPermission(GuildPermission.ManageWebhooks)]
     public async Task EchoAsync([Remainder] string message = "")

@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Protocol.Payloads.Events;
+using Microsoft.Extensions.Options;
 using System.Text.RegularExpressions;
 
 namespace Assistant.Net.Modules.Music;
@@ -42,9 +43,10 @@ public sealed partial class CustomPlayer(IPlayerProperties<CustomPlayer, CustomP
     private static partial Regex RemoveBracket();
 }
 
-public sealed record class CustomPlayerOptions : QueuedLavalinkPlayerOptions
+public sealed record class CustomPlayerOptions : QueuedLavalinkPlayerOptions, IOptions<CustomPlayerOptions>
 {
     public bool IsHomeGuild { get; init; } = false;
     public DiscordSocketClient? DiscordClient { get; init; } = null;
     public (string, ActivityType) DefaultActivity { get; init; } = ("", ActivityType.Playing);
+    public CustomPlayerOptions Value => this;
 }

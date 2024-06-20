@@ -1,7 +1,6 @@
 ﻿using Discord;
-using Discord.Interactions;
+using Discord.Commands;
 using Lavalink4NET;
-using Lavalink4NET.DiscordNet;
 using Lavalink4NET.Integrations.SponsorBlock;
 using Lavalink4NET.Integrations.SponsorBlock.Extensions;
 using Lavalink4NET.Players;
@@ -11,9 +10,7 @@ using System.Collections.Immutable;
 using System.Text.RegularExpressions;
 
 namespace Assistant.Net.Modules.Music;
-
-[CommandContextType([InteractionContextType.Guild])]
-public class PlayModule : InteractionModuleBase<SocketInteractionContext>
+public class MusicControlModule : ModuleBase<SocketCommandContext>
 {
     public readonly IAudioService AudioService;
     private readonly ulong HomeGuildId;
@@ -32,48 +29,55 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
     private readonly string spotifySongPattern = @"^https?:\/\/(open|play|www)\.spotify\.com\/track\/[A-Za-z0-9]+";
     private readonly string spotifyPlaylistPattern = @"^https?:\/\/(open|play|www)\.spotify\.com\/playlist\/[A-Za-z0-9]+";
 
-
-
-    public PlayModule(IAudioService audioService, BotConfig config)
+    public MusicControlModule(IAudioService audioService, BotConfig config)
     {
         AudioService = audioService;
         HomeGuildId = config.client.home_guild_id;
         DefaultActivity = (config.client.activity_text, config.client.getActivityType());
     }
 
-    [SlashCommand("play", description: "Plays music")]
-    public async Task Play(string query)
+    [Command("play", Aliases = ["p"], RunMode = RunMode.Async)]
+    [RequireContext(ContextType.Guild)]
+    public async Task PlayAsync([Remainder] string query)
     {
-        await DeferAsync();
-
-        var player = await GetPlayerAsync().ConfigureAwait(false);
+        if (query == null)
+        {
+            await ReplyAsync("Please provide a query to search for.");
+            return;
+        }
+        var Channel = Context.User as IGuildUser;
+        if (Channel == null)
+        {
+            await ReplyAsync("You must be in a voice channel to use this command.");
+            return;
+        }
+        var player = await GetPlayerAsync(Channel.VoiceChannel.Id);
 
         if (player == null)
             return;
 
-        var tracks = await GetTrack(query).ConfigureAwait(false);
+        var tracks = await GetTrack(query);
 
         if (tracks.Length == 0)
         {
-            await FollowupAsync("No tracks found.").ConfigureAwait(false);
+            await ReplyAsync("No tracks found.");
             return;
         }
+
         await player
-            .UpdateSponsorBlockCategoriesAsync(categories)
-            .ConfigureAwait(false);
+            .UpdateSponsorBlockCategoriesAsync(categories);
 
         bool isFirstTrackInQueue = player.Queue.Count == 0;
         foreach (var track in tracks)
         {
-            var _ = await player.PlayAsync(track).ConfigureAwait(false);
+            var _ = await player.PlayAsync(track);
         }
         if (tracks!.Length == 1 && isFirstTrackInQueue)
-            await FollowupAsync($"Playing {ClickableLink(tracks[0])}").ConfigureAwait(false);
+            await Context.Channel.SendMessageAsync($"Playing {ClickableLink(tracks[0])}");
         else if (tracks!.Length == 1)
-            await FollowupAsync($"Added {ClickableLink(tracks[0])} to queue").ConfigureAwait(false);
+            await Context.Channel.SendMessageAsync($"Added {ClickableLink(tracks[0])} to queue");
         else
-            await FollowupAsync($"Added {tracks.Length} songs to queue").ConfigureAwait(false);
-
+            await Context.Channel.SendMessageAsync($"Added {tracks.Length} songs to queue");
     }
 
     private async Task<ImmutableArray<LavalinkTrack>> GetTrack(string query)
@@ -149,7 +153,7 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
         return $"[{track.Title}](<{track.Uri}>)";
     }
 
-    private async ValueTask<CustomPlayer?> GetPlayerAsync(bool connectToVoiceChannel = true)
+    private async ValueTask<CustomPlayer?> GetPlayerAsync(ulong ChannelID, bool connectToVoiceChannel = true)
     {
         var retrieveOptions = new PlayerRetrieveOptions(
             ChannelBehavior: connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None);
@@ -170,8 +174,7 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
         };
 
         var result = await AudioService.Players
-            .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(Context, CreatePlayerAsync, options, retrieveOptions)
-            .ConfigureAwait(false);
+            .RetrieveAsync<CustomPlayer, CustomPlayerOptions>(Context.Guild.Id, ChannelID, CreatePlayerAsync, options, retrieveOptions);
 
         if (!result.IsSuccess)
         {
@@ -182,7 +185,7 @@ public class PlayModule : InteractionModuleBase<SocketInteractionContext>
                 _ => "Unknown error.",
             };
 
-            await FollowupAsync(errorMessage).ConfigureAwait(false);
+            await Context.Channel.SendMessageAsync(errorMessage);
             return null;
         }
 

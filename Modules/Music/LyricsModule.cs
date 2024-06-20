@@ -42,7 +42,7 @@ public class LyricsModule : InteractionModuleBase<SocketInteractionContext>
     public async Task Lyrics([Summary(description: "Name of the Song")] string query = "")
     {
         await DeferAsync();
-        List<string> lyricsList = new();
+        List<string> lyricsList = [];
         if (!string.IsNullOrEmpty(query))
         {
             var lyrics = await AudioService.Tracks

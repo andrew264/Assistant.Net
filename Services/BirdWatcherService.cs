@@ -84,6 +84,7 @@ public class BirdWatcherService : ModuleBase<SocketCommandContext>
     private async Task HandleMessageDeleteAsync(Cacheable<IMessage, ulong> cachedMessage, Cacheable<IMessageChannel, ulong> cachedChannel)
     {
         if (!cachedMessage.HasValue) return;
+        if (cachedMessage.Value.Author.IsBot || cachedMessage.Value.Author.IsWebhook) return;
 
         var channel = await cachedChannel.GetOrDownloadAsync();
         var message = cachedMessage.Value;
