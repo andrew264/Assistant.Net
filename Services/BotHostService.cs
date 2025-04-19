@@ -112,7 +112,7 @@ public class BotHostService(
             }
 
             // Set initial presence
-            await SetBotStartPresenceAsync(); // TODO: doesnt work; should we delay it after startup?
+            await SetBotStartPresenceAsync();
 
             logger.LogInformation("Startup complete. Bot username: {Username}", client.CurrentUser.Username);
         }
