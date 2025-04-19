@@ -111,8 +111,8 @@ public class Program
                         var connectionString = config.GetConnectionString();
                         var mongoSettings = MongoClientSettings.FromConnectionString(connectionString);
                         mongoSettings.ServerApi = new ServerApi(ServerApiVersion.V1);
-                        mongoSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(25);
-                        mongoSettings.ConnectTimeout = TimeSpan.FromSeconds(20);
+                        mongoSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(60);
+                        mongoSettings.ConnectTimeout = TimeSpan.FromSeconds(60);
 
                         logger.LogInformation("Connecting to MongoDB...");
                         var client = new MongoClient(mongoSettings);
@@ -147,6 +147,9 @@ public class Program
                     var config = provider.GetRequiredService<Config>().Mongo;
                     return client.GetDatabase(config.DatabaseName);
                 });
+                
+                // --- Game Stats Service ---
+                services.AddSingleton<GameStatsService>();
 
 
                 // --- Bot Host Service ---
