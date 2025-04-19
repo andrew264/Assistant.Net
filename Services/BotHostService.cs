@@ -1,18 +1,21 @@
 using System.Reflection;
 using Assistant.Net.Configuration;
 using Discord;
+using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Lavalink4NET;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using IResult = Discord.Commands.IResult;
 
 namespace Assistant.Net.Services;
 
 public class BotHostService(
     DiscordSocketClient client,
     InteractionService interactionService,
+    CommandService commandService,
     IServiceProvider serviceProvider,
     Config config,
     ILogger<BotHostService> logger,
@@ -23,8 +26,12 @@ public class BotHostService(
     {
         client.Log += LogAsync;
         interactionService.Log += LogAsync;
+        commandService.Log += LogAsync;
         client.Ready += OnReadyAsync;
         client.InteractionCreated += OnInteractionCreatedAsync;
+        client.MessageReceived += OnMessageReceivedAsync;
+        commandService.CommandExecuted += OnCommandExecutedAsync;
+
 
         if (string.IsNullOrWhiteSpace(config.Client.Token))
         {
@@ -67,6 +74,9 @@ public class BotHostService(
             await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
             logger.LogInformation("Interaction modules loaded.");
 
+            await commandService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
+            logger.LogInformation("Command Service modules loaded.");
+
             // Register commands globally or to test guilds
             if (config.Client.TestGuilds != null && config.Client.TestGuilds.Any())
                 foreach (var guildId in config.Client.TestGuilds)
@@ -102,7 +112,7 @@ public class BotHostService(
             }
 
             // Set initial presence
-            await SetBotStartPresenceAsync();  // TODO: doesnt work; should we delay it after startup?
+            await SetBotStartPresenceAsync(); // TODO: doesnt work; should we delay it after startup?
 
             logger.LogInformation("Startup complete. Bot username: {Username}", client.CurrentUser.Username);
         }
@@ -186,6 +196,52 @@ public class BotHostService(
             }
         }
     }
+
+    private async Task OnMessageReceivedAsync(SocketMessage rawMessage)
+    {
+        // Ignore system messages, or messages from other bots
+        if (rawMessage is not SocketUserMessage { Source: MessageSource.User } message)
+            return;
+
+        var argPos = 0;
+        var prefix = config.Client.Prefix ?? "!";
+
+        // Check for mention prefix or string prefix
+        if (!(message.HasStringPrefix(prefix, ref argPos) ||
+              message.HasMentionPrefix(client.CurrentUser, ref argPos)) ||
+            message.Author.IsBot)
+            return;
+
+        var context = new SocketCommandContext(client, message);
+
+        // Execute the command
+        await commandService.ExecuteAsync(context, argPos, serviceProvider);
+    }
+
+    private async Task OnCommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+    {
+        // command not found
+        if (!command.IsSpecified)
+        {
+            logger.LogTrace("Text command not found for message: {MessageContent} by {User}", context.Message.Content,
+                context.User);
+            return;
+        }
+
+        // command was successful
+        if (result.IsSuccess)
+        {
+            logger.LogTrace("Text command '{CommandName}' executed successfully by {User}", command.Value.Name,
+                context.User);
+            return;
+        }
+
+        // command failed
+        logger.LogError("Text command '{CommandName}' failed for {User}. Reason: {ErrorReason}", command.Value.Name,
+            context.User, result.ErrorReason);
+        await context.Channel.SendMessageAsync($"Error executing command: {result.ErrorReason}");
+    }
+
 
     private Task LogAsync(LogMessage log)
     {

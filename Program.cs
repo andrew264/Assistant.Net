@@ -2,9 +2,12 @@
 using Assistant.Net.Configuration;
 using Assistant.Net.Services;
 using Discord;
+using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Lavalink4NET.Extensions;
+using Lavalink4NET.InactivityTracking;
+using Lavalink4NET.InactivityTracking.Extensions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -19,7 +22,7 @@ public class Program
         await CreateHostBuilder(args).Build().RunAsync();
     }
 
-    public static IHostBuilder CreateHostBuilder(string[] args)
+    private static IHostBuilder CreateHostBuilder(string[] args)
     {
         return Host.CreateDefaultBuilder(args)
             .ConfigureLogging((context, logging) =>
@@ -59,12 +62,16 @@ public class Program
                 };
                 services.AddSingleton(discordConfig);
                 services.AddSingleton<DiscordSocketClient>();
+                services.AddSingleton<CommandService>();
                 services.AddSingleton<InteractionService>(provider =>
                     new InteractionService(provider.GetRequiredService<DiscordSocketClient>(),
                         new InteractionServiceConfig
                         {
                             LogLevel = LogSeverity.Verbose
                         }));
+
+                // --- HTTP Client ---
+                services.AddHttpClient();
 
                 // --- Lavalink ---
                 services.AddLavalink();
@@ -86,6 +93,11 @@ public class Program
                         logger.LogWarning(
                             "Lavalink configuration is invalid or incomplete. Music features may not work.");
                     }
+                });
+                services.ConfigureInactivityTracking(options =>
+                {
+                    options.DefaultTimeout = TimeSpan.FromSeconds(30);
+                    options.InactivityBehavior = PlayerInactivityBehavior.Pause;
                 });
 
 
