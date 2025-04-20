@@ -157,6 +157,9 @@ public class Program
                 // --- User Service ---
                 services.AddSingleton<UserService>();
 
+                // --- User Activity Tracking Service ---
+                services.AddSingleton<UserActivityTrackingService>();
+
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();
             });
