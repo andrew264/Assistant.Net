@@ -154,6 +154,9 @@ public class Program
                 // --- Urban Dictionary Service ---
                 services.AddSingleton<UrbanDictionaryService>();
 
+                // --- User Service ---
+                services.AddSingleton<UserService>();
+
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();
             });

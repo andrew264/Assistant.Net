@@ -64,7 +64,7 @@ public class DictionaryInteractionModule(
             logger.LogInformation(
                 "Definition exceeds {MaxLength} characters, attempting to split and send (interaction).", maxLen);
             var parts = MessageUtils.SplitMessage(markdown, maxLen);
-            
+
             await interaction.ModifyOriginalResponseAsync(p =>
             {
                 p.Content = parts[0];
