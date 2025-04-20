@@ -147,10 +147,12 @@ public class Program
                     var config = provider.GetRequiredService<Config>().Mongo;
                     return client.GetDatabase(config.DatabaseName);
                 });
-                
+
                 // --- Game Stats Service ---
                 services.AddSingleton<GameStatsService>();
 
+                // --- Urban Dictionary Service ---
+                services.AddSingleton<UrbanDictionaryService>();
 
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();
