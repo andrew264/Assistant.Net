@@ -1,8 +1,14 @@
+using System.Text.RegularExpressions;
 using Discord;
 using Discord.WebSocket;
-using Assistant.Net.Utilities;
 
 namespace Assistant.Net.Utilities;
+
+public static partial class BracketPattern
+{
+    [GeneratedRegex(@"[(\[].*?[)\]]")]
+    public static partial Regex Get();
+}
 
 public static class UserUtils
 {
@@ -43,86 +49,57 @@ public static class UserUtils
     // Get user thumbnail url
     public static string GetUserThumbnailUrl(SocketUser user)
     {
-        string url = user.GetAvatarUrl(format: ImageFormat.Auto, size: 128);
+        var url = user.GetAvatarUrl();
 
-        foreach (IActivity activity in user.Activities)
+        return user.Activities.Aggregate(url, (current, activity) => activity switch
         {
-            if (activity is CustomStatusGame customStatusGame && customStatusGame.Emote is GuildEmote emote)
-                url = emote.Url;
-            else if (activity is SpotifyGame spotifyGames)
-                url = spotifyGames.AlbumArtUrl;
-            else if (activity is StreamingGame streamingGame)
-                url = streamingGame.Url;
-            else if (activity is RichGame richGame && richGame.LargeAsset != null)
-                url = richGame.LargeAsset.GetImageUrl();
-        }
-
-        return url;
+            CustomStatusGame { Emote: GuildEmote emote } => emote.Url,
+            SpotifyGame spotifyGames => spotifyGames.AlbumArtUrl,
+            StreamingGame streamingGame => streamingGame.Url,
+            RichGame { LargeAsset: not null } richGame => richGame.LargeAsset.GetImageUrl(),
+            _ => current
+        });
     }
 
-    // Get user details and return as an embed
-    public static Task<Embed> GetUserEmbed(SocketUser user)
+    public static Dictionary<string, string> GetAllUserActivities(SocketUser user, bool withTime, bool withUrl,
+        bool includeAllActivities) // TODO: finish this at a later point in time
     {
-        var embed = new EmbedBuilder
-        {
-            Color = GetTopRoleColor(user),
-            Author = new EmbedAuthorBuilder
+        var activities = new Dictionary<string, string>();
+        if (user is not SocketGuildUser guildUser)
+            return activities;
+        foreach (var activity in guildUser.Activities)
+            if (activity is SpotifyGame spotifyGame)
             {
-                Name = user.Username,
-                IconUrl = user.GetAvatarUrl(format: ImageFormat.Auto, size: 128)
-            },
-            ThumbnailUrl = GetUserThumbnailUrl(user),
-            // Description = To-Do
-        };
-
-        if (user is SocketGuildUser guildUser)
-        {
-            var guild = guildUser.Guild;
-            bool isOwner = guildUser.Guild.OwnerId == guildUser.Id;
-
-            if (guildUser.JoinedAt is DateTimeOffset joinedAt)
-                embed.AddField(isOwner ? $"Created {guild.Name} on" : $"Joined {guild.Name} on", TimeUtils.GetLongDateTime(joinedAt), true);
-
-            if (guildUser.Nickname != null)
-                embed.AddField("Nickname", guildUser.Nickname, true);
-
-            var roles = guildUser.Roles
-                .OrderByDescending(x => x.Position)
-                .Take(guildUser.Roles.Count - 1)
-                .Select(x => x.Mention)
-                .ToList();
-
-            if (roles.Count > 0)
-                embed.AddField($"Roles [{roles.Count}]", string.Join(", ", roles), true);
-        }
-
-        embed.AddField("Account created on", TimeUtils.GetLongDateTime(user.CreatedAt), true);
-        embed.AddField("Status", GetAvailableClients(user), true);
-
-        foreach (var activity in user.Activities)
-        {
-            switch (activity.Type)
-            {
-                case ActivityType.CustomStatus:
-                    embed.AddField("Custom Status", activity.Name, true);
-                    break;
-                case ActivityType.Listening when activity is SpotifyGame spotify:
-                    embed.AddField(
-                        "Spotify",
-                        $"Listening to [{spotify.TrackTitle}]({spotify.TrackUrl}) by {spotify.Artists.First()}",
-                        true
-                    );
-                    break;
-                case ActivityType.Streaming when activity is StreamingGame streaming:
-                    embed.AddField(
-                        "Streaming",
-                        $"[{streaming.Name}]({streaming.Url})",
-                        true
-                    );
-                    break;
+                if (withUrl)
+                    activities["Spotify"] =
+                        $"Listening to [{BracketPattern.Get().Replace(spotifyGame.TrackTitle, "")}]({spotifyGame.TrackUrl}) by {string.Join(", ", spotifyGame.Artists)}";
+                else
+                    activities["Spotify"] =
+                        $"Listening to {BracketPattern.Get().Replace(spotifyGame.TrackTitle, "")} by {string.Join(", ", spotifyGame.Artists)}";
             }
-        }
+            else if (activity is StreamingGame streamingGame)
+            {
+                if (withUrl)
+                    activities["Streaming"] = $"[{streamingGame.Name}]({streamingGame.Url})";
+                else
+                    activities["Streaming"] = $"{streamingGame.Name}";
+            }
+            else if (activity is CustomStatusGame customStatusGame)
+            {
+                activities["Custom Status"] = customStatusGame.Name;
+            }
+            else if (activity is RichGame richGame)
+            {
+                if (withTime && richGame.Timestamps.Start != null)
+                    activities["Playing"] =
+                        $"{richGame.Name}\n**{TimeUtils.GetRelativeTime(richGame.Timestamps.Start.Value)}**";
+                else activities["Playing"] = $"{richGame.Name}";
+            }
+            else
+            {
+                activities[activity.Type.ToString()] = $"{activity.Name}";
+            }
 
-        return Task.FromResult(embed.Build());
+        return activities;
     }
 }
