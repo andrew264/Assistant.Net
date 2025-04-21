@@ -18,7 +18,7 @@ public class GameStatsService
     public GameStatsService(IMongoDatabase database, ILogger<GameStatsService> logger)
     {
         _logger = logger;
-        _gameStatsCollection = database.GetCollection<GameStatsModel>("game_stats");
+        _gameStatsCollection = database.GetCollection<GameStatsModel>("gameStats");
 
         // Create indexes for faster lookups if they don't exist
         var indexKeys = Builders<GameStatsModel>.IndexKeys.Ascending(g => g.UserId).Ascending(g => g.GuildId);
@@ -27,17 +27,15 @@ public class GameStatsService
         try
         {
             _gameStatsCollection.Indexes.CreateOne(indexModel);
-            _logger.LogInformation("Ensured unique index on game_stats (UserId, GuildId)");
+            _logger.LogInformation("Ensured unique index on gameStats (UserId, GuildId)");
         }
-        catch (MongoCommandException ex) when (ex.CodeName == "IndexOptionsConflict" ||
-                                               ex.CodeName == "IndexKeySpecsConflict")
+        catch (MongoCommandException ex) when (ex.CodeName is "IndexOptionsConflict" or "IndexKeySpecsConflict")
         {
-            _logger.LogWarning("Index on game_stats (UserId, GuildId) already exists with different options or keys.");
-            // Potentially drop and recreate if necessary, but warning is safer for now.
+            _logger.LogWarning("Index on gameStats (UserId, GuildId) already exists with different options or keys.");
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating index on game_stats collection.");
+            _logger.LogError(ex, "Error creating index on gameStats collection.");
         }
     }
 

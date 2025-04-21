@@ -24,6 +24,10 @@ public class BotHostService(
     UserActivityTrackingService userActivityTrackingService)
     : IHostedService
 {
+    // ReSharper disable twice UnusedMember.Local
+    private readonly SurveillanceService _surveillanceService = surveillanceService;
+    private readonly UserActivityTrackingService _userActivityTrackingService = userActivityTrackingService;
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         client.Log += LogAsync;
