@@ -19,7 +19,6 @@ public class UserActivityTrackingService
         _userService = userService;
         _logger = logger;
 
-        // Hook into events
         _client.PresenceUpdated += OnPresenceUpdatedAsync;
         _client.MessageReceived += OnMessageReceivedAsync;
         _client.UserVoiceStateUpdated += OnVoiceStateUpdatedAsync;
@@ -29,12 +28,12 @@ public class UserActivityTrackingService
         _logger.LogInformation("UserActivityTrackingService initialized and events hooked.");
     }
 
-    // Presence: Update only when transitioning to/from offline
+
     private async Task OnPresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
     {
         if (user.IsBot) return;
 
-        var beforeStatus = before?.Status ?? UserStatus.Offline;
+        var beforeStatus = before.Status;
         var afterStatus = after.Status;
 
         var transitioned = (beforeStatus == UserStatus.Offline && afterStatus != UserStatus.Offline) ||
@@ -48,7 +47,7 @@ public class UserActivityTrackingService
         }
     }
 
-    // Message: Update on any message in a guild from a non-bot
+
     private async Task OnMessageReceivedAsync(SocketMessage message)
     {
         if (message is not SocketUserMessage { Source: MessageSource.User } userMessage ||
@@ -61,32 +60,28 @@ public class UserActivityTrackingService
         await UpdateUserLastSeen(userMessage.Author.Id, "MessageReceived");
     }
 
-    // Typing: Update on typing start in a guild channel from a non-bot
+
     private async Task OnTypingStartedAsync(Cacheable<IUser, ulong> userCacheable,
         Cacheable<IMessageChannel, ulong> channelCacheable)
     {
-        // Ensure the channel is a guild channel and user is resolved and not a bot
         if (!channelCacheable.HasValue || channelCacheable.Value is IDMChannel) return;
         if (!userCacheable.HasValue || userCacheable.Value.IsBot) return;
 
         var user = userCacheable.Value;
         if (user.Status != UserStatus.Offline) return;
 
-        _logger.LogTrace("Typing started by {User} in guild channel. Updating LastSeen.", user.Username);
+        _logger.LogTrace("Typing started by {User}(offline) in guild channel. Updating LastSeen.", user.Username);
         await UpdateUserLastSeen(user.Id, "TypingStarted");
     }
 
-    // Voice State: Update on any voice state change from a non-bot
     private async Task OnVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
         if (user.IsBot || user is not SocketGuildUser || user.Status != UserStatus.Offline) return;
 
-        // Avoid logging trivial state changes like mute/deafen if desired, but update lastSeen regardless
-        _logger.LogTrace("Voice state updated for {User}. Updating LastSeen.", user.Username);
+        _logger.LogTrace("Voice state updated for {User}(offline). Updating LastSeen.", user.Username);
         await UpdateUserLastSeen(user.Id, "VoiceStateUpdate");
     }
 
-    // Join: Update when a non-bot joins
     private async Task OnUserJoinedAsync(SocketGuildUser user)
     {
         if (user.IsBot) return;
@@ -95,7 +90,6 @@ public class UserActivityTrackingService
         await UpdateUserLastSeen(user.Id, "UserJoined");
     }
 
-    // Helper method to call UserService
     private async Task UpdateUserLastSeen(ulong userId, string eventSource)
     {
         try

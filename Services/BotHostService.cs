@@ -19,7 +19,9 @@ public class BotHostService(
     IServiceProvider serviceProvider,
     Config config,
     ILogger<BotHostService> logger,
-    IAudioService audioService)
+    IAudioService audioService,
+    SurveillanceService surveillanceService,
+    UserActivityTrackingService userActivityTrackingService)
     : IHostedService
 {
     public async Task StartAsync(CancellationToken cancellationToken)

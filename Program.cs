@@ -58,7 +58,8 @@ public class Program
                     GatewayIntents = GatewayIntents.All, // ALL Intents
                     UseInteractionSnowflakeDate = false,
                     AlwaysDownloadUsers = true,
-                    LogLevel = LogSeverity.Info
+                    LogLevel = LogSeverity.Info,
+                    MessageCacheSize = 2000
                 };
                 services.AddSingleton(discordConfig);
                 services.AddSingleton<DiscordSocketClient>();
@@ -72,6 +73,9 @@ public class Program
 
                 // --- HTTP Client ---
                 services.AddHttpClient();
+
+                // --- Memory Cache ---
+                services.AddMemoryCache();
 
                 // --- Lavalink ---
                 services.AddLavalink();
@@ -159,6 +163,9 @@ public class Program
 
                 // --- User Activity Tracking Service ---
                 services.AddSingleton<UserActivityTrackingService>();
+
+                // --- Surveillance Service ---
+                services.AddSingleton<SurveillanceService>();
 
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();

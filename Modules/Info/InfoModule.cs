@@ -1,6 +1,6 @@
+using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
-using Discord;
 
 namespace Assistant.Net.Modules.Info;
 
@@ -12,7 +12,6 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
     {
         _client = client;
     }
-
 
 
     [SlashCommand("ping", "Check the bot's latency.")]
@@ -33,5 +32,4 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
 
         await RespondAsync(embed: embed.Build(), ephemeral: true);
     }
-
 }

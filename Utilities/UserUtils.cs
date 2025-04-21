@@ -60,46 +60,4 @@ public static class UserUtils
             _ => current
         });
     }
-
-    public static Dictionary<string, string> GetAllUserActivities(SocketUser user, bool withTime, bool withUrl,
-        bool includeAllActivities) // TODO: finish this at a later point in time
-    {
-        var activities = new Dictionary<string, string>();
-        if (user is not SocketGuildUser guildUser)
-            return activities;
-        foreach (var activity in guildUser.Activities)
-            if (activity is SpotifyGame spotifyGame)
-            {
-                if (withUrl)
-                    activities["Spotify"] =
-                        $"Listening to [{BracketPattern.Get().Replace(spotifyGame.TrackTitle, "")}]({spotifyGame.TrackUrl}) by {string.Join(", ", spotifyGame.Artists)}";
-                else
-                    activities["Spotify"] =
-                        $"Listening to {BracketPattern.Get().Replace(spotifyGame.TrackTitle, "")} by {string.Join(", ", spotifyGame.Artists)}";
-            }
-            else if (activity is StreamingGame streamingGame)
-            {
-                if (withUrl)
-                    activities["Streaming"] = $"[{streamingGame.Name}]({streamingGame.Url})";
-                else
-                    activities["Streaming"] = $"{streamingGame.Name}";
-            }
-            else if (activity is CustomStatusGame customStatusGame)
-            {
-                activities["Custom Status"] = customStatusGame.Name;
-            }
-            else if (activity is RichGame richGame)
-            {
-                if (withTime && richGame.Timestamps.Start != null)
-                    activities["Playing"] =
-                        $"{richGame.Name}\n**{TimeUtils.GetRelativeTime(richGame.Timestamps.Start.Value)}**";
-                else activities["Playing"] = $"{richGame.Name}";
-            }
-            else
-            {
-                activities[activity.Type.ToString()] = $"{activity.Name}";
-            }
-
-        return activities;
-    }
 }
