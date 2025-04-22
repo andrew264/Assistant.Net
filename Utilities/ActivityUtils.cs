@@ -3,7 +3,7 @@ using Discord.WebSocket;
 
 namespace Assistant.Net.Utilities;
 
-public class ActivityUtils
+public static class ActivityUtils
 {
     public static HashSet<string> GetClients(SocketPresence presence)
     {
@@ -136,7 +136,7 @@ public class ActivityUtils
                     break;
                 default:
                     if (includeAllActivities)
-                        resultDictionary[activity.Type.ToString()] = $"{activity.Name}";
+                        resultDictionary[activity.Type.ToString()] = $"{activity.Name ?? "(Unnamed Activity)"}";
                     break;
             }
 

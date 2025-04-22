@@ -10,7 +10,8 @@ public class GameStatsService
     private const double KFactor = 32.0;
 
     public const string TicTacToeGameName = "tictactoe";
-    // TODO: Add other game names here if needed: public const string RpsGameName = "rps";
+    public const string RpsGameName = "rps";
+    // TODO: Add other game names here if needed:
 
     private readonly IMongoCollection<GameStatsModel> _gameStatsCollection;
     private readonly ILogger<GameStatsService> _logger;
@@ -52,14 +53,12 @@ public class GameStatsService
         var filter = GetUserGuildFilter(userId, guildId);
         var projection = Builders<GameStatsModel>.Projection
             .Include(g => g.Games)
-            .Exclude(g => g.UserId) // Don't need these in the result
-            .Exclude(g => g.GuildId)
-            .Exclude("_id"); // Exclude MongoDB's default _id
+            .Exclude("_id");
 
         var statsDoc = await _gameStatsCollection.Find(filter).Project<GameStatsModel>(projection)
             .FirstOrDefaultAsync();
 
-        return statsDoc?.Games?.GetValueOrDefault(gameName);
+        return statsDoc?.Games.GetValueOrDefault(gameName);
     }
 
     private async Task<SingleGameStats> EnsurePlayerGameStatsAsync(ulong userId, ulong guildId, string gameName)
