@@ -1,12 +1,12 @@
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Assistant.Net.Models;
+namespace Assistant.Net.Models.Starboard;
 
 public class StarboardConfigModel
 {
     [BsonId] public ulong GuildId { get; set; }
 
-    [BsonElement("isEnabled")] public bool IsEnabled { get; set; } = false;
+    [BsonElement("isEnabled")] public bool IsEnabled { get; set; }
 
     [BsonElement("starboardChannelId")]
     [BsonIgnoreIfNull]
@@ -16,16 +16,16 @@ public class StarboardConfigModel
 
     [BsonElement("threshold")] public int Threshold { get; set; } = 3;
 
-    [BsonElement("allowSelfStar")] public bool AllowSelfStar { get; set; } = false;
+    [BsonElement("allowSelfStar")] public bool AllowSelfStar { get; set; }
 
-    [BsonElement("allowBotMessages")] public bool AllowBotMessages { get; set; } = false;
+    [BsonElement("allowBotMessages")] public bool AllowBotMessages { get; set; }
 
     [BsonElement("ignoreNsfwChannels")] public bool IgnoreNsfwChannels { get; set; } = true;
 
-    [BsonElement("deleteIfUnStarred")] public bool DeleteIfUnStarred { get; set; } = false;
+    [BsonElement("deleteIfUnStarred")] public bool DeleteIfUnStarred { get; set; }
 
     [BsonElement("logChannelId")]
-    [BsonIgnoreIfNull]
+    [BsonIgnoreIfDefault]
     public ulong? LogChannelId { get; set; }
 
     [BsonElement("createdAt")]

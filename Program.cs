@@ -1,6 +1,7 @@
 ﻿using System.Security.Authentication;
 using Assistant.Net.Configuration;
 using Assistant.Net.Services;
+using Assistant.Net.Services.Starboard;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;
@@ -166,6 +167,12 @@ public class Program
 
                 // --- Surveillance Service ---
                 services.AddSingleton<SurveillanceService>();
+
+                // --- Starboard Services ---
+                // Config service
+                services.AddSingleton<StarboardConfigService>();
+                // Core service
+                services.AddSingleton<StarboardService>();
 
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();

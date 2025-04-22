@@ -1,5 +1,6 @@
 using System.Reflection;
 using Assistant.Net.Configuration;
+using Assistant.Net.Services.Starboard;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;
@@ -21,12 +22,16 @@ public class BotHostService(
     ILogger<BotHostService> logger,
     IAudioService audioService,
     SurveillanceService surveillanceService,
-    UserActivityTrackingService userActivityTrackingService)
+    UserActivityTrackingService userActivityTrackingService,
+    StarboardConfigService starboardConfigService,
+    StarboardService starboardService)
     : IHostedService
 {
-    // ReSharper disable twice UnusedMember.Local
+    // ReSharper disable UnusedMember.Local
     private readonly SurveillanceService _surveillanceService = surveillanceService;
     private readonly UserActivityTrackingService _userActivityTrackingService = userActivityTrackingService;
+    private readonly StarboardConfigService _starboardConfigService = starboardConfigService;
+    private readonly StarboardService _starboardService = starboardService;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
