@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Assistant.Net.Modules.Games.HandCricket;
 using Assistant.Net.Services;
 using Discord;
 using Discord.Commands;
@@ -312,6 +313,99 @@ public class GameModule(ILogger<GameModule> logger, GameStatsService gameStatsSe
         {
             logger.LogError(ex, "Failed to modify game message {MessageId} for game {GameId} (prefix)", message.Id,
                 game.GameId);
+        }
+    }
+
+    // --- Hand Cricket Prefix Command ---
+    [Command("handcricket", RunMode = RunMode.Async)]
+    [Alias("hc")]
+    [Summary("Play Hand Cricket with another user.")]
+    [RequireContext(ContextType.Guild)]
+    public async Task HandCricketPrefixCommand(IGuildUser player1, IGuildUser? player2 = null)
+    {
+        // Determine players correctly
+        IGuildUser actualPlayer1;
+        IGuildUser actualPlayer2;
+
+        if (player2 == null)
+        {
+            if (player1.Id == Context.User.Id)
+            {
+                await ReplyAsync("You need to specify an opponent!");
+                return;
+            }
+
+            actualPlayer1 = player1;
+            actualPlayer2 = Context.User as IGuildUser ??
+                            throw new InvalidOperationException("Cannot get command user");
+        }
+        else
+        {
+            actualPlayer1 = player1;
+            actualPlayer2 = player2;
+        }
+
+
+        if (actualPlayer1.Id == actualPlayer2.Id)
+        {
+            await ReplyAsync("You can't play against yourself!");
+            return;
+        }
+
+        if (actualPlayer1.IsBot || actualPlayer2.IsBot)
+        {
+            await ReplyAsync("Bots cannot play Hand Cricket!");
+            return;
+        }
+
+        var game = new HandCricketGame(actualPlayer1, actualPlayer2, Context.Channel.Id, gameStatsService, logger);
+
+        if (!ActiveHandCricketGames.TryAdd(game.GameId, game))
+        {
+            logger.LogError("[HC New Game - Prefix] Failed to add game {GameId} to active dictionary.", game.GameId);
+            await ReplyAsync("Failed to start the game due to a conflict. Please try again.");
+            return;
+        }
+
+        logger.LogInformation(
+            "[HC New Game - Prefix] Started Hand Cricket game {GameId}: {P1} vs {P2} in Channel {ChannelId}",
+            game.GameId, actualPlayer1.Username, actualPlayer2.Username, Context.Channel.Id);
+
+        // Send the initial message. Button clicks will be handled by the ComponentInteraction handler in GameInteractionModule
+        await ReplyAsync(game.GetCurrentPrompt(), embed: game.GetEmbed(), components: game.GetComponents());
+
+        // Start timeout task (optional but recommended) - Use the same timeout logic as slash commands
+        _ = Task.Delay(HandCricketTimeout).ContinueWith(async _ => await CheckHandCricketTimeoutPrefix(game.GameId));
+    }
+
+    // --- Helper for Prefix Command Timeout ---
+    private async Task CheckHandCricketTimeoutPrefix(string gameId)
+    {
+        if (ActiveHandCricketGames.TryGetValue(gameId, out var game))
+        {
+            if (DateTime.UtcNow - game.LastInteractionTime >= HandCricketTimeout)
+            {
+                if (ActiveHandCricketGames.TryRemove(gameId, out _))
+                {
+                    logger.LogInformation("[HC Timeout - Prefix] Game {GameId} timed out.", gameId);
+                    try
+                    {
+                        if (await client.GetChannelAsync(game.InteractionChannelId) is IMessageChannel channel)
+                            await channel.SendMessageAsync(
+                                $"Hand Cricket game between {game.Player1.Mention} and {game.Player2.Mention} timed out due to inactivity.");
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "[HC Timeout - Prefix] Failed to send timeout message for game {GameId}",
+                            gameId);
+                    }
+                }
+            }
+            else
+            {
+                _ = Task.Delay(HandCricketTimeout)
+                    .ContinueWith(async _ => await CheckHandCricketTimeoutPrefix(game.GameId));
+            }
         }
     }
 }

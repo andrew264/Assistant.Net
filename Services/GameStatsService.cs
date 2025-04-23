@@ -11,7 +11,7 @@ public class GameStatsService
 
     public const string TicTacToeGameName = "tictactoe";
     public const string RpsGameName = "rps";
-    // TODO: Add other game names here if needed:
+    public const string HandCricketGameName = "handcricket";
 
     private readonly IMongoCollection<GameStatsModel> _gameStatsCollection;
     private readonly ILogger<GameStatsService> _logger;

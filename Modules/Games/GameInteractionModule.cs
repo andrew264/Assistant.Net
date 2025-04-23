@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Assistant.Net.Modules.Games.HandCricket;
 using Assistant.Net.Services;
 using Discord;
 using Discord.Interactions;
@@ -21,6 +22,12 @@ public class GameInteractionModule(
     // --- TicTacToe Specific ---
     internal static readonly ConcurrentDictionary<string, TicTacToeGame> ActiveTicTacToeGames = new();
 
+    // --- HandCricket Specific ---
+    internal static readonly ConcurrentDictionary<string, HandCricketGame> ActiveHandCricketGames = new();
+    internal static readonly TimeSpan HandCricketTimeout = TimeSpan.FromMinutes(5);
+
+
+    // --- RPS Command ---
     [SlashCommand("rps", "Play Rock Paper Scissors.")]
     public async Task RpsSlashCommand(
         [Summary(description: "The user you want to play against (optional, defaults to Bot).")]
@@ -254,8 +261,7 @@ public class GameInteractionModule(
         }
     }
 
-    // --- TicTacToe Commands ---
-
+    // --- TicTacToe Command ---
     [SlashCommand("tictactoe", "Play a game of Tic Tac Toe.")]
     public async Task StartTicTacToeGameAsync(
         [Summary(description: "The user you want to play against (optional, defaults to Bot).")]
@@ -289,7 +295,6 @@ public class GameInteractionModule(
 
         var gameId = Guid.NewGuid().ToString();
 
-        // Randomly assign X
         SocketUser playerX, playerO;
         if (new Random().Next(0, 2) == 0)
         {
@@ -378,10 +383,8 @@ public class GameInteractionModule(
             return;
         }
 
-        // --- Game State Update & Response ---
-        await UpdateGameResponse(game, Context.Interaction);
+        await UpdateTicTacToeGameResponse(game, Context.Interaction);
 
-        // --- Check for Bot's Turn ---
         if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
         {
             await Task.Delay(500);
@@ -397,7 +400,7 @@ public class GameInteractionModule(
         if (botMoveCoords.HasValue)
         {
             game.MakeMove(botMoveCoords.Value.row, botMoveCoords.Value.col);
-            await UpdateGameResponse(game, interaction);
+            await UpdateTicTacToeGameResponse(game, interaction);
         }
         else
         {
@@ -417,21 +420,19 @@ public class GameInteractionModule(
         }
     }
 
-    private async Task UpdateGameResponse(TicTacToeGame game, SocketInteraction interaction)
+    private async Task UpdateTicTacToeGameResponse(TicTacToeGame game, SocketInteraction interaction)
     {
         string messageContent;
         var components = game.GetMessageComponent();
 
         if (game.IsGameOver)
         {
-            // Record stats
             if (Context.Guild != null)
                 await game.RecordStatsIfApplicable(Context.Guild.Id);
             else
                 logger.LogWarning("Cannot record Tic Tac Toe stats for game {GameId} outside of a guild.", game.GameId);
 
 
-            // Remove game from active list
             ActiveTicTacToeGames.TryRemove(game.GameId, out _);
             logger.LogInformation("Tic Tac Toe game {GameId} ended. Result: {Result}", game.GameId, game.Result);
 
@@ -450,7 +451,8 @@ public class GameInteractionModule(
                     messageContent =
                         $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\n**It's a tie!**";
                     break;
-                default: // Should not happen
+                case GameResultState.None:
+                default:
                     messageContent = "Game over, but result is unclear.";
                     logger.LogError("Game {GameId} ended with unclear result state: {Result}", game.GameId,
                         game.Result);
@@ -482,6 +484,266 @@ public class GameInteractionModule(
             {
                 // ignored
             }
+        }
+    }
+
+    // --- HandCricket Command ---
+    [SlashCommand("handcricket", "Play a game of Hand Cricket.")]
+    [RequireContext(ContextType.Guild)]
+    public async Task StartHandCricketGameAsync(
+        [Summary("player1", "The first player (or yourself).")]
+        SocketGuildUser player1,
+        [Summary("player2",
+            "The second player (optional, defaults to you if player1 is someone else).")]
+        SocketGuildUser? player2 = null)
+    {
+        SocketGuildUser actualPlayer1;
+        SocketGuildUser actualPlayer2;
+
+        if (player2 == null)
+        {
+            if (player1.Id == Context.User.Id)
+            {
+                await RespondAsync("You need to specify an opponent if you are player 1!", ephemeral: true);
+                return;
+            }
+
+            actualPlayer1 = player1;
+            actualPlayer2 = Context.User as SocketGuildUser ??
+                            throw new InvalidOperationException("Cannot get command user");
+        }
+        else
+        {
+            actualPlayer1 = player1;
+            actualPlayer2 = player2;
+        }
+
+
+        if (actualPlayer1.Id == actualPlayer2.Id)
+        {
+            await RespondAsync("You can't play against yourself!", ephemeral: true);
+            return;
+        }
+
+        if (actualPlayer1.IsBot || actualPlayer2.IsBot)
+        {
+            await RespondAsync("Bots cannot play Hand Cricket!", ephemeral: true);
+            return;
+        }
+
+        var game = new HandCricketGame(actualPlayer1, actualPlayer2, Context.Channel.Id, gameStatsService, logger);
+
+        if (!ActiveHandCricketGames.TryAdd(game.GameId, game))
+        {
+            logger.LogError("[HC New Game] Failed to add game {GameId} to active dictionary.", game.GameId);
+            await RespondAsync("Failed to start the game due to a conflict. Please try again.", ephemeral: true);
+            return;
+        }
+
+        logger.LogInformation("[HC New Game] Started Hand Cricket game {GameId}: {P1} vs {P2} in Channel {ChannelId}",
+            game.GameId, actualPlayer1.Username, actualPlayer2.Username, Context.Channel.Id);
+
+        await RespondAsync(game.GetCurrentPrompt(), embed: game.GetEmbed(), components: game.GetComponents());
+
+        _ = Task.Delay(HandCricketTimeout).ContinueWith(_ => Task.FromResult(CheckHandCricketTimeout(game.GameId)));
+    }
+
+    [ComponentInteraction("assistant:hc:*:*:*", true)]
+    public async Task HandleHandCricketInteraction(string gameId, string action, string data)
+    {
+        if (!ActiveHandCricketGames.TryGetValue(gameId, out var game))
+        {
+            await RespondAsync("This Hand Cricket game has ended or is invalid.", ephemeral: true);
+            await TryDisableComponents(Context.Interaction);
+            return;
+        }
+
+        if (Context.User.Id != game.Player1.Id && Context.User.Id != game.Player2.Id)
+        {
+            await RespondAsync("This isn't your game!", ephemeral: true);
+            return;
+        }
+
+        var success = false;
+
+        await DeferAsync();
+
+        try
+        {
+            switch (action)
+            {
+                case "toss_eo":
+                    if (game.CurrentPhase == HandCricketPhase.TossSelectEvenOdd)
+                    {
+                        var choice = data == "even" ? EvenOddChoice.Even : EvenOddChoice.Odd;
+                        success = game.SetTossEvenOddPreference(Context.User, choice);
+                    }
+                    else
+                    {
+                        await FollowupAsync("It's not time to choose Even/Odd.", ephemeral: true);
+                        return;
+                    }
+
+                    break;
+
+                case "toss_num":
+                    if (game.CurrentPhase == HandCricketPhase.TossSelectNumber)
+                    {
+                        if (int.TryParse(data, out var tossNum))
+                        {
+                            if (!game.SetTossNumber(Context.User, tossNum))
+                            {
+                                await FollowupAsync(
+                                    "You've already selected a number for the toss, or it's not the right time.",
+                                    ephemeral: true);
+                                return;
+                            }
+
+                            success = true;
+
+                            if (game.CurrentTossChoices is { Player1Number: not null, Player2Number: not null })
+                                game.ResolveToss();
+                        }
+                    }
+                    else
+                    {
+                        await FollowupAsync("It's not time to choose a number for the toss.", ephemeral: true);
+                        return;
+                    }
+
+                    break;
+
+                case "batbowl":
+                    if (game.CurrentPhase == HandCricketPhase.TossSelectBatBowl)
+                    {
+                        if (Context.User.Id != game.TossWinner?.Id)
+                        {
+                            await FollowupAsync("Only the toss winner can choose.", ephemeral: true);
+                            return;
+                        }
+
+                        var choseBat = data == "bat";
+                        success = game.SetBatOrBowlChoice(Context.User, choseBat);
+                    }
+                    else
+                    {
+                        await FollowupAsync("It's not time to choose Bat/Bowl.", ephemeral: true);
+                        return;
+                    }
+
+                    break;
+
+                case "play_num":
+                    if (game.CurrentPhase == HandCricketPhase.Inning1Batting ||
+                        game.CurrentPhase == HandCricketPhase.Inning2Batting)
+                    {
+                        if (int.TryParse(data, out var gameNum))
+                        {
+                            if (!game.SetGameNumber(Context.User, gameNum))
+                            {
+                                await FollowupAsync(
+                                    "You've already selected a number for this turn, or it's not the right time.",
+                                    ephemeral: true);
+                                return;
+                            }
+
+                            success = true;
+
+                            if (game.BothPlayersSelectedGameNumber())
+                            {
+                                var (inningOver, gameOver) = game.ResolveTurn();
+
+                                if (gameOver)
+                                {
+                                    var finalResultMessage = await game.GetResultStringAndRecordStats(Context.Guild.Id);
+                                    ActiveHandCricketGames.TryRemove(game.GameId, out _);
+                                    logger.LogInformation("[HC Game End] Game {GameId} finished.", game.GameId);
+
+                                    await ModifyOriginalResponseAsync(props =>
+                                    {
+                                        props.Content = game.GetCurrentPrompt();
+                                        props.Embed = game.GetEmbed();
+                                        props.Components = game.GetComponents();
+                                    });
+                                    await Context.Channel.SendMessageAsync(finalResultMessage,
+                                        allowedMentions: AllowedMentions.All);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        await FollowupAsync("It's not time to select a number for the game.", ephemeral: true);
+                        return;
+                    }
+
+                    break;
+
+                default:
+                    logger.LogWarning("[HC Interaction] Unknown action '{Action}' for game {GameId}", action, gameId);
+                    await FollowupAsync("Unknown action.", ephemeral: true);
+                    return;
+            }
+
+            if (success || game.CurrentPhase == HandCricketPhase.GameOver)
+                await ModifyOriginalResponseAsync(props =>
+                {
+                    props.Content = game.GetCurrentPrompt();
+                    props.Embed = game.GetEmbed();
+                    props.Components = game.GetComponents();
+                });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "[HC Interaction] Error processing action '{Action}' for game {GameId}", action,
+                gameId);
+            await FollowupAsync("An internal error occurred while processing your action.", ephemeral: true);
+        }
+    }
+
+
+    private async Task CheckHandCricketTimeout(string gameId)
+    {
+        if (ActiveHandCricketGames.TryGetValue(gameId, out var game))
+        {
+            if (DateTime.UtcNow - game.LastInteractionTime >= HandCricketTimeout)
+            {
+                if (ActiveHandCricketGames.TryRemove(gameId, out _))
+                {
+                    logger.LogInformation("[HC Timeout] Game {GameId} timed out.", gameId);
+                    try
+                    {
+                        var channel = await client.GetChannelAsync(game.InteractionChannelId) as IMessageChannel;
+                        if (channel != null)
+                            await channel.SendMessageAsync(
+                                $"Hand Cricket game between {game.Player1.Mention} and {game.Player2.Mention} timed out due to inactivity.");
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "[HC Timeout] Failed to send timeout message for game {GameId}", gameId);
+                    }
+                }
+            }
+            else
+            {
+                _ = Task.Delay(HandCricketTimeout)
+                    .ContinueWith(_ => Task.FromResult(CheckHandCricketTimeout(game.GameId)));
+            }
+        }
+    }
+
+    private async Task TryDisableComponents(SocketInteraction interaction)
+    {
+        try
+        {
+            if (interaction is SocketMessageComponent componentInteraction)
+                await componentInteraction.ModifyOriginalResponseAsync(props =>
+                    props.Components = new ComponentBuilder().Build());
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to disable components on interaction {InteractionId}", interaction.Id);
         }
     }
 }
