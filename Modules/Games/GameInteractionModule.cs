@@ -20,7 +20,7 @@ public class GameInteractionModule(
 
     // --- TicTacToe Specific ---
     internal static readonly ConcurrentDictionary<string, TicTacToeGame> ActiveTicTacToeGames = new();
-    
+
     [SlashCommand("rps", "Play Rock Paper Scissors.")]
     public async Task RpsSlashCommand(
         [Summary(description: "The user you want to play against (optional, defaults to Bot).")]
@@ -253,9 +253,9 @@ public class GameInteractionModule(
             }
         }
     }
-    
+
     // --- TicTacToe Commands ---
-    
+
     [SlashCommand("tictactoe", "Play a game of Tic Tac Toe.")]
     public async Task StartTicTacToeGameAsync(
         [Summary(description: "The user you want to play against (optional, defaults to Bot).")]

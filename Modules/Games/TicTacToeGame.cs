@@ -1,6 +1,5 @@
 using Assistant.Net.Services;
 using Discord;
-using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Games;
@@ -32,7 +31,7 @@ public class TicTacToeGame
     private readonly ILogger _logger;
     private readonly Random _random = new();
 
-    public TicTacToeGame(SocketUser player1, SocketUser player2, string gameId, GameStatsService? gameStatsService,
+    public TicTacToeGame(IUser player1, IUser player2, string gameId, GameStatsService? gameStatsService,
         ILogger logger)
     {
         Player1 = player1;
@@ -46,9 +45,9 @@ public class TicTacToeGame
     }
 
     public string GameId { get; }
-    public SocketUser Player1 { get; }
-    public SocketUser Player2 { get; }
-    public SocketUser CurrentPlayer { get; private set; }
+    public IUser Player1 { get; }
+    public IUser Player2 { get; }
+    public IUser CurrentPlayer { get; private set; }
     public PlayerMarker CurrentMarker => GetPlayerMarker(CurrentPlayer);
 
     public PlayerMarker[,] Board { get; } = new PlayerMarker[BoardSize, BoardSize];
@@ -74,7 +73,7 @@ public class TicTacToeGame
         };
     }
 
-    public SocketUser GetUserFromMarker(PlayerMarker marker)
+    public IUser GetUserFromMarker(PlayerMarker marker)
     {
         return marker switch
         {
@@ -94,7 +93,7 @@ public class TicTacToeGame
         return user.Id == Player1.Id || user.Id == Player2.Id;
     }
 
-    public SocketUser OtherPlayer(IUser user)
+    public IUser OtherPlayer(IUser user)
     {
         return user.Id == Player1.Id ? Player2 : Player1;
     }

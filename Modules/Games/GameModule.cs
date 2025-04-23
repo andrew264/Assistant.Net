@@ -5,6 +5,7 @@ using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using RunMode = Discord.Commands.RunMode;
+using static Assistant.Net.Modules.Games.GameInteractionModule;
 
 namespace Assistant.Net.Modules.Games;
 
@@ -12,7 +13,7 @@ public class GameModule(ILogger<GameModule> logger, GameStatsService gameStatsSe
     : ModuleBase<SocketCommandContext>
 {
     private static readonly ConcurrentDictionary<ulong, RpsGame> ActiveRpsGames = GameInteractionModule.ActiveRpsGames;
-    private static readonly TimeSpan GameTimeout = GameInteractionModule.RpsGameTimeout;
+    private static readonly TimeSpan GameTimeout = RpsGameTimeout;
 
     [Command("rps", RunMode = RunMode.Async)]
     [Alias("rockpaperscissors")]
@@ -163,6 +164,154 @@ public class GameModule(ILogger<GameModule> logger, GameStatsService gameStatsSe
             }
         }
     }
-    
-    // TODO: TicTacToe as message command 
+
+    // --- TicTacToe Prefix Command ---
+    [Command("tictactoe", RunMode = RunMode.Async)]
+    [Alias("ttt")]
+    [Summary("Play Tic Tac Toe with another user or the bot.")]
+    public async Task TicTacToePrefixCommand([Remainder] IUser? opponent = null)
+    {
+        var player1User = Context.User;
+        var player2User = opponent == null || opponent.Id == player1User.Id ? client.CurrentUser : opponent;
+
+        if (player1User.IsBot && player2User.IsBot)
+        {
+            await ReplyAsync("Two bots can't play Tic Tac Toe against each other!");
+            return;
+        }
+
+        if (Context.Guild != null && player2User is IGuildUser)
+        {
+        }
+        else if (Context.Guild != null && !player2User.IsBot)
+        {
+            var guildUser = Context.Guild.GetUser(player2User.Id);
+            if (guildUser == null)
+            {
+                await ReplyAsync($"Could not find the specified opponent {player2User.Mention} in this server.");
+                return;
+            }
+
+            player2User = guildUser;
+        }
+
+        var gameId = Guid.NewGuid().ToString();
+
+        // Randomly assign X and O
+        IUser playerX, playerO;
+        if (new Random().Next(0, 2) == 0)
+        {
+            playerX = player1User;
+            playerO = player2User;
+        }
+        else
+        {
+            playerX = player2User;
+            playerO = player1User;
+        }
+
+        var game = new TicTacToeGame(playerX, playerO, gameId, gameStatsService, logger);
+
+        if (!ActiveTicTacToeGames.TryAdd(gameId, game))
+        {
+            logger.LogError("Failed to add new Tic Tac Toe game with ID {GameId} to active games (prefix).", gameId);
+            await ReplyAsync("Sorry, couldn't start the game due to an internal error.");
+            return;
+        }
+
+        logger.LogInformation("Started Tic Tac Toe game {GameId} (prefix): {PlayerX} (X) vs {PlayerO} (O)", gameId,
+            playerX.Username, playerO.Username);
+
+        var initialContent =
+            $"## {playerX.Mention} (❌) vs {playerO.Mention} (⭕)\nIt's {game.CurrentPlayer.Mention}'s turn!";
+        var components = game.GetMessageComponent();
+
+        var responseMessage = await ReplyAsync(initialContent, components: components);
+
+        if (game.CurrentPlayer.IsBot)
+        {
+            await Task.Delay(500);
+            await MakeTicTacToeBotMoveAndUpdateMessage(game, responseMessage);
+        }
+    }
+
+    // --- Helper to handle Bot's move and update the message (Prefix Command Context) ---
+    private async Task MakeTicTacToeBotMoveAndUpdateMessage(TicTacToeGame game, IUserMessage message)
+    {
+        if (game.IsGameOver || !game.CurrentPlayer.IsBot) return;
+
+        var botMoveCoords = await game.GetBestMoveAsync();
+        if (botMoveCoords.HasValue)
+        {
+            if (game.MakeMove(botMoveCoords.Value.row, botMoveCoords.Value.col))
+                await UpdateGameMessage(game, message);
+            else
+                logger.LogError("Bot failed to make valid move {Move} in game {GameId}", botMoveCoords, game.GameId);
+        }
+        else
+        {
+            logger.LogError("Bot failed to determine a move in game {GameId} when it should have.", game.GameId);
+            try
+            {
+                await message.ModifyAsync(p =>
+                {
+                    p.Content = "An internal error occurred with the bot's turn.";
+                    p.Components = game.GetMessageComponent();
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to modify response after bot move error in game {GameId}", game.GameId);
+            }
+        }
+    }
+
+    // --- Helper to update the game message (Prefix Command Context) ---
+    private async Task UpdateGameMessage(TicTacToeGame game, IUserMessage message)
+    {
+        string messageContent;
+        var components = game.GetMessageComponent();
+
+        if (game.IsGameOver)
+        {
+            if (Context.Guild != null)
+                await game.RecordStatsIfApplicable(Context.Guild.Id);
+            else if (!game.Player1.IsBot && !game.Player2.IsBot)
+                logger.LogWarning("Cannot record Tic Tac Toe stats for game {GameId} (prefix) outside of a guild.",
+                    game.GameId);
+
+            ActiveTicTacToeGames.TryRemove(game.GameId, out _);
+            logger.LogInformation("Tic Tac Toe game {GameId} (prefix) ended. Result: {Result}", game.GameId,
+                game.Result);
+
+            messageContent = game.Result switch
+            {
+                GameResultState.XWins =>
+                    $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\n**{game.Player1.Mention} wins!**",
+                GameResultState.OWins =>
+                    $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\n**{game.Player2.Mention} wins!**",
+                GameResultState.Tie => $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\n**It's a tie!**",
+                _ => "Game over, but result is unclear." // Fallback
+            };
+        }
+        else
+        {
+            messageContent =
+                $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\nIt's {game.CurrentPlayer.Mention}'s turn!";
+        }
+
+        try
+        {
+            await message.ModifyAsync(p =>
+            {
+                p.Content = messageContent;
+                p.Components = components;
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to modify game message {MessageId} for game {GameId} (prefix)", message.Id,
+                game.GameId);
+        }
+    }
 }
