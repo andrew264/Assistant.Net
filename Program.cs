@@ -26,7 +26,7 @@ public class Program
     private static IHostBuilder CreateHostBuilder(string[] args)
     {
         return Host.CreateDefaultBuilder(args)
-            .ConfigureLogging((context, logging) =>
+            .ConfigureLogging((_, logging) =>
             {
                 logging.ClearProviders();
                 logging.AddConsole();
@@ -47,7 +47,7 @@ public class Program
                         $"Warning: Could not parse LogLevel '{config.Client.LogLevel}'. Defaulting to Information.");
                 }
             })
-            .ConfigureServices((hostContext, services) =>
+            .ConfigureServices((_, services) =>
             {
                 // --- Configuration ---
                 services.AddSingleton<ConfigService>();
@@ -56,7 +56,10 @@ public class Program
                 // --- Discord ---
                 var discordConfig = new DiscordSocketConfig
                 {
-                    GatewayIntents = GatewayIntents.All, // ALL Intents
+                    GatewayIntents = GatewayIntents.AllUnprivileged |
+                                     GatewayIntents.GuildMembers | // for UserJoined, UserLeft, GuildMemberUpdated
+                                     GatewayIntents.GuildPresences | // for PresenceUpdated
+                                     GatewayIntents.MessageContent, // for Prefix Commands & Message Logging
                     UseInteractionSnowflakeDate = false,
                     AlwaysDownloadUsers = true,
                     LogLevel = LogSeverity.Info,

@@ -6,104 +6,183 @@ namespace Assistant.Net.Services;
 
 public class GameStatsService
 {
+    // --- Constants ---
     public const double DefaultElo = 1000.0;
     private const double KFactor = 32.0;
 
     public const string TicTacToeGameName = "tictactoe";
     public const string RpsGameName = "rps";
-    public const string HandCricketGameName = "handcricket";
 
+    public const string HandCricketGameName = "handcricket";
+    // Add other game name constants here
+
+    private static readonly string[] KnownGames = [TicTacToeGameName, RpsGameName, HandCricketGameName];
+
+    // --- Fields ---
     private readonly IMongoCollection<GameStatsModel> _gameStatsCollection;
     private readonly ILogger<GameStatsService> _logger;
 
+    // --- Constructor ---
     public GameStatsService(IMongoDatabase database, ILogger<GameStatsService> logger)
     {
         _logger = logger;
         _gameStatsCollection = database.GetCollection<GameStatsModel>("gameStats");
+        EnsureIndexesAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+    }
 
-        // Create indexes for faster lookups if they don't exist
-        var indexKeys = Builders<GameStatsModel>.IndexKeys.Ascending(g => g.UserId).Ascending(g => g.GuildId);
-        var indexOptions = new CreateIndexOptions { Unique = true, Name = "UserId_GuildId_Unique" };
-        var indexModel = new CreateIndexModel<GameStatsModel>(indexKeys, indexOptions);
+    // --- Index Management ---
+    private async Task EnsureIndexesAsync()
+    {
+        var leaderboardIndexModels = (from gameName in KnownGames
+            let leaderboardKeys = Builders<GameStatsModel>.IndexKeys.Ascending(g => g.Id.GuildId)
+                .Descending($"games.{gameName}.elo")
+            let leaderboardOptions = new CreateIndexOptions { Name = $"GuildId_Game_{gameName}_Elo_Desc", Sparse = true }
+            select new CreateIndexModel<GameStatsModel>(leaderboardKeys, leaderboardOptions)).ToList();
+
+        if (leaderboardIndexModels.Count == 0)
+        {
+            _logger.LogInformation("No specific game leaderboard indexes configured to create for gameStats.");
+            return;
+        }
+
         try
         {
-            _gameStatsCollection.Indexes.CreateOne(indexModel);
-            _logger.LogInformation("Ensured unique index on gameStats (UserId, GuildId)");
+            await _gameStatsCollection.Indexes.CreateManyAsync(leaderboardIndexModels);
+            _logger.LogInformation("Ensured leaderboard indexes on gameStats collection.");
         }
-        catch (MongoCommandException ex) when (ex.CodeName is "IndexOptionsConflict" or "IndexKeySpecsConflict")
+        catch (MongoCommandException ex) when (ex.CodeName is "IndexOptionsConflict" or "IndexKeySpecsConflict"
+                                                   or "IndexAlreadyExists")
         {
-            _logger.LogWarning("Index on gameStats (UserId, GuildId) already exists with different options or keys.");
+            _logger.LogWarning(
+                "One or more leaderboard indexes on gameStats already exist with potentially different options or keys: {ErrorMessage}. This might be okay if definitions match.",
+                ex.Message);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating index on gameStats collection.");
+            _logger.LogError(ex, "Error creating leaderboard indexes on gameStats collection.");
         }
     }
 
-    private static FilterDefinition<GameStatsModel> GetUserGuildFilter(ulong userId, ulong guildId)
+    // --- Data Retrieval ---
+
+    /// <summary>
+    ///     Creates a filter definition to find a document by its compound ID.
+    /// </summary>
+    private static FilterDefinition<GameStatsModel> CreateIdFilter(ulong userId, ulong guildId)
     {
-        return Builders<GameStatsModel>.Filter.And(
-            Builders<GameStatsModel>.Filter.Eq(g => g.UserId, userId),
-            Builders<GameStatsModel>.Filter.Eq(g => g.GuildId, guildId)
+        var compositeId = new GameStatsIdKey { UserId = userId, GuildId = guildId };
+        return Builders<GameStatsModel>.Filter.Eq(g => g.Id, compositeId);
+    }
+
+    /// <summary>
+    ///     Gets the entire game statistics document for a specific user in a specific guild using the compound ID.
+    ///     Returns null if the user has no stats document in that guild.
+    /// </summary>
+    public async Task<GameStatsModel?> GetUserGuildStatsAsync(ulong userId, ulong guildId)
+    {
+        var filter = CreateIdFilter(userId, guildId);
+        try
+        {
+            return await _gameStatsCollection.Find(filter).FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching stats document for User {UserId}, Guild {GuildId}", userId, guildId);
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Gets the statistics for a single game for a specific user in a specific guild.
+    ///     Returns default stats if the game or user document doesn't exist.
+    /// </summary>
+    private async Task<SingleGameStats> GetSingleGameStatAsync(ulong userId, ulong guildId, string gameName)
+    {
+        var statsDoc = await GetUserGuildStatsAsync(userId, guildId);
+        return statsDoc?.Games.GetValueOrDefault(gameName) ?? new SingleGameStats();
+    }
+
+    /// <summary>
+    ///     Fetches leaderboard data (compound ID and game-specific stats) for a specific game in a guild,
+    ///     sorted by Elo descending.
+    /// </summary>
+    public async Task<List<GameStatsModel>> GetLeaderboardAsync(ulong guildId, string gameName, int limit)
+    {
+        var filter = Builders<GameStatsModel>.Filter.And(
+            Builders<GameStatsModel>.Filter.Eq(g => g.Id.GuildId, guildId),
+            Builders<GameStatsModel>.Filter.Exists($"games.{gameName}")
         );
-    }
 
-    public async Task<SingleGameStats?> GetPlayerGameStatsAsync(ulong userId, ulong guildId, string gameName)
-    {
-        var filter = GetUserGuildFilter(userId, guildId);
+        var sort = Builders<GameStatsModel>.Sort.Descending($"games.{gameName}.elo");
+
         var projection = Builders<GameStatsModel>.Projection
-            .Include(g => g.Games)
-            .Exclude("_id");
+            .Include(g => g.Id)
+            .Include($"games.{gameName}");
 
-        var statsDoc = await _gameStatsCollection.Find(filter).Project<GameStatsModel>(projection)
-            .FirstOrDefaultAsync();
-
-        return statsDoc?.Games.GetValueOrDefault(gameName);
+        try
+        {
+            return await _gameStatsCollection.Find(filter)
+                .Sort(sort)
+                .Limit(limit)
+                .Project<GameStatsModel>(projection)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching leaderboard for Game {GameName} in Guild {GuildId}", gameName,
+                guildId);
+            return [];
+        }
     }
 
+    // --- Data Modification ---
+
+    /// <summary>
+    ///     Ensures that the user document (identified by compound ID) and the specific game's stats subdocument exist,
+    ///     creating them with default values if necessary. Returns the ensured game stats.
+    /// </summary>
     private async Task<SingleGameStats> EnsurePlayerGameStatsAsync(ulong userId, ulong guildId, string gameName)
     {
-        var filter = GetUserGuildFilter(userId, guildId);
-        var gameField = $"games.{gameName}";
+        var filter = CreateIdFilter(userId, guildId);
+        var gameFieldPath = $"games.{gameName}";
+        var compositeId = new GameStatsIdKey { UserId = userId, GuildId = guildId };
 
-        // 1. Ensure the top-level document exists
-        var updateDoc = Builders<GameStatsModel>.Update
-            .SetOnInsert(g => g.UserId, userId)
-            .SetOnInsert(g => g.GuildId, guildId)
-            .SetOnInsert(g => g.Games,
-                new Dictionary<string, SingleGameStats>()); // Initialize games dict if doc is new
-        await _gameStatsCollection.UpdateOneAsync(filter, updateDoc, new UpdateOptions { IsUpsert = true });
+        // 1. Upsert the main document structure if it doesn't exist.
+        var upsertUserDocUpdate = Builders<GameStatsModel>.Update
+            .SetOnInsert(g => g.Id, compositeId)
+            .SetOnInsert(g => g.Games, new Dictionary<string, SingleGameStats>());
+        await _gameStatsCollection.UpdateOneAsync(filter, upsertUserDocUpdate, new UpdateOptions { IsUpsert = true });
 
-        // 2. Ensure the specific game stats exist within the 'games' dictionary
+        // 2. Ensure the specific game stats subdocument exists within the 'games' dictionary.
         var gameExistsFilter = Builders<GameStatsModel>.Filter.And(
             filter,
-            Builders<GameStatsModel>.Filter.Exists(gameField, false) // Check if the game field does *not* exist
+            Builders<GameStatsModel>.Filter.Exists(gameFieldPath, false)
         );
+        var setGameStatsUpdate = Builders<GameStatsModel>.Update.Set(gameFieldPath, new SingleGameStats());
+        var updateResult = await _gameStatsCollection.UpdateOneAsync(gameExistsFilter, setGameStatsUpdate);
 
-        var updateGame =
-            Builders<GameStatsModel>.Update.Set(gameField, new SingleGameStats()); // Set default game stats
+        switch (updateResult.IsAcknowledged)
+        {
+            case true when updateResult.MatchedCount > 0:
+                _logger.LogDebug("Initialized {GameName} stats for User {UserId} in Guild {GuildId}", gameName, userId,
+                    guildId);
+                break;
+            case false:
+                _logger.LogWarning(
+                    "DB Write not acknowledged when ensuring game stats for User {UserId}, Guild {GuildId}, Game {GameName}",
+                    userId, guildId, gameName);
+                break;
+        }
 
-        var updateResult = await _gameStatsCollection.UpdateOneAsync(gameExistsFilter, updateGame);
-
-        if (updateResult.IsAcknowledged && updateResult.ModifiedCount > 0)
-            _logger.LogDebug("Initialized {GameName} stats for User {UserId} in Guild {GuildId}", gameName, userId,
-                guildId);
-        else if (!updateResult.IsAcknowledged)
-            _logger.LogWarning(
-                "Failed to get acknowledgment when initializing game stats for User {UserId}, Guild {GuildId}, Game {GameName}",
-                userId, guildId, gameName);
-
-        // 3. Fetch and return the (potentially) newly created stats
-        var stats = await GetPlayerGameStatsAsync(userId, guildId, gameName);
-        return stats ?? new SingleGameStats(); // Should not be null if upsert worked, but return default just in case
+        // 3. Fetch and return the potentially newly created or existing stats
+        return await GetSingleGameStatAsync(userId, guildId, gameName);
     }
 
-    private static double CalculateExpectedScore(double ratingA, double ratingB)
-    {
-        return 1.0 / (1.0 + Math.Pow(10.0, (ratingB - ratingA) / 400.0));
-    }
-
-    private async Task UpdateEloAsync(ulong player1Id, ulong player2Id, ulong guildId, string gameName, bool isTie)
+    /// <summary>
+    ///     Calculates and updates the Elo ratings for two players after a match.
+    /// </summary>
+    private async Task UpdateEloAsync(ulong player1Id, ulong player2Id, ulong guildId, string gameName,
+        double player1Score) // player1Score: 1.0 for win, 0.5 for tie, 0.0 for loss
     {
         try
         {
@@ -116,35 +195,39 @@ public class GameStatsService
             var expectedPlayer1 = CalculateExpectedScore(player1Elo, player2Elo);
             var expectedPlayer2 = CalculateExpectedScore(player2Elo, player1Elo);
 
-            var actualPlayer1 = isTie ? 0.5 : 1.0; // If P1 won, score is 1, if tie, 0.5
-            var actualPlayer2 = isTie ? 0.5 : 0.0; // If P1 won, P2 score is 0, if tie, 0.5
+            var player2Score = 1.0 - player1Score;
 
-            var newPlayer1Elo = player1Elo + KFactor * (actualPlayer1 - expectedPlayer1);
-            var newPlayer2Elo = player2Elo + KFactor * (actualPlayer2 - expectedPlayer2);
+            var newPlayer1Elo = player1Elo + KFactor * (player1Score - expectedPlayer1);
+            var newPlayer2Elo = player2Elo + KFactor * (player2Score - expectedPlayer2);
 
-            var filter1 = GetUserGuildFilter(player1Id, guildId);
+            // Update Player 1 Elo using the compound ID filter
+            var filter1 = CreateIdFilter(player1Id, guildId);
             var update1 = Builders<GameStatsModel>.Update.Set($"games.{gameName}.elo", newPlayer1Elo);
             await _gameStatsCollection.UpdateOneAsync(filter1, update1);
 
-            var filter2 = GetUserGuildFilter(player2Id, guildId);
+            // Update Player 2 Elo using the compound ID filter
+            var filter2 = CreateIdFilter(player2Id, guildId);
             var update2 = Builders<GameStatsModel>.Update.Set($"games.{gameName}.elo", newPlayer2Elo);
             await _gameStatsCollection.UpdateOneAsync(filter2, update2);
 
             _logger.LogInformation(
-                "Elo Updated ({GameName}, Guild {GuildId}): P1={P1Id} ({P1OldElo:F1} -> {P1NewElo:F1}), P2={P2Id} ({P2OldElo:F1} -> {P2NewElo:F1}), Tie={IsTie}",
-                gameName, guildId, player1Id, player1Elo, newPlayer1Elo, player2Id, player2Elo, newPlayer2Elo, isTie);
+                "Elo Updated ({GameName}, Guild {GuildId}): P1={P1Id} ({P1OldElo:F1} -> {P1NewElo:F1}), P2={P2Id} ({P2OldElo:F1} -> {P2NewElo:F1}), P1_Score={P1Score}",
+                gameName, guildId, player1Id, player1Elo, newPlayer1Elo, player2Id, player2Elo, newPlayer2Elo,
+                player1Score);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating Elo for {GameName} (Guild {GuildId}, {Player1Id} vs {Player2Id})",
+            _logger.LogError(ex, "Error updating Elo for {GameName} (Guild {GuildId}, P1={Player1Id}, P2={Player2Id})",
                 gameName, guildId, player1Id, player2Id);
         }
     }
 
+    /// <summary>
+    ///     Records the result of a game, updating wins, losses, ties, matches played, and Elo ratings.
+    /// </summary>
     public async Task RecordGameResultAsync(ulong winnerId, ulong loserId, ulong guildId, string gameName,
         bool isTie = false)
     {
-        // Basic validation
         if (winnerId == loserId && !isTie)
         {
             _logger.LogWarning(
@@ -152,53 +235,62 @@ public class GameStatsService
                 winnerId, gameName, guildId);
             return;
         }
-        // Add checks for valid gameName if necessary
 
         try
         {
-            // Ensure stats structures exist before incrementing
+            // Ensure stats structures exist. No need to store the result here,
+            // as the atomic updates below handle the increments.
             await EnsurePlayerGameStatsAsync(winnerId, guildId, gameName);
             await EnsurePlayerGameStatsAsync(loserId, guildId, gameName);
 
-            var winnerFilter = GetUserGuildFilter(winnerId, guildId);
-            var loserFilter = GetUserGuildFilter(loserId, guildId);
+            // Use compound ID filters for updates
+            var winnerFilter = CreateIdFilter(winnerId, guildId);
+            var loserFilter = CreateIdFilter(loserId, guildId);
+            var gamePath = $"games.{gameName}";
 
-            // Update W/L/T and matches played
             if (isTie)
             {
                 var tieUpdate = Builders<GameStatsModel>.Update
-                    .Inc($"games.{gameName}.ties", 1)
-                    .Inc($"games.{gameName}.matches_played", 1);
+                    .Inc($"{gamePath}.ties", 1)
+                    .Inc($"{gamePath}.matches_played", 1);
                 await _gameStatsCollection.UpdateOneAsync(winnerFilter, tieUpdate);
-                await _gameStatsCollection.UpdateOneAsync(loserFilter,
-                    tieUpdate); // Both players get a tie and match played
-                _logger.LogInformation("Recorded Tie ({GameName}, Guild {GuildId}): {Player1Id} vs {Player2Id}",
+                await _gameStatsCollection.UpdateOneAsync(loserFilter, tieUpdate);
+                _logger.LogInformation("Recorded Tie ({GameName}, Guild {GuildId}): P1={Player1Id}, P2={Player2Id}",
                     gameName, guildId, winnerId, loserId);
+                await UpdateEloAsync(winnerId, loserId, guildId, gameName, 0.5);
             }
             else
             {
                 var winnerUpdate = Builders<GameStatsModel>.Update
-                    .Inc($"games.{gameName}.wins", 1)
-                    .Inc($"games.{gameName}.matches_played", 1);
+                    .Inc($"{gamePath}.wins", 1)
+                    .Inc($"{gamePath}.matches_played", 1);
                 await _gameStatsCollection.UpdateOneAsync(winnerFilter, winnerUpdate);
 
                 var loserUpdate = Builders<GameStatsModel>.Update
-                    .Inc($"games.{gameName}.losses", 1)
-                    .Inc($"games.{gameName}.matches_played", 1);
+                    .Inc($"{gamePath}.losses", 1)
+                    .Inc($"{gamePath}.matches_played", 1);
                 await _gameStatsCollection.UpdateOneAsync(loserFilter, loserUpdate);
                 _logger.LogInformation(
                     "Recorded Win/Loss ({GameName}, Guild {GuildId}): Winner={WinnerId}, Loser={LoserId}", gameName,
                     guildId, winnerId, loserId);
+                await UpdateEloAsync(winnerId, loserId, guildId, gameName, 1.0);
             }
-
-            await UpdateEloAsync(winnerId, loserId, guildId, gameName, isTie);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex,
-                "Failed to record game result for {GameName} (Guild {GuildId}, Winner {WinnerId}, Loser {LoserId}, Tie {IsTie})",
+                "Failed to record game result for {GameName} (Guild {GuildId}, Winner={WinnerId}, Loser={LoserId}, Tie={IsTie})",
                 gameName, guildId, winnerId, loserId, isTie);
-            // Depending on requirements, you might want to inform the users.
         }
+    }
+
+    // --- Helper Methods ---
+
+    /// <summary>
+    ///     Calculates the expected score of player A against player B based on their Elo ratings.
+    /// </summary>
+    private static double CalculateExpectedScore(double ratingA, double ratingB)
+    {
+        return 1.0 / (1.0 + Math.Pow(10.0, (ratingB - ratingA) / 400.0));
     }
 }

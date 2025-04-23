@@ -5,14 +5,7 @@ namespace Assistant.Net.Models.Games;
 
 public class GameStatsModel
 {
-    // TODO: user_id and guild_id as compound _id?
-    // Composite ID handled by the service using a filter, no single BsonId needed here for the document root.
-    // MongoDB driver will automatically create a default _id if not specified,
-    // but we will query/update using the composite key { UserId, GuildId }.
-
-    [BsonElement("user_id")] public ulong UserId { get; set; }
-
-    [BsonElement("guild_id")] public ulong GuildId { get; set; }
+    [BsonId] public GameStatsIdKey Id { get; set; }
 
     [BsonElement("games")]
     [BsonDictionaryOptions(DictionaryRepresentation.Document)]
