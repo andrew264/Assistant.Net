@@ -162,6 +162,9 @@ public class Program
                 // --- Urban Dictionary Service ---
                 services.AddSingleton<UrbanDictionaryService>();
 
+                // --- Reddit Service ---
+                services.AddSingleton<RedditService>();
+
                 // --- User Service ---
                 services.AddSingleton<UserService>();
 

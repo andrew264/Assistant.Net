@@ -67,6 +67,9 @@ public record RedditConfig
                            !string.IsNullOrWhiteSpace(ClientSecret) &&
                            !string.IsNullOrWhiteSpace(Username) &&
                            !string.IsNullOrWhiteSpace(Password);
+
+    public List<string>? MemeSubreddits { get; init; }
+    public List<string>? NsfwSubreddits { get; init; }
 }
 
 public record LavalinkConfig

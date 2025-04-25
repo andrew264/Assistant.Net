@@ -36,7 +36,8 @@ public class GameStatsService
         var leaderboardIndexModels = (from gameName in KnownGames
             let leaderboardKeys = Builders<GameStatsModel>.IndexKeys.Ascending(g => g.Id.GuildId)
                 .Descending($"games.{gameName}.elo")
-            let leaderboardOptions = new CreateIndexOptions { Name = $"GuildId_Game_{gameName}_Elo_Desc", Sparse = true }
+            let leaderboardOptions = new CreateIndexOptions
+                { Name = $"GuildId_Game_{gameName}_Elo_Desc", Sparse = true }
             select new CreateIndexModel<GameStatsModel>(leaderboardKeys, leaderboardOptions)).ToList();
 
         if (leaderboardIndexModels.Count == 0)
