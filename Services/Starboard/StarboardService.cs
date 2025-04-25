@@ -783,7 +783,7 @@ public class StarboardService
         var entriesToDeleteSbMsg = await _starredMessagesCollection.Find(filter).ToListAsync();
 
         // --- Delete Starboard Posts ---
-        if (entriesToDeleteSbMsg.Any())
+        if (entriesToDeleteSbMsg.Count != 0)
         {
             var deleteTasks = entriesToDeleteSbMsg.Select(entry => DeleteStarboardPostAsync(entry, config)).ToList();
             try

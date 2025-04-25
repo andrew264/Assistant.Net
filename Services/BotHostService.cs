@@ -89,7 +89,7 @@ public class BotHostService(
             logger.LogInformation("Command Service modules loaded.");
 
             // Register commands globally or to test guilds
-            if (config.Client.TestGuilds != null && config.Client.TestGuilds.Any())
+            if (config.Client.TestGuilds != null && config.Client.TestGuilds.Count != 0)
                 foreach (var guildId in config.Client.TestGuilds)
                     try
                     {

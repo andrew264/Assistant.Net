@@ -251,7 +251,7 @@ public class SurveillanceService
                 message.Content.Length > 1024 ? message.Content[..1021] + "..." : message.Content)
             .WithFooter($"{DateTime.Now:h:mm tt, dd MMM}");
 
-        if (message.Attachments.Any())
+        if (message.Attachments.Count != 0)
             embedBuilder.AddField("Attachments", string.Join("\n", message.Attachments.Select(a => a.Url)));
 
         try
