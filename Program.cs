@@ -179,6 +179,9 @@ public class Program
                 services.AddSingleton<StarboardConfigService>();
                 // Core service
                 services.AddSingleton<StarboardService>();
+                
+                // --- DM Relay Service ---
+                services.AddSingleton<DmRelayService>();
 
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();

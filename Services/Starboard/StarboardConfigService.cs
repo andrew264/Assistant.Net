@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 using Assistant.Net.Models.Starboard;
+using Assistant.Net.Utilities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
@@ -82,12 +82,6 @@ public class StarboardConfigService
 
         if (char.IsSurrogatePair(emoji, 0) || emoji.Length == 1) return true;
 
-        return DiscordEmojiPattern.Get().IsMatch(emoji);
+        return RegexPatterns.DiscordEmoji().IsMatch(emoji);
     }
-}
-
-public static partial class DiscordEmojiPattern
-{
-    [GeneratedRegex(@"^<a?:\w+:\d+>$")]
-    public static partial Regex Get();
 }

@@ -1,14 +1,8 @@
-using System.Text.RegularExpressions;
 using System.Web;
+using Assistant.Net.Utilities;
 using Newtonsoft.Json;
 
 namespace Assistant.Net.Models.UrbanDictionary;
-
-public static partial class LinkPattern
-{
-    [GeneratedRegex(@"\[([^\]]+)\]")]
-    public static partial Regex Get();
-}
 
 public class UrbanDictionaryEntry
 {
@@ -56,7 +50,7 @@ public class UrbanDictionaryEntry
     private static string FormatLinks(string text)
     {
         // Replace [term] with [term](<UD_URL_FOR_TERM>)
-        return LinkPattern.Get().Replace(text, match =>
+        return RegexPatterns.Link().Replace(text, match =>
         {
             var term = match.Groups[1].Value;
             var encodedTerm = HttpUtility.UrlEncode(term);

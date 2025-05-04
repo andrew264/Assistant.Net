@@ -4,11 +4,6 @@ using Discord.WebSocket;
 
 namespace Assistant.Net.Utilities;
 
-public static partial class BracketPattern
-{
-    [GeneratedRegex(@"[(\[].*?[)\]]")]
-    public static partial Regex Get();
-}
 
 public static class UserUtils
 {
