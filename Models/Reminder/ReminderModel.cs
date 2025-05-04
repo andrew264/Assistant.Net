@@ -1,17 +1,10 @@
-using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Assistant.Net.Models;
+namespace Assistant.Net.Models.Reminder;
 
 public class ReminderModel
 {
-    [BsonId]
-    [BsonRepresentation(BsonType.ObjectId)]
-    public string Id { get; set; } = null!;
-
-    [BsonElement("reminderId")] public string ReminderId { get; set; } = Guid.NewGuid().ToString();
-
-    [BsonElement("userId")] public ulong UserId { get; set; }
+    [BsonId] public ReminderIdKey Id { get; set; }
 
     [BsonElement("targetUserId")]
     [BsonIgnoreIfNull]

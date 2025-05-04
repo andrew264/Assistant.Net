@@ -183,6 +183,10 @@ public class Program
                 // --- DM Relay Service ---
                 services.AddSingleton<DmRelayService>();
 
+                // --- Reminder Service ---
+                services.AddSingleton<ReminderService>();
+                services.AddHostedService(provider => provider.GetRequiredService<ReminderService>());
+
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();
             });
