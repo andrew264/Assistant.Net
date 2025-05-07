@@ -6,6 +6,7 @@ public record Config
     public MongoConfig Mongo { get; init; } = new();
     public RedditConfig Reddit { get; init; } = new();
     public LavalinkConfig Lavalink { get; init; } = new();
+    public MusicConfig Music { get; init; } = new();
     public string? YoutubeApiKey { get; init; }
     public string? GeniusToken { get; init; }
     public string? TenorApiKey { get; init; }
@@ -84,4 +85,12 @@ public record LoggingGuildConfig
 {
     public ulong GuildId { get; init; }
     public ulong ChannelId { get; init; }
+}
+
+public record MusicConfig
+{
+    public int MaxHistorySize { get; init; } = 100;
+    public float DefaultVolume { get; init; } = 0.30f; // 30%
+    public float TitleSimilarityCutoff { get; init; } = 0.80f; // 80%
+    public float UriSimilarityCutoff { get; init; } = 0.70f; // 70%
 }

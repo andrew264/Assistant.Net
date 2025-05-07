@@ -290,8 +290,6 @@ public class GameStatsService
     /// <summary>
     ///     Calculates the expected score of player A against player B based on their Elo ratings.
     /// </summary>
-    private static double CalculateExpectedScore(double ratingA, double ratingB)
-    {
-        return 1.0 / (1.0 + Math.Pow(10.0, (ratingB - ratingA) / 400.0));
-    }
+    private static double CalculateExpectedScore(double ratingA, double ratingB) =>
+        1.0 / (1.0 + Math.Pow(10.0, (ratingB - ratingA) / 400.0));
 }

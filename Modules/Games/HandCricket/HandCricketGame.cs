@@ -159,10 +159,8 @@ public class HandCricketGame
         return updated;
     }
 
-    public bool BothPlayersSelectedGameNumber()
-    {
-        return CurrentTurnChoices is { Player1Number: not null, Player2Number: not null };
-    }
+    public bool BothPlayersSelectedGameNumber() => CurrentTurnChoices is
+        { Player1Number: not null, Player2Number: not null };
 
     public (bool inningOver, bool gameOver) ResolveTurn()
     {

@@ -324,9 +324,11 @@ public class ReminderService : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError("Error calculating next trigger time for '{Recurrence}': {ExMessage}", recurrence, ex.Message);
+            _logger.LogError("Error calculating next trigger time for '{Recurrence}': {ExMessage}", recurrence,
+                ex.Message);
             return null;
         }
+
         return null;
     }
 
@@ -580,7 +582,8 @@ public class ReminderService : IHostedService, IDisposable
         try
         {
             var referenceTime = DateTime.UtcNow;
-            var results = DateTimeRecognizer.RecognizeDateTime(timeString, Culture.English, DateTimeOptions.None, referenceTime);
+            var results =
+                DateTimeRecognizer.RecognizeDateTime(timeString, Culture.English, DateTimeOptions.None, referenceTime);
             if (results.Count == 0) return null;
 
             var resolutionValues = results[0].Resolution["values"] as List<Dictionary<string, string>> ?? [];
@@ -606,6 +609,7 @@ public class ReminderService : IHostedService, IDisposable
                             selectedDateTime = parsedDt;
                             break;
                         }
+
                         selectedDateTime ??= parsedDt;
                     }
 

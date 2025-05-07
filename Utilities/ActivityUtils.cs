@@ -82,10 +82,7 @@ public static class ActivityUtils
         return
             $"Status changed from {beforeStatus} on [{FormatClients(beforeClients)}] to {afterStatus} on [{FormatClients(afterClients)}]";
 
-        string FormatClients(HashSet<string> clients)
-        {
-            return string.Join(", ", clients);
-        }
+        string FormatClients(HashSet<string> clients) => string.Join(", ", clients);
     }
 
     public static string FormatCustomActivity(CustomStatusGame activity, bool withTime, bool withUrl)

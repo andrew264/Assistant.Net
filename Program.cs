@@ -179,7 +179,10 @@ public class Program
                 services.AddSingleton<StarboardConfigService>();
                 // Core service
                 services.AddSingleton<StarboardService>();
-                
+
+                // --- Music History Service ---
+                services.AddSingleton<MusicHistoryService>();
+
                 // --- DM Relay Service ---
                 services.AddSingleton<DmRelayService>();
 

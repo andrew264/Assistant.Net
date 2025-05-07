@@ -83,20 +83,11 @@ public class TicTacToeGame
         };
     }
 
-    public bool IsPlayerTurn(IUser user)
-    {
-        return !IsGameOver && user.Id == CurrentPlayer.Id;
-    }
+    public bool IsPlayerTurn(IUser user) => !IsGameOver && user.Id == CurrentPlayer.Id;
 
-    public bool IsPlayerInGame(IUser user)
-    {
-        return user.Id == Player1.Id || user.Id == Player2.Id;
-    }
+    public bool IsPlayerInGame(IUser user) => user.Id == Player1.Id || user.Id == Player2.Id;
 
-    public IUser OtherPlayer(IUser user)
-    {
-        return user.Id == Player1.Id ? Player2 : Player1;
-    }
+    public IUser OtherPlayer(IUser user) => user.Id == Player1.Id ? Player2 : Player1;
 
     public bool MakeMove(int row, int col)
     {
@@ -113,12 +104,10 @@ public class TicTacToeGame
         return true;
     }
 
-    private bool IsValidMove(int row, int col)
-    {
-        return row is >= 0 and < BoardSize &&
-               col is >= 0 and < BoardSize &&
-               Board[row, col] == PlayerMarker.None;
-    }
+    private bool IsValidMove(int row, int col) =>
+        row is >= 0 and < BoardSize &&
+        col is >= 0 and < BoardSize &&
+        Board[row, col] == PlayerMarker.None;
 
     public static (int row, int col) IndexToCoords(int index)
     {
@@ -219,10 +208,7 @@ public class TicTacToeGame
         return bestScore;
     }
 
-    private List<(int row, int col)> GetEmptyCells()
-    {
-        return GetEmptyCells(Board);
-    }
+    private List<(int row, int col)> GetEmptyCells() => GetEmptyCells(Board);
 
     private List<(int row, int col)> GetEmptyCells(PlayerMarker[,] boardState)
     {
@@ -258,10 +244,7 @@ public class TicTacToeGame
     }
 
     // Checks winner on the *current* game board
-    private PlayerMarker CheckWinnerInternal()
-    {
-        return CheckWinnerOnBoard(Board);
-    }
+    private PlayerMarker CheckWinnerInternal() => CheckWinnerOnBoard(Board);
 
     // Checks winner on a board state
     private PlayerMarker CheckWinnerOnBoard(PlayerMarker[,] boardState)

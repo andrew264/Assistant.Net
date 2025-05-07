@@ -31,15 +31,9 @@ public class RpsGame
     public IUser Player2 { get; }
     public bool BothPlayersChosen => HasChosen(Player1) && HasChosen(Player2);
 
-    public RpsChoice GetChoice(IUser player)
-    {
-        return _choices.GetValueOrDefault(player.Id, RpsChoice.None);
-    }
+    public RpsChoice GetChoice(IUser player) => _choices.GetValueOrDefault(player.Id, RpsChoice.None);
 
-    public bool HasChosen(IUser player)
-    {
-        return GetChoice(player) != RpsChoice.None;
-    }
+    public bool HasChosen(IUser player) => GetChoice(player) != RpsChoice.None;
 
     private RpsChoice GetRandomChoice()
     {

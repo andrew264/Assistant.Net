@@ -33,10 +33,7 @@ public class EloRatingSystem
         Voters.Add(userId);
     }
 
-    public bool HasVotedBefore(ulong userId)
-    {
-        return Voters.Contains(userId);
-    }
+    public bool HasVotedBefore(ulong userId) => Voters.Contains(userId);
 
     public List<(string Candidate1, string Candidate2)> GetShuffledCandidatePairings()
     {
@@ -57,10 +54,8 @@ public class EloRatingSystem
         return allPairs;
     }
 
-    private static double CalculateExpectedScore(double ratingA, double ratingB)
-    {
-        return 1.0 / (1.0 + Math.Pow(10.0, (ratingB - ratingA) / 400.0));
-    }
+    private static double CalculateExpectedScore(double ratingA, double ratingB) =>
+        1.0 / (1.0 + Math.Pow(10.0, (ratingB - ratingA) / 400.0));
 
     public void UpdateRatings(string winner, string loser)
     {
@@ -117,12 +112,10 @@ public class EloRatingSystem
         return summary.ToString();
     }
 
-    public static string EncodeCandidate(string candidate)
-    {
-        return Convert.ToBase64String(Encoding.UTF8.GetBytes(candidate))
+    public static string EncodeCandidate(string candidate) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(candidate))
             .Replace('+', '-')
             .Replace('/', '_');
-    }
 
     public static string DecodeCandidate(string encodedCandidate)
     {

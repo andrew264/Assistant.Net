@@ -173,7 +173,7 @@ public class ReminderModule(ReminderService reminderService)
         var count = 0;
         foreach (var reminder in reminders.OrderBy(r => r.TriggerTime))
         {
-            if (count >= 25) 
+            if (count >= 25)
             {
                 embed.WithFooter("Showing first 25 reminders.");
                 break;

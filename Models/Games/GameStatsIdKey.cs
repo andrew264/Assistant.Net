@@ -9,28 +9,13 @@ public struct GameStatsIdKey : IEquatable<GameStatsIdKey>
 
     [BsonElement("uid")] public ulong UserId { get; set; }
 
-    public bool Equals(GameStatsIdKey other)
-    {
-        return GuildId == other.GuildId && UserId == other.UserId;
-    }
+    public bool Equals(GameStatsIdKey other) => GuildId == other.GuildId && UserId == other.UserId;
 
-    public override bool Equals(object? obj)
-    {
-        return obj is GameStatsIdKey other && Equals(other);
-    }
+    public override bool Equals(object? obj) => obj is GameStatsIdKey other && Equals(other);
 
-    public override int GetHashCode()
-    {
-        return HashCode.Combine(GuildId, UserId);
-    }
+    public override int GetHashCode() => HashCode.Combine(GuildId, UserId);
 
-    public static bool operator ==(GameStatsIdKey left, GameStatsIdKey right)
-    {
-        return left.Equals(right);
-    }
+    public static bool operator ==(GameStatsIdKey left, GameStatsIdKey right) => left.Equals(right);
 
-    public static bool operator !=(GameStatsIdKey left, GameStatsIdKey right)
-    {
-        return !left.Equals(right);
-    }
+    public static bool operator !=(GameStatsIdKey left, GameStatsIdKey right) => !left.Equals(right);
 }

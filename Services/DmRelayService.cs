@@ -646,10 +646,8 @@ public class DmRelayService
         return value.Length <= maxLength ? value : value.Substring(0, maxLength - 3) + "...";
     }
 
-    public static string SanitizeCodeBlock(string? content)
-    {
-        return string.IsNullOrEmpty(content)
+    public static string SanitizeCodeBlock(string? content) =>
+        string.IsNullOrEmpty(content)
             ? string.Empty
             : content.Replace("```", "`\u200B``");
-    }
 }

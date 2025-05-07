@@ -1,9 +1,7 @@
-using System.Text.RegularExpressions;
 using Discord;
 using Discord.WebSocket;
 
 namespace Assistant.Net.Utilities;
-
 
 public static class UserUtils
 {
