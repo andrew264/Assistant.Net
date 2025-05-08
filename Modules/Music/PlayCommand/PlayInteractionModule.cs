@@ -12,7 +12,7 @@ using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Modules.Music;
+namespace Assistant.Net.Modules.Music.PlayCommand;
 
 [CommandContextType(InteractionContextType.Guild)]
 public class PlayInteractionModule(
@@ -161,23 +161,31 @@ public class PlayInteractionModule(
                 return;
             }
 
+            var track = player.CurrentTrack;
+
+            if (track == null)
+            {
+                await FollowupAsync("I am not playing anything right now.", ephemeral: true);
+                return;
+            }
+
             switch (player.State)
             {
                 case PlayerState.Playing:
                     await player.PauseAsync();
-                    await FollowupAsync("Player paused.", ephemeral: false);
+                    await FollowupAsync($"Paused: {Clickable(track.Title, track.Uri)}", ephemeral: false);
                     logger.LogInformation("[Player:{GuildId}] Paused playback by {User}", player.GuildId, Context.User);
                     break;
                 case PlayerState.Paused:
                     await player.ResumeAsync();
-                    await FollowupAsync("Player resumed.", ephemeral: false);
+                    await FollowupAsync($"Resumed: {Clickable(track.Title, track.Uri)}", ephemeral: false);
                     logger.LogInformation("[Player:{GuildId}] Resumed playback by {User}", player.GuildId,
                         Context.User);
                     break;
                 case PlayerState.Destroyed:
                 case PlayerState.NotPlaying:
                 default:
-                    await FollowupAsync("Nothing to play or resume.", ephemeral: true);
+                    await FollowupAsync("I am not playing anything right now.", ephemeral: true);
                     break;
             }
 

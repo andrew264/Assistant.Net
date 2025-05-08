@@ -12,7 +12,7 @@ using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Modules.Music;
+namespace Assistant.Net.Modules.Music.PlayCommand;
 
 public class PlayModule(
     IAudioService audioService,
@@ -89,13 +89,13 @@ public class PlayModule(
             var nextTrack = await player.Queue.TryDequeueAsync();
             if (nextTrack != null)
             {
-                logger.LogInformation("[Player:{GuildId}] (Prefix) Starting playback with track: {TrackTitle}",
+                logger.LogInformation("[Player:{GuildId}] Starting playback with track: {TrackTitle}",
                     player.GuildId, nextTrack.Track?.Title);
                 await player.PlayAsync(nextTrack, false);
             }
             else
             {
-                logger.LogDebug("[Player:{GuildId}] (Prefix) Tried to start playback, but queue is empty.",
+                logger.LogDebug("[Player:{GuildId}] Tried to start playback, but queue is empty.",
                     player.GuildId);
             }
         }
@@ -152,31 +152,40 @@ public class PlayModule(
                 return;
             }
 
+            var track = player.CurrentTrack;
+
+            if (track == null)
+            {
+                await ReplyAsync("I am not playing anything right now.");
+                return;
+            }
+
+
             switch (player.State)
             {
                 case PlayerState.Playing:
                     await player.PauseAsync();
-                    await ReplyAsync("Player paused.");
-                    logger.LogInformation("[Player:{GuildId}] (Prefix) Paused playback by {User}", player.GuildId,
+                    await ReplyAsync($"Paused: {Clickable(track.Title, track.Uri)}");
+                    logger.LogInformation("[Player:{GuildId}] Paused playback by {User}", player.GuildId,
                         Context.User);
                     break;
                 case PlayerState.Paused:
                     await player.ResumeAsync();
-                    await ReplyAsync("Player resumed.");
-                    logger.LogInformation("[Player:{GuildId}] (Prefix) Resumed playback by {User}", player.GuildId,
+                    await ReplyAsync($"Resumed: {Clickable(track.Title, track.Uri)}");
+                    logger.LogInformation("[Player:{GuildId}] Resumed playback by {User}", player.GuildId,
                         Context.User);
                     break;
                 case PlayerState.Destroyed:
                 case PlayerState.NotPlaying:
                 default:
-                    await ReplyAsync("Nothing to play or resume.");
+                    await ReplyAsync("I am not playing anything right now.");
                     break;
             }
 
             return;
         }
 
-        logger.LogInformation("[Player:{GuildId}] (Prefix) Received play request by {User} with query: {Query}",
+        logger.LogInformation("[Player:{GuildId}] Received play request by {User} with query: {Query}",
             player.GuildId, Context.User, query);
 
         var isUrl = Uri.TryCreate(query, UriKind.Absolute, out _);
@@ -189,7 +198,7 @@ public class PlayModule(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "(Prefix) Exception during LoadTracksAsync for query '{Query}'", query);
+            logger.LogError(ex, "Exception during LoadTracksAsync for query '{Query}'", query);
             await ReplyAsync($"❌ An error occurred while searching: {ex.Message}");
             return;
         }
@@ -225,7 +234,7 @@ public class PlayModule(
         else if (result.Exception is not null)
         {
             logger.LogError(
-                "(Prefix) Track loading failed for query '{Query}'. Reason: {Reason}, Severity: {Severity}, Cause: {Cause}",
+                "Track loading failed for query '{Query}'. Reason: {Reason}, Severity: {Severity}, Cause: {Cause}",
                 query, result.Exception?.Message, result.Exception?.Severity, result.Exception?.Cause);
             await ReplyAsync($"❌ Failed to load track(s): {result.Exception?.Message ?? "Unknown error"}");
         }
