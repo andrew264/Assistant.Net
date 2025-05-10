@@ -1,10 +1,12 @@
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Misc;
 
-public class MiscModule(ILogger<MiscModule> logger, HttpClient httpClient) : ModuleBase<SocketCommandContext>
+public class MiscModule(ILogger<MiscModule> logger, IHttpClientFactory httpClientFactory)
+    : ModuleBase<SocketCommandContext>
 {
     [Command("echo", RunMode = RunMode.Async)]
     [Summary("Echos the provided message back.")]
@@ -12,60 +14,15 @@ public class MiscModule(ILogger<MiscModule> logger, HttpClient httpClient) : Mod
     [RequireContext(ContextType.Guild)]
     public async Task EchoAsync([Remainder] string message = "")
     {
-        // 1. Prepare Attachments
         var fileAttachments = new List<FileAttachment>();
         if (Context.Message.Attachments.Count > 0)
-        {
-            logger.LogDebug("Processing {AttachmentCount} attachments for echo command.",
-                Context.Message.Attachments.Count);
-            foreach (var attachment in Context.Message.Attachments)
-            {
-                MemoryStream? memoryStream = null;
-                try
-                {
-                    // Download the attachment content
-                    using var response = await httpClient.GetAsync(attachment.Url);
-                    response.EnsureSuccessStatusCode();
+            fileAttachments =
+                await AttachmentUtils.DownloadAttachmentsAsync(Context.Message.Attachments, httpClientFactory, logger);
 
-                    memoryStream = new MemoryStream();
-                    await response.Content.CopyToAsync(memoryStream);
-                    memoryStream.Seek(0, SeekOrigin.Begin);
-
-                    // Create FileAttachment (needs a Stream)
-                    fileAttachments.Add(new FileAttachment(memoryStream, attachment.Filename, attachment.Description,
-                        attachment.IsSpoiler()));
-                    logger.LogDebug("Added attachment: {FileName}", attachment.Filename);
-
-                    memoryStream = null;
-                }
-                catch (HttpRequestException ex)
-                {
-                    logger.LogError(ex, "Failed to download attachment: {AttachmentUrl}", attachment.Url);
-                    await ReplyAsync($"Failed to download attachment: {attachment.Filename}",
-                        allowedMentions: AllowedMentions.None);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "An unexpected error occurred processing attachment: {AttachmentUrl}",
-                        attachment.Url);
-                    await ReplyAsync($"Error processing attachment: {attachment.Filename}",
-                        allowedMentions: AllowedMentions.None);
-                }
-                finally
-                {
-                    if (memoryStream != null)
-                        await memoryStream.DisposeAsync();
-                }
-            }
-        }
-
-        // 2. Get Embeds
         var embeds = Context.Message.Embeds.Count > 0 ? Context.Message.Embeds.ToArray() : [];
 
-        // 3. Get Message Reference
         var messageReference = Context.Message.Reference;
 
-        // Check
         if (fileAttachments.Count == 0 && embeds.Length == 0 && message.Trim().Length == 0)
         {
             logger.LogInformation("Cannot echo empty message!");
@@ -73,7 +30,6 @@ public class MiscModule(ILogger<MiscModule> logger, HttpClient httpClient) : Mod
             return;
         }
 
-        // 4. Send the Echoed Message
         try
         {
             await Context.Channel.SendFilesAsync(
@@ -93,11 +49,9 @@ public class MiscModule(ILogger<MiscModule> logger, HttpClient httpClient) : Mod
         }
         finally
         {
-            foreach (var fa in fileAttachments) fa.Dispose();
+            AttachmentUtils.DisposeFileAttachments(fileAttachments);
         }
 
-
-        // 5. Delete the Original Command Message
         try
         {
             await Context.Message.DeleteAsync();

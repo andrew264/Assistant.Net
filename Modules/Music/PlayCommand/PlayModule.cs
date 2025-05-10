@@ -1,4 +1,5 @@
 using Assistant.Net.Models.Music;
+using Assistant.Net.Modules.Music.Helpers;
 using Assistant.Net.Services;
 using Assistant.Net.Utilities;
 using Discord;
@@ -77,7 +78,7 @@ public class PlayModule(
 
         if (player is null)
         {
-            var errorMessage = PlayModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
             await ReplyAsync(errorMessage);
             return;
         }
@@ -114,17 +115,4 @@ public class PlayModule(
                 break;
         }
     }
-}
-
-// Helper class to avoid duplicating error message logic
-internal static class PlayModuleHelper
-{
-    public static string GetPlayerRetrieveErrorMessage(PlayerRetrieveStatus status) => status switch
-    {
-        PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-        PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected to a voice channel.",
-        PlayerRetrieveStatus.VoiceChannelMismatch => "You must be in the same voice channel as the bot.",
-        PlayerRetrieveStatus.PreconditionFailed => "The bot is already connected to a different voice channel.",
-        _ => "An unknown error occurred while retrieving the player."
-    };
 }

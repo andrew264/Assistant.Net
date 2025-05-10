@@ -61,6 +61,35 @@ public class MusicService(
         return (result.Player, result.Status);
     }
 
+
+    public async ValueTask<(CustomPlayer? Player, PlayerRetrieveStatus Status)> GetPlayerForContextAsync(
+        IGuild guild,
+        IUser user,
+        IMessageChannel channel,
+        PlayerChannelBehavior channelBehavior,
+        MemberVoiceStateBehavior memberBehavior)
+    {
+        if (user is not IGuildUser guildUser)
+        {
+            logger.LogError("GetPlayerForContextAsync called by user {UserId} who is not a guild user in this context.",
+                user.Id);
+            return (null, PlayerRetrieveStatus.UserNotInVoiceChannel);
+        }
+
+        if (channel is ITextChannel textChannel)
+            return await GetPlayerAsync(
+                guild.Id,
+                guildUser.VoiceChannel?.Id,
+                textChannel,
+                channelBehavior,
+                memberBehavior);
+
+        logger.LogError("GetPlayerForContextAsync called from non-text channel {ChannelId} ({ChannelName})",
+            channel.Id, channel.Name);
+        return (null, PlayerRetrieveStatus.UserNotInVoiceChannel);
+    }
+
+
     public async Task StartPlaybackIfNeededAsync(CustomPlayer player)
     {
         if (player.State is PlayerState.NotPlaying or PlayerState.Destroyed)

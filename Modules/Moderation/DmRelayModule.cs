@@ -27,30 +27,16 @@ public class DmRelayModule(
             return;
         }
 
-        var files = new List<FileAttachment>();
-        var tempStreams = new List<MemoryStream>();
+        List<FileAttachment> files = [];
 
         try
         {
-            using var httpClient = httpClientFactory.CreateClient();
-            foreach (var attachment in Context.Message.Attachments)
-            {
-                var response = await httpClient.GetAsync(attachment.Url);
-                response.EnsureSuccessStatusCode();
-                var memoryStream = new MemoryStream();
-                await response.Content.CopyToAsync(memoryStream);
-                memoryStream.Position = 0;
-                files.Add(new FileAttachment(memoryStream, attachment.Filename, attachment.Description,
-                    attachment.IsSpoiler()));
-                tempStreams.Add(memoryStream);
-            }
+            files = await AttachmentUtils.DownloadAttachmentsAsync(Context.Message.Attachments, httpClientFactory,
+                logger);
 
             // Send the DM
             var dmChannel = await user.CreateDMChannelAsync();
             var sentMessage = await dmChannel.SendFilesAsync(files, msg, embeds: Context.Message.Embeds.ToArray());
-            logger.LogInformation("[DM SENT by Owner Command] to {User} ({UserId}): {Content}", user, user.Id, msg);
-            await Context.Message.AddReactionAsync(Emoji.Parse("✅"));
-            tempStreams.Clear();
 
             await LogSentDmViaWebhookAsync(user, sentMessage);
 
@@ -62,6 +48,9 @@ public class DmRelayModule(
             {
                 logger.LogWarning(ex, "Failed to delete owner !dm command message {MessageId}", Context.Message.Id);
             }
+
+            logger.LogInformation("[DM SENT by Owner Command] to {User} ({UserId}): {Content}", user, user.Id, msg);
+            await Context.Message.AddReactionAsync(Emoji.Parse("✅"));
         }
         catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
         {
@@ -78,33 +67,18 @@ public class DmRelayModule(
         }
         finally
         {
-            foreach (var fa in files) fa.Dispose();
-            foreach (var stream in tempStreams) await stream.DisposeAsync();
+            AttachmentUtils.DisposeFileAttachments(files);
         }
     }
 
     private async Task LogSentDmViaWebhookAsync(IUser recipientUser, IUserMessage sentDmMessage)
     {
-        var logFiles = new List<FileAttachment>();
-        var logTempStreams = new List<MemoryStream>();
+        List<FileAttachment> logFiles = [];
 
         try
         {
-            if (sentDmMessage.Attachments.Count > 0)
-            {
-                using var httpClient = httpClientFactory.CreateClient();
-                foreach (var attachment in sentDmMessage.Attachments)
-                {
-                    var response = await httpClient.GetAsync(attachment.Url);
-                    response.EnsureSuccessStatusCode();
-                    var memoryStream = new MemoryStream();
-                    await response.Content.CopyToAsync(memoryStream);
-                    memoryStream.Position = 0;
-                    logFiles.Add(new FileAttachment(memoryStream, attachment.Filename, attachment.Description,
-                        attachment.IsSpoiler()));
-                    logTempStreams.Add(memoryStream);
-                }
-            }
+            logFiles = await AttachmentUtils.DownloadAttachmentsAsync(sentDmMessage.Attachments, httpClientFactory,
+                logger);
 
             var sb = new StringBuilder();
             sb.AppendLine($"{MessageIdPrefix}{sentDmMessage.Id}");
@@ -130,8 +104,6 @@ public class DmRelayModule(
             await webhookClient.SendFilesAsync(logFiles, sb.ToString(),
                 username: Context.User.Username,
                 avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl());
-
-            logTempStreams.Clear();
         }
         catch (Exception ex)
         {
@@ -139,8 +111,7 @@ public class DmRelayModule(
         }
         finally
         {
-            foreach (var fa in logFiles) fa.Dispose();
-            foreach (var stream in logTempStreams) await stream.DisposeAsync();
+            AttachmentUtils.DisposeFileAttachments(logFiles);
         }
     }
 }

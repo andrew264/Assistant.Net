@@ -74,7 +74,7 @@ public class DmRelayService
         var before = await beforeCache.GetOrDownloadAsync();
 
         var messageContent = BuildEditedMessageContent(before, after);
-        var files = await DownloadAttachmentsAsync(after.Attachments);
+        var files = await AttachmentUtils.DownloadAttachmentsAsync(after.Attachments, _httpClientFactory, _logger);
 
         try
         {
@@ -90,7 +90,7 @@ public class DmRelayService
         }
         finally
         {
-            DisposeFileAttachments(files);
+            AttachmentUtils.DisposeFileAttachments(files);
         }
     }
 
@@ -140,7 +140,7 @@ public class DmRelayService
         }
 
         var messageContent = await BuildNewMessageContentAsync(message);
-        var files = await DownloadAttachmentsAsync(message.Attachments);
+        var files = await AttachmentUtils.DownloadAttachmentsAsync(message.Attachments, _httpClientFactory, _logger);
 
         try
         {
@@ -164,7 +164,7 @@ public class DmRelayService
         }
         finally
         {
-            DisposeFileAttachments(files);
+            AttachmentUtils.DisposeFileAttachments(files);
         }
     }
 
@@ -201,7 +201,7 @@ public class DmRelayService
 
         // Check for reply reference
         var replyMessageReference = await GetReplyReferenceAsync(message, textChannel, dmChannel);
-        var files = await DownloadAttachmentsAsync(message.Attachments);
+        var files = await AttachmentUtils.DownloadAttachmentsAsync(message.Attachments, _httpClientFactory, _logger);
 
         try
         {
@@ -229,7 +229,7 @@ public class DmRelayService
         }
         finally
         {
-            DisposeFileAttachments(files);
+            AttachmentUtils.DisposeFileAttachments(files);
         }
     }
 
@@ -339,10 +339,6 @@ public class DmRelayService
             return null;
         }
     }
-
-    // Removed GetOrCreateWebhookForChannelAsync, FindExistingWebhookAsync, CreateWebhookAsync, DownloadBotAvatarAsync
-    // as their core logic is now in WebhookService.
-
     // --- Helper Methods for Building Message Content ---
 
     private string BuildEditedMessageContent(IMessage? before, SocketMessage after)
@@ -374,13 +370,13 @@ public class DmRelayService
         return sb.ToString();
     }
 
-    private string BuildDeletedMessageContent(IMessage message)
+    private static string BuildDeletedMessageContent(IMessage message)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"- Deleted Message (ID: {message.Id}):");
         sb.AppendLine($"```{SanitizeCodeBlock(message.Content ?? "*(No text content)*")}```");
 
-        if (message.Attachments.Any())
+        if (message.Attachments.Count != 0)
             sb.AppendLine($"- Attachments: {message.Attachments.Count} (cannot be displayed)");
 
         sb.AppendLine("----------");
@@ -430,7 +426,7 @@ public class DmRelayService
     }
 
 
-    private void AppendUrlIfPresent(StringBuilder sb, string content)
+    private static void AppendUrlIfPresent(StringBuilder sb, string content)
     {
         var urlMatch = RegexPatterns.Url().Match(content);
         if (urlMatch.Success) sb.AppendLine($"URL: {urlMatch.Groups["url"].Value}");
@@ -464,42 +460,6 @@ public class DmRelayService
     }
 
     // --- Utility Methods ---
-
-    private async Task<List<FileAttachment>> DownloadAttachmentsAsync(IEnumerable<IAttachment> attachments)
-    {
-        var fileAttachments = new List<FileAttachment>();
-        using var
-            httpClient =
-                _httpClientFactory.CreateClient("AttachmentDownloader"); // Use a named client if specific config needed
-        foreach (var attachment in attachments)
-        {
-            MemoryStream? memoryStream = null;
-            try
-            {
-                var response = await httpClient.GetAsync(attachment.Url);
-                response.EnsureSuccessStatusCode();
-                memoryStream = new MemoryStream();
-                await response.Content.CopyToAsync(memoryStream);
-                memoryStream.Position = 0;
-                fileAttachments.Add(new FileAttachment(memoryStream, attachment.Filename, attachment.Description,
-                    attachment.IsSpoiler()));
-                memoryStream = null; // Ownership transferred
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to download attachment from {Url}", attachment.Url);
-                await (memoryStream?.DisposeAsync() ?? ValueTask.CompletedTask);
-            }
-        }
-
-        return fileAttachments;
-    }
-
-    private static void DisposeFileAttachments(List<FileAttachment> attachments)
-    {
-        foreach (var fa in attachments) fa.Dispose();
-    }
-
     private static string SanitizeChannelName(IUser user)
     {
         var channelName = Regex.Replace(user.Username, @"[^a-zA-Z0-9_-]", "", RegexOptions.Compiled)
