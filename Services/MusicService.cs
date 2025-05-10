@@ -1,3 +1,4 @@
+using System.Text;
 using Assistant.Net.Configuration;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Modules.Music.Player;
@@ -21,6 +22,8 @@ public class MusicService(
     DiscordSocketClient client,
     ILogger<MusicService> logger)
 {
+    private const int QueueItemsPerPage = 4;
+
     public async ValueTask<(CustomPlayer? Player, PlayerRetrieveStatus Status)> GetPlayerAsync(
         ulong guildId,
         ulong? userVoiceChannelId,
@@ -270,10 +273,7 @@ public class MusicService(
     public async Task StopPlaybackAsync(CustomPlayer player, IUser requester)
     {
         await player.Queue.ClearAsync();
-        await player
-            .StopAsync(); // This also disconnects if inactivity tracking is configured, or call player.DisconnectAsync() explicitly
-        // Lavalink4NET's default inactivity tracking handles disconnect. If you want explicit disconnect:
-        // await player.DisconnectAsync();
+        await player.StopAsync();
         logger.LogInformation("[MusicService:{GuildId}] Stopped and disconnected by {User}", player.GuildId,
             requester.Username);
     }
@@ -298,11 +298,11 @@ public class MusicService(
     {
         if (player.CurrentTrack is null) return (false, "I am not playing anything right now.");
 
-        if (index < 0) index = player.Queue.Count + index + 1; // Allow negative indexing from end
+        if (index < 0) index = player.Queue.Count + index + 1;
 
         var currentTrack = player.CurrentTrack;
 
-        if (index == 0) // Restart current track
+        if (index == 0)
         {
             await player.SeekAsync(TimeSpan.Zero);
             logger.LogInformation("[MusicService:{GuildId}] Restarted track '{TrackTitle}' by {User}",
@@ -316,18 +316,8 @@ public class MusicService(
         var trackToPlayItem = player.Queue[index - 1];
         if (trackToPlayItem.Track is null) return (false, "Invalid track data at the specified queue index.");
 
-        // To skip to a track, we remove it, then insert it at the beginning of the queue,
-        // then add the previously current track back at its original position (if it wasn't the one being skipped to),
-        // and finally, call SkipAsync.
         await player.Queue.RemoveAtAsync(index - 1);
-        await player.Queue.InsertAsync(0,
-            new TrackQueueItem(trackToPlayItem.Track)); // Insert the target track at the front
-
-        // If the original current track needs to be preserved in the queue
-        // (e.g., if repeat queue is on, or just for a cleaner history),
-        // you might re-add it. For simple skip-to, this is optional.
-        // For this implementation, we assume skip-to means it becomes the next track.
-        // Original currentTrack is implicitly handled by SkipAsync moving to the new front of queue.
+        await player.Queue.InsertAsync(0, new TrackQueueItem(trackToPlayItem.Track));
 
         await player.SkipAsync();
         logger.LogInformation("[MusicService:{GuildId}] Skipped to track '{TrackTitle}' (from index {Index}) by {User}",
@@ -357,5 +347,155 @@ public class MusicService(
             default:
                 return (false, "Cannot pause or resume in the current state.");
         }
+    }
+
+    // --- Queue Specific Methods ---
+    public (Embed? Embed, MessageComponent? Components, string? ErrorMessage) BuildQueueEmbed(
+        CustomPlayer player,
+        int currentPage,
+        ulong interactionMessageId,
+        ulong requesterId)
+    {
+        if (player.CurrentTrack is null && player.Queue.IsEmpty) return (null, null, "The queue is empty.");
+
+        var embed = new EmbedBuilder().WithColor(0xFFA31A); // Orange
+
+        if (player.CurrentTrack != null)
+            embed.WithTitle("Now Playing")
+                .WithDescription($"{player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}");
+        else
+            embed.WithTitle("Queue is Empty");
+
+        var queueCount = player.Queue.Count;
+        var totalPages = 0;
+        if (queueCount > 0)
+        {
+            totalPages = (int)Math.Ceiling((double)queueCount / QueueItemsPerPage);
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            var first = (currentPage - 1) * QueueItemsPerPage;
+            var last = Math.Min(currentPage * QueueItemsPerPage, queueCount);
+
+            var sb = new StringBuilder();
+            for (var i = first; i < last; i++)
+            {
+                var trackItem = player.Queue[i];
+                if (trackItem.Track is not null)
+                    sb.AppendLine($"{i + 1}. {trackItem.Track.Title.AsMarkdownLink(trackItem.Track.Uri?.ToString())}");
+            }
+
+            embed.AddField($"Next Up ({currentPage}/{totalPages})", sb.Length > 0 ? sb.ToString() : "\u200B");
+        }
+
+        var loopStatus = player.RepeatMode switch
+        {
+            TrackRepeatMode.Queue => "Looping through all songs",
+            TrackRepeatMode.Track => "Looping Current Song",
+            _ => "Loop Disabled"
+        };
+        var totalSongsInQueueSystem = (player.CurrentTrack != null ? 1 : 0) + queueCount;
+        embed.WithFooter(
+            $"{loopStatus} | {totalSongsInQueueSystem} Song{(totalSongsInQueueSystem != 1 ? "s" : "")} in Queue");
+
+        var components = new ComponentBuilder();
+        if (queueCount <= QueueItemsPerPage) return (embed.Build(), components.Build(), null);
+        components.WithButton("◀",
+            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev",
+            ButtonStyle.Secondary, disabled: currentPage == 1 && totalPages == 1);
+        components.WithButton("▶",
+            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next",
+            ButtonStyle.Secondary, disabled: currentPage == totalPages && totalPages == 1);
+
+        return (embed.Build(), components.Build(), null);
+    }
+
+    public async Task<(bool Success, LavalinkTrack? RemovedTrack, string Message)> RemoveFromQueueAsync(
+        CustomPlayer player, int oneBasedIndex)
+    {
+        if (player.Queue.IsEmpty) return (false, null, "The queue is empty.");
+        if (oneBasedIndex <= 0 || oneBasedIndex > player.Queue.Count) return (false, null, "Invalid index.");
+
+        var trackToRemove = player.Queue[oneBasedIndex - 1].Track;
+        await player.Queue.RemoveAtAsync(oneBasedIndex - 1);
+
+        var message = trackToRemove != null
+            ? $"Removed {trackToRemove.Title.AsMarkdownLink(trackToRemove.Uri?.ToString())} from the queue."
+            : "Removed song from the queue.";
+
+        logger.LogInformation("[MusicService:{GuildId}] Removed track at index {Index} from queue.", player.GuildId,
+            oneBasedIndex);
+        return (true, trackToRemove, message);
+    }
+
+    public async Task<(bool Success, string Message)> ClearQueueAsync(CustomPlayer player)
+    {
+        if (player.Queue.IsEmpty) return (false, "The queue is already empty.");
+        await player.Queue.ClearAsync();
+        logger.LogInformation("[MusicService:{GuildId}] Queue cleared.", player.GuildId);
+        return (true, "Queue cleared.");
+    }
+
+    public async Task<(bool Success, string Message)> ShuffleQueueAsync(CustomPlayer player)
+    {
+        if (player.Queue.Count < 2) return (false, "Not enough songs in the queue to shuffle.");
+        await player.Queue.ShuffleAsync();
+        logger.LogInformation("[MusicService:{GuildId}] Queue shuffled.", player.GuildId);
+        return (true, "Queue shuffled.");
+    }
+
+    public async Task<(bool Success, LavalinkTrack? MovedTrack, string Message)> MoveInQueueAsync(CustomPlayer player,
+        int fromOneBasedIndex, int toOneBasedIndex)
+    {
+        if (player.Queue.Count < 2) return (false, null, "Not enough songs in the queue to move.");
+        if (fromOneBasedIndex <= 0 || fromOneBasedIndex > player.Queue.Count ||
+            toOneBasedIndex <= 0 || toOneBasedIndex > player.Queue.Count)
+            return (false, null, "Invalid index(es).");
+        if (fromOneBasedIndex == toOneBasedIndex) return (false, null, "Song is already in that position.");
+
+        var trackToMoveItem = player.Queue[fromOneBasedIndex - 1];
+        await player.Queue.RemoveAtAsync(fromOneBasedIndex - 1);
+        await player.Queue.InsertAsync(toOneBasedIndex - 1, trackToMoveItem);
+
+        var message = trackToMoveItem.Track != null
+            ? $"Moved {trackToMoveItem.Track.Title.AsMarkdownLink(trackToMoveItem.Track.Uri?.ToString())} from position `{fromOneBasedIndex}` to `{toOneBasedIndex}`."
+            : $"Moved song from position `{fromOneBasedIndex}` to `{toOneBasedIndex}`.";
+        logger.LogInformation("[MusicService:{GuildId}] Moved track from {FromIndex} to {ToIndex} in queue.",
+            player.GuildId, fromOneBasedIndex, toOneBasedIndex);
+        return (true, trackToMoveItem.Track, message);
+    }
+
+    public (TrackRepeatMode NewMode, string Message) ToggleQueueLoop(CustomPlayer player)
+    {
+        if (player.CurrentTrack is null && player.Queue.IsEmpty)
+            return (player.RepeatMode, "Nothing is playing and the queue is empty.");
+
+        string message;
+        TrackRepeatMode newMode;
+
+        switch (player.RepeatMode)
+        {
+            case TrackRepeatMode.Queue:
+                newMode = TrackRepeatMode.None;
+                message = "Queue loop disabled.";
+                break;
+            case TrackRepeatMode.None:
+            case TrackRepeatMode.Track:
+                newMode = TrackRepeatMode.Queue;
+                message = "Queue loop enabled.";
+                break;
+            default:
+                newMode = TrackRepeatMode.None;
+                message = "Queue loop disabled (unexpected state).";
+                logger.LogWarning(
+                    "[MusicService:{GuildId}] Unexpected RepeatMode {RepeatMode} when toggling queue loop.",
+                    player.GuildId, player.RepeatMode);
+                break;
+        }
+
+        player.RepeatMode = newMode;
+
+        logger.LogInformation("[MusicService:{GuildId}] Queue loop mode set to {NewMode}.", player.GuildId, newMode);
+        return (newMode, message);
     }
 }
