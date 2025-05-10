@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Assistant.Net.Modules.Moderation;
 
 public class DmRelayModule(
-    DmRelayService dmRelayService,
+    WebhookService webhookService,
     ILogger<DmRelayModule> logger,
     IHttpClientFactory httpClientFactory)
     : ModuleBase<SocketCommandContext>
@@ -85,13 +85,6 @@ public class DmRelayModule(
 
     private async Task LogSentDmViaWebhookAsync(IUser recipientUser, IUserMessage sentDmMessage)
     {
-        var webhookClient = await dmRelayService.GetOrCreateWebhookAsync(recipientUser);
-        if (webhookClient == null)
-        {
-            logger.LogWarning("Could not get webhook to log !dm command for user {UserId}", recipientUser.Id);
-            return;
-        }
-
         var logFiles = new List<FileAttachment>();
         var logTempStreams = new List<MemoryStream>();
 
@@ -125,6 +118,14 @@ public class DmRelayModule(
             }
 
             sb.AppendLine("----------");
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(Context.Channel.Id,
+                WebhookService.DefaultWebhookName,
+                Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl());
+            if (webhookClient == null)
+            {
+                logger.LogWarning("Could not get webhook to log !dm command for user {UserId}", recipientUser.Id);
+                return;
+            }
 
             await webhookClient.SendFilesAsync(logFiles, sb.ToString(),
                 username: Context.User.Username,

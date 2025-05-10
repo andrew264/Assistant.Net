@@ -1,180 +1,52 @@
-using System.Collections.Concurrent;
-using System.Net;
+using System.Text;
 using Assistant.Net.Configuration;
 using Assistant.Net.Utilities;
 using Discord;
-using Discord.Net;
-using Discord.Webhook;
 using Discord.WebSocket;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services;
 
 public class SurveillanceService
 {
-    private const string WebhookCachePrefix = "webhook:";
-    private const string AssistantWebhookName = "Assistant";
-    private static readonly TimeSpan WebhookCacheDuration = TimeSpan.FromHours(1);
     private readonly DiscordSocketClient _client;
     private readonly Config _config;
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SurveillanceService> _logger;
-    private readonly IMemoryCache _memoryCache;
-    private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _webhookLocks = new();
+    private readonly WebhookService _webhookService;
 
     public SurveillanceService(
         DiscordSocketClient client,
         Config config,
         ILogger<SurveillanceService> logger,
-        IHttpClientFactory httpClientFactory,
-        IMemoryCache memoryCache)
+        WebhookService webhookService)
     {
-        client.MessageUpdated += HandleMessageUpdatedAsync;
-        client.MessageDeleted += HandleMessageDeletedAsync;
-        client.GuildMemberUpdated += HandleGuildMemberUpdatedAsync;
-        client.UserUpdated += HandleUserUpdatedAsync;
-        client.PresenceUpdated += HandlePresenceUpdatedAsync;
-        client.UserVoiceStateUpdated += HandleVoiceStateUpdatedAsync;
-        client.UserIsTyping += HandleTypingAsync;
-        client.UserJoined += HandleUserJoinedAsync;
-        client.UserLeft += HandleUserLeftAsync;
-        client.UserBanned += HandleUserBannedAsync;
-        client.UserUnbanned += HandleUserUnbannedAsync;
         _client = client;
         _config = config;
         _logger = logger;
-        _httpClientFactory = httpClientFactory;
-        _memoryCache = memoryCache;
+        _webhookService = webhookService;
+
+        _client.MessageUpdated += HandleMessageUpdatedAsync;
+        _client.MessageDeleted += HandleMessageDeletedAsync;
+        _client.GuildMemberUpdated += HandleGuildMemberUpdatedAsync;
+        _client.UserUpdated += HandleUserUpdatedAsync;
+        _client.PresenceUpdated += HandlePresenceUpdatedAsync;
+        _client.UserVoiceStateUpdated += HandleVoiceStateUpdatedAsync;
+        _client.UserIsTyping += HandleTypingAsync;
+        _client.UserJoined += HandleUserJoinedAsync;
+        _client.UserLeft += HandleUserLeftAsync;
+        _client.UserBanned += HandleUserBannedAsync;
+        _client.UserUnbanned += HandleUserUnbannedAsync;
+
         _logger.LogInformation("SurveillanceService initialized and events hooked.");
-    }
-
-
-    // --- Webhook Management ---
-
-    private async Task<DiscordWebhookClient?> GetWebhookAsync(ulong channelId)
-    {
-        var cacheKey = $"{WebhookCachePrefix}{channelId}";
-
-        if (_memoryCache.TryGetValue(cacheKey, out DiscordWebhookClient? cachedClient) && cachedClient != null)
-            return cachedClient;
-
-        var channelLock = _webhookLocks.GetOrAdd(channelId, _ => new SemaphoreSlim(1, 1));
-        await channelLock.WaitAsync();
-
-        IWebhook? existingWebhook = null;
-        try
-        {
-            if (_memoryCache.TryGetValue(cacheKey, out cachedClient) && cachedClient != null) return cachedClient;
-
-            var channel = _client.GetChannel(channelId);
-            if (channel is not SocketTextChannel textChannel)
-            {
-                _logger.LogWarning("Logging channel {ChannelId} not found or is not a text channel.", channelId);
-                return null;
-            }
-
-            var botUser = _client.CurrentUser;
-            var guild = textChannel.Guild;
-            var botGuildUser = guild.GetUser(botUser.Id);
-
-            if (botGuildUser == null || !botGuildUser.GuildPermissions.ManageWebhooks)
-            {
-                _logger.LogError(
-                    "Bot lacks 'Manage Webhooks' permission in logging channel {ChannelId} ({ChannelName}) in Guild {GuildId}.",
-                    channelId, textChannel.Name, guild.Id);
-                return null;
-            }
-
-            try
-            {
-                var webhooks = await textChannel.GetWebhooksAsync();
-                existingWebhook = webhooks.FirstOrDefault(w => w.Name == AssistantWebhookName);
-            }
-            catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
-            {
-                _logger.LogError(ex, "Forbidden to get webhooks in channel {ChannelId} ({ChannelName}).", channelId,
-                    textChannel.Name);
-                return null;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to get webhooks for channel {ChannelId} ({ChannelName}).", channelId,
-                    textChannel.Name);
-            }
-
-
-            if (existingWebhook != null)
-            {
-                _logger.LogDebug("Found existing webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
-                    existingWebhook.Name, existingWebhook.Id, channelId);
-                var webhookClient = new DiscordWebhookClient(existingWebhook.Id, existingWebhook.Token);
-                _memoryCache.Set(cacheKey, webhookClient, WebhookCacheDuration);
-                return webhookClient;
-            }
-            else
-            {
-                _logger.LogInformation("Webhook '{WebhookName}' not found in channel {ChannelId}. Creating new one.",
-                    AssistantWebhookName, channelId);
-                try
-                {
-                    Stream? avatarStream = null;
-                    var avatarUrl = botUser.GetAvatarUrl() ?? botUser.GetDefaultAvatarUrl();
-                    try
-                    {
-                        var httpClient = _httpClientFactory.CreateClient();
-                        var response = await httpClient.GetAsync(avatarUrl);
-                        response.EnsureSuccessStatusCode();
-                        avatarStream = await response.Content.ReadAsStreamAsync();
-                    }
-                    catch (Exception avatarEx)
-                    {
-                        _logger.LogWarning(avatarEx,
-                            "Failed to download bot avatar for webhook creation. Using default.");
-                        if (avatarStream != null)
-                            await avatarStream.DisposeAsync();
-                        avatarStream = null;
-                    }
-
-
-                    var newWebhook = await textChannel.CreateWebhookAsync(AssistantWebhookName, avatarStream);
-                    if (avatarStream != null)
-                        await avatarStream.DisposeAsync();
-
-                    _logger.LogInformation("Created webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
-                        newWebhook.Name, newWebhook.Id, channelId);
-                    var webhookClient = new DiscordWebhookClient(newWebhook.Id, newWebhook.Token);
-                    _memoryCache.Set(cacheKey, webhookClient, WebhookCacheDuration);
-                    return webhookClient;
-                }
-                catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
-                {
-                    _logger.LogError(ex, "Forbidden to create webhook in channel {ChannelId} ({ChannelName}).",
-                        channelId, textChannel.Name);
-                    return null;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to create webhook in channel {ChannelId} ({ChannelName}).", channelId,
-                        textChannel.Name);
-                    return null;
-                }
-            }
-        }
-        finally
-        {
-            channelLock.Release();
-        }
     }
 
     private ulong? GetLoggingChannelId(ulong guildId)
     {
         if (_config.LoggingGuilds == null) return null;
 
-        foreach (var kvp in _config.LoggingGuilds.Where(kvp => kvp.Value.GuildId == guildId))
-            return kvp.Value.ChannelId;
-
-        return null;
+        return _config.LoggingGuilds
+            .FirstOrDefault(kvp => kvp.Value.GuildId == guildId)
+            .Value?.ChannelId;
     }
 
     // --- Event Handlers ---
@@ -182,7 +54,8 @@ public class SurveillanceService
     public async Task HandleMessageUpdatedAsync(Cacheable<IMessage, ulong> beforeCache, SocketMessage after,
         ISocketMessageChannel channel)
     {
-        if (after.Author.IsBot || after.Author.Id == _config.Client.OwnerId) return;
+        if (after.Author.IsBot ||
+            (_config.Client.OwnerId.HasValue && after.Author.Id == _config.Client.OwnerId.Value)) return;
         if (channel is not SocketGuildChannel guildChannel) return;
 
         var loggingChannelId = GetLoggingChannelId(guildChannel.Guild.Id);
@@ -191,31 +64,32 @@ public class SurveillanceService
         var before = await beforeCache.GetOrDownloadAsync();
         if (before == null || before.Content == after.Content) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
 
         var author = after.Author;
         var embed = new EmbedBuilder()
             .WithTitle("Message Edit")
-            .WithDescription($"in <#{guildChannel.Id}>")
-            .WithColor(Color.Red)
+            .WithDescription($"in <#{guildChannel.Id}> ({after.GetJumpUrl()})")
+            .WithColor(Color.Orange)
             .AddField("Original Message",
                 string.IsNullOrWhiteSpace(before.Content) ? "*(Empty)*" :
-                before.Content.Length > 1024 ? before.Content.Substring(0, 1021) + "..." : before.Content)
+                before.Content.Length > 1024 ? before.Content[..1021] + "..." : before.Content)
             .AddField("Altered Message",
                 string.IsNullOrWhiteSpace(after.Content) ? "*(Empty)*" :
                 after.Content.Length > 1024 ? after.Content[..1021] + "..." : after.Content)
-            .WithFooter($"{DateTime.Now:h:mm tt, dd MMM}")
+            .WithFooter($"User ID: {author.Id}")
+            .WithTimestamp(after.EditedTimestamp ?? after.Timestamp)
             .Build();
 
         try
         {
             await webhookClient.SendMessageAsync(
                 embeds: [embed],
-                username: author is SocketGuildUser guildUser ? guildUser.DisplayName : author.Username,
-                avatarUrl: author.GetAvatarUrl() ?? author.GetDefaultAvatarUrl()
+                username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
+                avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
             );
-            _logger.LogInformation("[MESSAGE EDIT] @{User} in #{Channel}", author, guildChannel.Name);
+            _logger.LogInformation("[MESSAGE EDIT] @{User} in #{Channel}", author.Username, guildChannel.Name);
         }
         catch (Exception ex)
         {
@@ -228,40 +102,42 @@ public class SurveillanceService
     public async Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> messageCache,
         Cacheable<IMessageChannel, ulong> channelCache)
     {
-        if (!channelCache.HasValue || channelCache.Value is not SocketGuildChannel guildChannel) return;
-
-        if (guildChannel.Guild.Id != _config.Client.HomeGuildId) return;
+        var channel = channelCache.HasValue ? channelCache.Value : await channelCache.GetOrDownloadAsync();
+        if (channel is not SocketGuildChannel guildChannel) return;
 
         var loggingChannelId = GetLoggingChannelId(guildChannel.Guild.Id);
         if (loggingChannelId == null) return;
 
         var message = await messageCache.GetOrDownloadAsync();
-        if (message == null || message.Author.IsBot || message.Author.Id == _config.Client.OwnerId) return;
+        if (message == null || message.Author.IsBot ||
+            (_config.Client.OwnerId.HasValue && message.Author.Id == _config.Client.OwnerId.Value)) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
 
         var author = message.Author;
         var embedBuilder = new EmbedBuilder()
-            .WithTitle("Deleted Message")
-            .WithDescription($"<#{guildChannel.Id}>")
+            .WithTitle("Message Deleted")
+            .WithDescription($"in <#{guildChannel.Id}>")
             .WithColor(Color.Red)
             .AddField("Message Content",
                 string.IsNullOrWhiteSpace(message.Content) ? "*(Empty)*" :
                 message.Content.Length > 1024 ? message.Content[..1021] + "..." : message.Content)
-            .WithFooter($"{DateTime.Now:h:mm tt, dd MMM}");
+            .WithFooter($"User ID: {author.Id} | Message ID: {message.Id}")
+            .WithTimestamp(message.Timestamp);
 
         if (message.Attachments.Count != 0)
-            embedBuilder.AddField("Attachments", string.Join("\n", message.Attachments.Select(a => a.Url)));
+            embedBuilder.AddField("Attachments",
+                string.Join("\n", message.Attachments.Select(a => $"[{a.Filename}]({a.Url}) (Size: {a.Size} bytes)")));
 
         try
         {
             await webhookClient.SendMessageAsync(
                 embeds: [embedBuilder.Build()],
-                username: author is SocketGuildUser guildUser ? guildUser.DisplayName : author.Username,
-                avatarUrl: author.GetAvatarUrl() ?? author.GetDefaultAvatarUrl()
+                username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
+                avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
             );
-            _logger.LogInformation("[MESSAGE DELETE] @{User} in #{Channel}\n\tMessage: {Content}", author,
+            _logger.LogInformation("[MESSAGE DELETE] @{User} in #{Channel}\n\tMessage: {Content}", author.Username,
                 guildChannel.Name, message.Content);
         }
         catch (Exception ex)
@@ -275,7 +151,7 @@ public class SurveillanceService
     public async Task HandleGuildMemberUpdatedAsync(Cacheable<SocketGuildUser, ulong> beforeCache,
         SocketGuildUser after)
     {
-        if (after.IsBot || after.Id == _config.Client.OwnerId) return;
+        if (after.IsBot || (_config.Client.OwnerId.HasValue && after.Id == _config.Client.OwnerId.Value)) return;
 
         var before = beforeCache.HasValue ? beforeCache.Value : null;
         if (before == null || before.DisplayName == after.DisplayName) return;
@@ -283,23 +159,26 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(after.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
-            .WithTitle("Nickname Update")
-            .WithColor(Color.Red)
-            .AddField("Old Name", before.DisplayName)
-            .AddField("New Name", after.DisplayName)
-            .WithFooter($"{DateTime.Now:h:mm tt, dd MMM}")
+            .WithTitle("Member Update: Nickname Change")
+            .WithDescription($"{after.Mention} ({after.Username}#{after.Discriminator})")
+            .WithColor(Color.LightOrange)
+            .AddField("Old Nickname", string.IsNullOrWhiteSpace(before.Nickname) ? "*(None)*" : before.DisplayName,
+                true)
+            .AddField("New Nickname", string.IsNullOrWhiteSpace(after.Nickname) ? "*(None)*" : after.DisplayName, true)
+            .WithFooter($"User ID: {after.Id}")
+            .WithTimestamp(DateTimeOffset.UtcNow)
             .Build();
 
         try
         {
             await webhookClient.SendMessageAsync(
                 embeds: [embed],
-                username: after.DisplayName,
-                avatarUrl: after.GetAvatarUrl() ?? after.GetDefaultAvatarUrl()
+                username: "Member Update Logger",
+                avatarUrl: after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()
             );
             _logger.LogInformation("[UPDATE] Nickname {GuildName}: @{OldName} -> @{NewName}", after.Guild.Name,
                 before.DisplayName, after.DisplayName);
@@ -313,8 +192,10 @@ public class SurveillanceService
 
     public async Task HandleUserUpdatedAsync(SocketUser before, SocketUser after)
     {
-        if (after.IsBot || after.Id == _config.Client.OwnerId) return;
-        if (before.Username == after.Username && before.Discriminator == after.Discriminator) return;
+        if (after.IsBot || (_config.Client.OwnerId.HasValue && after.Id == _config.Client.OwnerId.Value)) return;
+        if (before.Username == after.Username &&
+            before.Discriminator == after.Discriminator &&
+            before.GetDisplayAvatarUrl() == after.GetDisplayAvatarUrl()) return;
 
         foreach (var guild in _client.Guilds)
         {
@@ -324,31 +205,43 @@ public class SurveillanceService
             var member = guild.GetUser(after.Id);
             if (member == null) continue;
 
-            var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
             if (webhookClient == null) continue;
 
             var embed = new EmbedBuilder()
-                .WithAuthor("Username Change", before.GetAvatarUrl() ?? before.GetDefaultAvatarUrl())
-                .WithColor(Color.Red)
-                .AddField("Old Username", before.ToString())
-                .AddField("New Username", after.ToString())
-                .WithFooter($"{DateTime.Now:h:mm tt, dd MMM}")
-                .Build();
+                .WithTitle("User Profile Update")
+                .WithDescription($"{after.Mention} ({after.Username}#{after.Discriminator})")
+                .WithColor(Color.Blue)
+                .WithThumbnailUrl(after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl())
+                .WithFooter($"User ID: {after.Id}")
+                .WithTimestamp(DateTimeOffset.UtcNow);
+
+            if (before.Username != after.Username || before.Discriminator != after.Discriminator)
+                embed.AddField("Username Change",
+                    $"`{before.Username}#{before.Discriminator}` → `{after.Username}#{after.Discriminator}`");
+            if (before.GetDisplayAvatarUrl() != after.GetDisplayAvatarUrl())
+            {
+                embed.AddField("Avatar Changed",
+                    $"[Before]({before.GetDisplayAvatarUrl() ?? before.GetDefaultAvatarUrl()}) → [After]({after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()})");
+                embed.WithImageUrl(after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl());
+            }
+
 
             try
             {
                 await webhookClient.SendMessageAsync(
-                    embeds: [embed],
-                    username: member.DisplayName,
-                    avatarUrl: after.GetAvatarUrl() ?? after.GetDefaultAvatarUrl()
+                    embeds: [embed.Build()],
+                    username: "User Profile Logger",
+                    avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
                 );
-                _logger.LogInformation("[UPDATE] Username {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
+                _logger.LogInformation("[UPDATE] User Profile {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
                     before, after);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex,
-                    "Failed to send username update log via webhook for User {UserId} in Guild {GuildId}.", after.Id,
+                    "Failed to send user profile update log via webhook for User {UserId} in Guild {GuildId}.",
+                    after.Id,
                     guild.Id);
             }
         }
@@ -357,7 +250,6 @@ public class SurveillanceService
     public async Task HandlePresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
     {
         if (user.IsBot || user is not SocketGuildUser guildUser) return;
-        if (guildUser.Guild.Id != _config.Client.HomeGuildId) return;
 
         var loggingChannelId = GetLoggingChannelId(guildUser.Guild.Id);
         if (loggingChannelId == null) return;
@@ -367,74 +259,66 @@ public class SurveillanceService
         var bStatus = before.Status.ToString().ToLowerInvariant();
         var aStatus = after.Status.ToString().ToLowerInvariant();
 
-        // Check if status or client list actually changed
-        if (bStatus == aStatus && bClients.SetEquals(aClients) &&
-            before.Activities.SequenceEqual(after.Activities)) return;
+        if (bStatus == aStatus &&
+            bClients.SetEquals(aClients) &&
+            before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
 
         var statusSummary = ActivityUtils.SummarizeStatusChange(bClients, bStatus, aClients, aStatus);
-        List<string> logMessages = [];
-        if (statusSummary != null) logMessages.Add(statusSummary);
+        var logParts = new List<string>();
+        if (statusSummary != null) logParts.Add(statusSummary);
 
-        _logger.LogInformation("[UPDATE] Presence @{User} from {GuildName} {Summary}", user, guildUser.Guild.Name,
-            statusSummary);
+        _logger.LogInformation("[UPDATE] Presence @{User} from {GuildName} {Summary}", user.Username,
+            guildUser.Guild.Name,
+            statusSummary ?? "No direct status/client change.");
 
-        // Log detailed activity changes only if not going offline/coming online
-        if (bStatus != "offline" || aStatus != "offline")
+        var bActivities = ActivityUtils.GetAllUserActivities(before.Activities, false, true, true);
+        var aActivities = ActivityUtils.GetAllUserActivities(after.Activities, false, true, true);
+        var allActivityKeys = bActivities.Keys.Union(aActivities.Keys).ToHashSet();
+
+        var activityChanged = false;
+        foreach (var key in allActivityKeys)
         {
-            var bActivities = ActivityUtils.GetAllUserActivities(before.Activities, false, true, true);
-            var aActivities = ActivityUtils.GetAllUserActivities(after.Activities, false, true, true);
-            var allKeys = bActivities.Keys.Union(aActivities.Keys).ToHashSet();
+            bActivities.TryGetValue(key, out var bValue);
+            aActivities.TryGetValue(key, out var aValue);
 
-            foreach (var key in allKeys.Where(key => key != "Spotify"))
+            if (bValue == aValue) continue;
+            activityChanged = true;
+
+            var changeDescription = "";
+            if (key == "Custom Status")
             {
-                bActivities.TryGetValue(key, out var bValue);
-                aActivities.TryGetValue(key, out var aValue);
-
-                if (bValue == aValue) continue;
-
-                var change = "";
-                if (key == "Custom Status")
-                    switch (string.IsNullOrEmpty(bValue))
-                    {
-                        case false when !string.IsNullOrEmpty(aValue):
-                            change = $"Custom Status: {bValue} -> {aValue}";
-                            break;
-                        case false when string.IsNullOrEmpty(aValue):
-                            change = $"Removed Custom Status: {bValue}";
-                            break;
-                        default:
-                        {
-                            if (string.IsNullOrEmpty(bValue) && !string.IsNullOrEmpty(aValue))
-                                change = $"Custom Status: {aValue}";
-                            break;
-                        }
-                    }
-                else if (string.IsNullOrEmpty(bValue))
-                    change = $"Started {key}: {aValue}";
-                else if (string.IsNullOrEmpty(aValue))
-                    change = $"Stopped {key}: {bValue}";
-                else
-                    change = $"{key}: {bValue} -> {aValue}";
-
-                if (string.IsNullOrEmpty(change)) continue;
-                logMessages.Add(change);
-                _logger.LogInformation("[UPDATE] Presence Activity {GuildName}: @{User} {Change}",
-                    guildUser.Guild.Name, user, change);
+                if (!string.IsNullOrEmpty(bValue) && !string.IsNullOrEmpty(aValue))
+                    changeDescription = $"Custom Status: `{bValue}` → `{aValue}`";
+                else if (!string.IsNullOrEmpty(bValue)) changeDescription = $"Removed Custom Status: `{bValue}`";
+                else if (!string.IsNullOrEmpty(aValue)) changeDescription = $"Set Custom Status: `{aValue}`";
             }
+            else
+            {
+                if (string.IsNullOrEmpty(bValue)) changeDescription = $"Started {key}: `{aValue}`";
+                else if (string.IsNullOrEmpty(aValue)) changeDescription = $"Stopped {key}: `{bValue}`";
+                else changeDescription = $"{key}: `{bValue}` → `{aValue}`";
+            }
+
+            if (!string.IsNullOrEmpty(changeDescription)) logParts.Add(changeDescription);
         }
 
-        var messageContent = string.Join("\n", logMessages).Trim();
+        if (statusSummary == null && !activityChanged) return;
+
+        var messageContent = string.Join("\n", logParts).Trim();
         if (string.IsNullOrEmpty(messageContent)) return;
 
         try
         {
             await webhookClient.SendMessageAsync(
-                messageContent,
+                messageContent.Length > 2000
+                    ? messageContent[..1997] + "..."
+                    : messageContent,
                 username: guildUser.DisplayName,
-                avatarUrl: user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl(),
+                avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None,
                 flags: MessageFlags.SuppressEmbeds
             );
@@ -445,51 +329,78 @@ public class SurveillanceService
         }
     }
 
+
     public async Task HandleVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
-        if (user.IsBot || user.Id == _config.Client.OwnerId || user is not SocketGuildUser member) return;
+        if (user.IsBot || (_config.Client.OwnerId.HasValue && user.Id == _config.Client.OwnerId.Value) ||
+            user is not SocketGuildUser member) return;
 
-        if (before.VoiceChannel?.Id == after.VoiceChannel?.Id) return;
+        // Log only if channel actually changed
+        if (before.VoiceChannel?.Id == after.VoiceChannel?.Id &&
+            before.IsMuted == after.IsMuted &&
+            before.IsDeafened == after.IsDeafened &&
+            before.IsSelfMuted == after.IsSelfMuted &&
+            before.IsSelfDeafened == after.IsSelfDeafened &&
+            before.IsStreaming == after.IsStreaming &&
+            before.IsVideoing == after.IsVideoing &&
+            before.IsSuppressed == after.IsSuppressed)
+            return;
 
         var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
 
-        string msg;
-        string logMsg;
+        var embed = new EmbedBuilder()
+            .WithAuthor(member.DisplayName, member.GetDisplayAvatarUrl() ?? member.GetDefaultAvatarUrl())
+            .WithColor(Color.DarkGreen)
+            .WithFooter($"User ID: {member.Id}")
+            .WithTimestamp(DateTimeOffset.UtcNow);
 
-        if (after.VoiceChannel != null && before.VoiceChannel == null)
+        var actionDescription = new StringBuilder();
+
+        if (before.VoiceChannel?.Id != after.VoiceChannel?.Id)
         {
-            msg = $"🏞️ -> {after.VoiceChannel.Mention}";
-            logMsg = $"🏞️ -> #{after.VoiceChannel.Name}";
+            if (after.VoiceChannel != null && before.VoiceChannel == null)
+                actionDescription.AppendLine(
+                    $"➡️ Joined voice channel {after.VoiceChannel.Mention} (`{after.VoiceChannel.Name}`).");
+            else if (before.VoiceChannel != null && after.VoiceChannel == null)
+                actionDescription.AppendLine(
+                    $"⬅️ Left voice channel {before.VoiceChannel.Mention} (`{before.VoiceChannel.Name}`).");
+            else if (before.VoiceChannel != null && after.VoiceChannel != null)
+                actionDescription.AppendLine(
+                    $"🔄 Switched voice channel from {before.VoiceChannel.Mention} to {after.VoiceChannel.Mention}.");
         }
-        else if (before.VoiceChannel != null && after.VoiceChannel == null)
-        {
-            msg = $"{before.VoiceChannel.Mention} -> 🏞️";
-            logMsg = $"#{before.VoiceChannel.Name} -> 🏞️";
-        }
-        else if (before.VoiceChannel != null && after.VoiceChannel != null)
-        {
-            msg = $"{before.VoiceChannel.Mention} -> {after.VoiceChannel.Mention}";
-            logMsg = $"#{before.VoiceChannel.Name} -> #{after.VoiceChannel.Name}";
-        }
-        else
-        {
-            return;
-        }
+
+        // Detailed state changes
+        if (before.IsMuted != after.IsMuted)
+            actionDescription.AppendLine(after.IsMuted ? "🔇 Server Muted" : "🔊 Server Unmuted");
+        if (before.IsDeafened != after.IsDeafened)
+            actionDescription.AppendLine(after.IsDeafened ? "🔇 Server Deafened" : "🔊 Server Undeafened");
+        if (before.IsSelfMuted != after.IsSelfMuted)
+            actionDescription.AppendLine(after.IsSelfMuted ? "🎙️ Self-Muted" : "🎤 Self-Unmuted");
+        if (before.IsSelfDeafened != after.IsSelfDeafened)
+            actionDescription.AppendLine(after.IsSelfDeafened ? "🎧 Self-Deafened" : "🎶 Self-Undeafened");
+        if (before.IsStreaming != after.IsStreaming)
+            actionDescription.AppendLine(after.IsStreaming ? "🖥️ Started Streaming" : "🛑 Stopped Streaming");
+        if (before.IsVideoing != after.IsVideoing)
+            actionDescription.AppendLine(after.IsVideoing ? "📹 Camera On" : "🚫 Camera Off");
+
+        if (actionDescription.Length == 0) return; // No loggable change
+
+        embed.WithDescription(actionDescription.ToString());
 
         try
         {
             await webhookClient.SendMessageAsync(
-                msg,
-                username: member.DisplayName,
-                avatarUrl: user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl(),
+                embeds: [embed.Build()],
+                username: "Voice State Logger",
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None
             );
-            _logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {LogMsg}", member.Guild.Name,
-                member.DisplayName, logMsg);
+            _logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {Action}", member.Guild.Name,
+                member.Username, actionDescription.ToString().Replace("\n", " "));
         }
         catch (Exception ex)
         {
@@ -497,39 +408,45 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandleTypingAsync(Cacheable<IUser, ulong> userCache,
-        Cacheable<IMessageChannel, ulong> channelCache)
-    {
+    public Task HandleTypingAsync(Cacheable<IUser, ulong> userCache,
+        Cacheable<IMessageChannel, ulong> channelCache) =>
+        // Typing logs can be very noisy.
+        /*
         var user = await userCache.GetOrDownloadAsync();
         var channel = await channelCache.GetOrDownloadAsync();
 
-        if (user.IsBot || user.Id == _config.Client.OwnerId) return;
-        if (channel is not SocketGuildChannel guildChannel) return;
+        if (user.IsBot || (_config.Client.OwnerId.HasValue && user.Id == _config.Client.OwnerId.Value)) return Task.CompletedTask;
+        if (channel is not SocketGuildChannel guildChannel) return Task.CompletedTask;
 
-        if (guildChannel.Guild.Id != _config.Client.HomeGuildId) return;
-
-        _logger.LogInformation("[UPDATE] Typing @{User} - #{Channel} on {Timestamp}",
-            user, guildChannel.Name, DateTime.UtcNow.ToString("dd/MM/yyyy 'at' hh:mm:ss tt"));
-    }
+        _logger.LogTrace("[TYPING] @{User} - #{Channel} on {Timestamp}",
+            user.Username, guildChannel.Name, DateTime.UtcNow.ToString("dd/MM/yyyy 'at' hh:mm:ss tt"));
+        */
+        Task.CompletedTask;
 
     public async Task HandleUserLeftAsync(SocketGuild guild, SocketUser user)
     {
         if (user.IsBot) return;
 
-        if (guild.Id != _config.Client.HomeGuildId) return;
-
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
+
+        var embed = new EmbedBuilder()
+            .WithAuthor($"{user.Username}#{user.Discriminator} Left",
+                user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl())
+            .WithDescription($"{user.Mention} has left the server.")
+            .WithColor(Color.DarkGrey)
+            .WithFooter($"User ID: {user.Id}")
+            .WithTimestamp(DateTimeOffset.UtcNow);
 
         try
         {
             await webhookClient.SendMessageAsync(
-                $"{user.Username} left the server.",
-                username: user.Username,
-                avatarUrl: user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
+                embeds: [embed.Build()],
+                username: "Join/Leave Logger",
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             );
             _logger.LogInformation("[GUILD] Leave @{User}: {GuildName}", user.Username, guild.Name);
         }
@@ -544,20 +461,30 @@ public class SurveillanceService
     {
         if (member.IsBot) return;
 
-        if (member.Guild.Id != _config.Client.HomeGuildId) return;
-
         var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
+
+        var embed = new EmbedBuilder()
+            .WithAuthor($"{member.Username}#{member.Discriminator} Joined",
+                member.GetDisplayAvatarUrl() ?? member.GetDefaultAvatarUrl())
+            .WithDescription($"{member.Mention} has joined the server.")
+            .WithColor(Color.Green)
+            .AddField("Account Created",
+                TimestampTag.FromDateTime(member.CreatedAt.DateTime, TimestampTagStyles.LongDateTime) + " (" +
+                TimestampTag.FromDateTime(member.CreatedAt.DateTime, TimestampTagStyles.Relative) + ")")
+            .WithFooter($"User ID: {member.Id}")
+            .WithTimestamp(member.JoinedAt ?? DateTimeOffset.UtcNow);
+
 
         try
         {
             await webhookClient.SendMessageAsync(
-                $"{member.DisplayName} joined the server",
-                username: member.DisplayName,
-                avatarUrl: member.GetAvatarUrl() ?? member.GetDefaultAvatarUrl()
+                embeds: [embed.Build()],
+                username: "Join/Leave Logger",
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             );
             _logger.LogInformation("[GUILD] Join @{User}: {GuildName}", member.Username, member.Guild.Name);
         }
@@ -572,22 +499,42 @@ public class SurveillanceService
     {
         if (user.IsBot) return;
 
-        if (guild.Id != _config.Client.HomeGuildId) return;
-
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
+
+        var banReason = "Not specified";
+        try
+        {
+            var ban = await guild.GetBanAsync(user);
+            if (ban != null && !string.IsNullOrWhiteSpace(ban.Reason)) banReason = ban.Reason;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not fetch ban reason for user {UserId} in guild {GuildId}", user.Id,
+                guild.Id);
+        }
+
+        var embed = new EmbedBuilder()
+            .WithAuthor($"{user.Username}#{user.Discriminator} Banned",
+                user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl())
+            .WithDescription($"{user.Mention} was banned from the server.")
+            .AddField("Reason", banReason)
+            .WithColor(Color.DarkRed)
+            .WithFooter($"User ID: {user.Id}")
+            .WithTimestamp(DateTimeOffset.UtcNow);
 
         try
         {
             await webhookClient.SendMessageAsync(
-                $"{user.Username} was banned from the server",
-                username: user.Username,
-                avatarUrl: user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
+                embeds: [embed.Build()],
+                username: "Moderation Logger",
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             );
-            _logger.LogInformation("[GUILD] Ban @{User}: {GuildName}", user.Username, guild.Name);
+            _logger.LogInformation("[GUILD] Ban @{User}: {GuildName}. Reason: {Reason}", user.Username, guild.Name,
+                banReason);
         }
         catch (Exception ex)
         {
@@ -600,20 +547,26 @@ public class SurveillanceService
     {
         if (user.IsBot) return;
 
-        if (guild.Id != _config.Client.HomeGuildId) return;
-
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await GetWebhookAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
         if (webhookClient == null) return;
+
+        var embed = new EmbedBuilder()
+            .WithAuthor($"{user.Username}#{user.Discriminator} Unbanned",
+                user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl())
+            .WithDescription($"{user.Mention} was unbanned from the server.")
+            .WithColor(Color.DarkGreen)
+            .WithFooter($"User ID: {user.Id}")
+            .WithTimestamp(DateTimeOffset.UtcNow);
 
         try
         {
             await webhookClient.SendMessageAsync(
-                $"{user.Username} was unbanned from the server",
-                username: user.Username,
-                avatarUrl: user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
+                embeds: [embed.Build()],
+                username: "Moderation Logger",
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             );
             _logger.LogInformation("[GUILD] Unban @{User}: {GuildName}", user.Username, guild.Name);
         }
@@ -622,5 +575,30 @@ public class SurveillanceService
             _logger.LogError(ex, "Failed to send user unbanned log via webhook for User {UserId} in Guild {GuildId}.",
                 user.Id, guild.Id);
         }
+    }
+
+    private class ActivityComparer : IEqualityComparer<IActivity>
+    {
+        public static readonly ActivityComparer Instance = new();
+
+        public bool Equals(IActivity? x, IActivity? y)
+        {
+            if (ReferenceEquals(x, y)) return true;
+            if (x is null || y is null) return false;
+            if (x.Type != y.Type) return false;
+            if (x.Name != y.Name) return false;
+
+            return x switch
+            {
+                CustomStatusGame csgX when y is CustomStatusGame csgY => csgX.State == csgY.State &&
+                                                                         csgX.Emote?.Name == csgY.Emote?.Name &&
+                                                                         (csgX.Emote as GuildEmote)?.Id ==
+                                                                         (csgY.Emote as GuildEmote)?.Id,
+                RichGame rgX when y is RichGame rgY => rgX.Details == rgY.Details && rgX.State == rgY.State,
+                _ => true
+            };
+        }
+
+        public int GetHashCode(IActivity obj) => HashCode.Combine(obj.Type, obj.Name);
     }
 }

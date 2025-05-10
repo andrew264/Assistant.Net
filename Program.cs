@@ -158,6 +158,7 @@ public class Program
 
                 // --- Game Stats Service ---
                 services.AddSingleton<GameStatsService>();
+                services.AddSingleton<GameSessionService>();
 
                 // --- Urban Dictionary Service ---
                 services.AddSingleton<UrbanDictionaryService>();
@@ -182,6 +183,12 @@ public class Program
 
                 // --- Music History Service ---
                 services.AddSingleton<MusicHistoryService>();
+
+                // --- Music Service ---
+                services.AddSingleton<MusicService>();
+
+                // --- Webhook Service ---
+                services.AddSingleton<WebhookService>();
 
                 // --- DM Relay Service ---
                 services.AddSingleton<DmRelayService>();

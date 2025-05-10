@@ -1,46 +1,38 @@
-using System.Collections.Concurrent;
-using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using Assistant.Net.Configuration;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
-using Discord.Rest;
 using Discord.Webhook;
 using Discord.WebSocket;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services;
 
 public class DmRelayService
 {
-    private const string WebhookCachePrefix = "dmWebhook:";
-    private const string AssistantWebhookName = "Assistant";
     private const string ChannelTopicPrefix = "USERID:";
     private const string MessageIdPrefix = "MSGID:";
-    private static readonly TimeSpan WebhookCacheDuration = TimeSpan.FromHours(1);
 
     private readonly DiscordSocketClient _client;
     private readonly Config _config;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<DmRelayService> _logger;
-    private readonly IMemoryCache _memoryCache;
-    private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _webhookLocks = new();
+    private readonly WebhookService _webhookService;
 
     public DmRelayService(
         DiscordSocketClient client,
         Config config,
         ILogger<DmRelayService> logger,
         IHttpClientFactory httpClientFactory,
-        IMemoryCache memoryCache)
+        WebhookService webhookService)
     {
         _client = client;
         _config = config;
         _logger = logger;
         _httpClientFactory = httpClientFactory;
-        _memoryCache = memoryCache;
+        _webhookService = webhookService;
 
         _client.MessageReceived += HandleMessageReceivedAsync;
         _client.MessageUpdated += HandleMessageUpdatedAsync;
@@ -76,7 +68,7 @@ public class DmRelayService
         _logger.LogInformation("[EDITED DM] from {User} ({UserId}): {Content}", after.Author, after.Author.Id,
             after.Content);
 
-        var webhookClient = await GetOrCreateWebhookAsync(after.Author);
+        var webhookClient = await GetOrCreateUserRelayWebhookAsync(after.Author);
         if (webhookClient == null) return;
 
         var before = await beforeCache.GetOrDownloadAsync();
@@ -116,7 +108,7 @@ public class DmRelayService
         _logger.LogInformation("[DELETED DM] from {User} ({UserId}): {Content}", message.Author, message.Author.Id,
             message.Content);
 
-        var webhookClient = await GetOrCreateWebhookAsync(message.Author);
+        var webhookClient = await GetOrCreateUserRelayWebhookAsync(message.Author);
         if (webhookClient == null) return;
 
         var messageContent = BuildDeletedMessageContent(message);
@@ -140,7 +132,7 @@ public class DmRelayService
         _logger.LogInformation("[NEW DM] from {User} ({UserId}): {Content}", message.Author, message.Author.Id,
             message.Content);
 
-        var webhookClient = await GetOrCreateWebhookAsync(message.Author);
+        var webhookClient = await GetOrCreateUserRelayWebhookAsync(message.Author); // Changed to use helper
         if (webhookClient == null)
         {
             await message.Channel.SendMessageAsync("Sorry, I encountered an error setting up the DM relay.");
@@ -241,8 +233,11 @@ public class DmRelayService
         }
     }
 
-    // --- Webhook Management ---
-    public async Task<DiscordWebhookClient?> GetOrCreateWebhookAsync(IUser user)
+    // --- Webhook Management (Specific to DM Relay Channel Creation) ---
+    /// <summary>
+    ///     Gets or creates the specific relay channel for a user and then gets/creates the webhook for that channel.
+    /// </summary>
+    public async Task<DiscordWebhookClient?> GetOrCreateUserRelayWebhookAsync(IUser user)
     {
         var categoryId = _config.Client.DmRecipientsCategory;
 
@@ -253,10 +248,10 @@ public class DmRelayService
         }
 
         var guild = categoryChannel.Guild;
-        var botGuildUser = guild.GetUser(_client.CurrentUser.Id);
+        var botGuildUser = guild.CurrentUser;
         if (botGuildUser == null)
         {
-            _logger.LogError("Bot user not found in guild {GuildId}", guild.Id);
+            _logger.LogError("Bot user (guild.CurrentUser) not found in guild {GuildId}", guild.Id);
             return null;
         }
 
@@ -269,14 +264,14 @@ public class DmRelayService
         if (targetChannel == null)
         {
             targetChannel = await CreateRelayChannelAsync(user, categoryChannel, guild, botGuildUser, userTopic);
-            if (targetChannel == null) return null;
+            if (targetChannel == null) return null; // Failed to create channel
         }
 
-        return await GetOrCreateWebhookForChannelAsync(targetChannel, botGuildUser);
+        return await _webhookService.GetOrCreateWebhookClientAsync(targetChannel.Id);
     }
 
     private async Task<SocketTextChannel?> CreateRelayChannelAsync(IUser user, SocketCategoryChannel categoryChannel,
-        SocketGuild guild, SocketGuildUser botGuildUser, string userTopic)
+        SocketGuild guild, IGuildUser botGuildUser, string userTopic)
     {
         if (!botGuildUser.GuildPermissions.ManageChannels)
         {
@@ -286,13 +281,8 @@ public class DmRelayService
             return null;
         }
 
-        if (!botGuildUser.GuildPermissions.ManageWebhooks)
-        {
-            _logger.LogError(
-                "Bot lacks 'Manage Webhooks' permission in category {CategoryName} ({CategoryId}) to create relay channel/webhook for {User} ({UserId}).",
-                categoryChannel.Name, categoryChannel.Id, user.Username, user.Id);
-            return null;
-        }
+        // ManageWebhooks permission is checked by WebhookService for the target channel.
+        // Here, we only need ManageChannels for the category.
 
         _logger.LogInformation("Relay channel for user {User} ({UserId}) not found. Creating...", user.Username,
             user.Id);
@@ -300,37 +290,40 @@ public class DmRelayService
         {
             var channelName = SanitizeChannelName(user);
 
-            await guild.CreateTextChannelAsync(channelName, props =>
+            var createdRestChannel = await guild.CreateTextChannelAsync(channelName, props =>
             {
                 props.CategoryId = categoryChannel.Id;
                 props.Topic = userTopic;
-                // Set permissions to private: deny @everyone, allow bot
-                props.PermissionOverwrites =
-                    (List<Overwrite>)
-                    [
-                        new Overwrite(guild.EveryoneRole.Id, PermissionTarget.Role,
-                            new OverwritePermissions(viewChannel: PermValue.Deny)),
-                        new Overwrite(botGuildUser.Id, PermissionTarget.User,
-                            new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow,
-                                manageMessages: PermValue.Allow, manageWebhooks: PermValue.Allow,
-                                readMessageHistory: PermValue.Allow))
-                        // new Overwrite(_config.Client.OwnerId, PermissionTarget.User,
-                        //     new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow,
-                        //         readMessageHistory: PermValue.Allow))
-                        // Owner should be admin; we can ignore this
-                    ];
+                props.PermissionOverwrites = new List<Overwrite>
+                {
+                    new(guild.EveryoneRole.Id, PermissionTarget.Role,
+                        new OverwritePermissions(viewChannel: PermValue.Deny)),
+                    new(botGuildUser.Id, PermissionTarget.User,
+                        new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow,
+                            manageMessages: PermValue.Allow,
+                            manageWebhooks: PermValue.Allow, // Bot needs manage webhooks here
+                            readMessageHistory: PermValue.Allow)),
+                    new(_config.Client.OwnerId!.Value, PermissionTarget.User, // Assuming OwnerId is configured
+                        new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow,
+                            manageMessages: PermValue.Allow, readMessageHistory: PermValue.Allow,
+                            manageChannel: PermValue.Allow))
+                };
             });
 
-            var targetChannel = categoryChannel.Channels
-                .OfType<SocketTextChannel>()
-                .FirstOrDefault(c => c.Topic == userTopic);
+            // Fetch the SocketTextChannel instance after creation
+            var targetChannel = _client.GetChannel(createdRestChannel.Id) as SocketTextChannel;
 
             if (targetChannel == null)
             {
-                _logger.LogError(
-                    "Failed to find newly created relay channel for user {User} ({UserId}) after creation attempt.",
-                    user.Username, user.Id);
-                return null;
+                await Task.Delay(1000); // Wait a moment for cache to update
+                targetChannel = _client.GetChannel(createdRestChannel.Id) as SocketTextChannel;
+                if (targetChannel == null)
+                {
+                    _logger.LogError(
+                        "Failed to find newly created relay channel {ChannelId} for user {User} ({UserId}) after creation attempt.",
+                        createdRestChannel.Id, user.Username, user.Id);
+                    return null;
+                }
             }
 
             _logger.LogInformation("Created relay channel {ChannelName} ({ChannelId}) for user {User} ({UserId})",
@@ -347,108 +340,8 @@ public class DmRelayService
         }
     }
 
-    private async Task<DiscordWebhookClient?> GetOrCreateWebhookForChannelAsync(SocketTextChannel targetChannel,
-        SocketGuildUser botGuildUser)
-    {
-        var cacheKey = $"{WebhookCachePrefix}{targetChannel.Id}";
-        if (_memoryCache.TryGetValue(cacheKey, out DiscordWebhookClient? cachedClient) && cachedClient != null)
-            return cachedClient;
-
-        var channelLock = _webhookLocks.GetOrAdd(targetChannel.Id, _ => new SemaphoreSlim(1, 1));
-        await channelLock.WaitAsync();
-
-        try
-        {
-            // Double-check the cache now that we have the lock
-            if (_memoryCache.TryGetValue(cacheKey, out cachedClient) && cachedClient != null)
-                return cachedClient;
-
-            if (!botGuildUser.GetPermissions(targetChannel).ManageWebhooks)
-            {
-                _logger.LogError(
-                    "Bot lacks 'Manage Webhooks' permission in target channel {ChannelName} ({ChannelId}).",
-                    targetChannel.Name, targetChannel.Id);
-                return null;
-            }
-
-            var existingWebhook = await FindExistingWebhookAsync(targetChannel);
-
-            if (existingWebhook != null)
-            {
-                _logger.LogDebug("Found existing webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
-                    existingWebhook.Name, existingWebhook.Id, targetChannel.Id);
-                var webhookClient = new DiscordWebhookClient(existingWebhook);
-                _memoryCache.Set(cacheKey, webhookClient, WebhookCacheDuration);
-                return webhookClient;
-            }
-            else
-            {
-                return await CreateWebhookAsync(targetChannel, cacheKey);
-            }
-        }
-        finally
-        {
-            channelLock.Release();
-        }
-    }
-
-    private async Task<RestWebhook?> FindExistingWebhookAsync(SocketTextChannel targetChannel)
-    {
-        try
-        {
-            var webhooks = await targetChannel.GetWebhooksAsync();
-            return webhooks.FirstOrDefault(w =>
-                w.Name == AssistantWebhookName && w.Creator.Id == _client.CurrentUser.Id);
-        }
-        catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
-        {
-            _logger.LogError(ex, "Forbidden to get webhooks in channel {ChannelId} ({ChannelName}).",
-                targetChannel.Id, targetChannel.Name);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get webhooks for channel {ChannelId} ({ChannelName}).",
-                targetChannel.Id, targetChannel.Name);
-            return null;
-        }
-    }
-
-    private async Task<DiscordWebhookClient?> CreateWebhookAsync(SocketTextChannel targetChannel, string cacheKey)
-    {
-        _logger.LogInformation("Webhook '{WebhookName}' not found in channel {ChannelId}. Creating new one.",
-            AssistantWebhookName, targetChannel.Id);
-
-        Image? avatarImage = null;
-        try
-        {
-            avatarImage = await DownloadBotAvatarAsync();
-
-            var newWebhook = await targetChannel.CreateWebhookAsync(AssistantWebhookName, avatarImage?.Stream);
-            _logger.LogInformation("Created webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
-                newWebhook.Name, newWebhook.Id, targetChannel.Id);
-
-            var webhookClient = new DiscordWebhookClient(newWebhook);
-            _memoryCache.Set(cacheKey, webhookClient, WebhookCacheDuration);
-            return webhookClient;
-        }
-        catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
-        {
-            _logger.LogError(ex, "Forbidden to create webhook in channel {ChannelId} ({ChannelName}).",
-                targetChannel.Id, targetChannel.Name);
-            return null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to create webhook in channel {ChannelId} ({ChannelName}).",
-                targetChannel.Id, targetChannel.Name);
-            return null;
-        }
-        finally
-        {
-            avatarImage?.Stream?.Dispose();
-        }
-    }
+    // Removed GetOrCreateWebhookForChannelAsync, FindExistingWebhookAsync, CreateWebhookAsync, DownloadBotAvatarAsync
+    // as their core logic is now in WebhookService.
 
     // --- Helper Methods for Building Message Content ---
 
@@ -459,7 +352,10 @@ public class DmRelayService
         sb.AppendLine();
 
         if (after.Reference is { MessageId.IsSpecified: true })
-            sb.AppendLine("- Replying to: *[Resolving message reference...]*");
+            // For simplicity, we won't resolve the replied-to message content here in the log.
+            // The owner can see the reply context in the relay channel itself.
+            sb.AppendLine($"- Replying to a message (Original ID in DM: {after.Reference.MessageId.Value})");
+
 
         if (before?.Content != null)
         {
@@ -517,6 +413,7 @@ public class DmRelayService
         IMessage? referencedMessage = null;
         try
         {
+            // Try fetching from the DM channel context
             referencedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value);
         }
         catch (Exception ex)
@@ -526,10 +423,12 @@ public class DmRelayService
         }
 
         if (referencedMessage != null)
-            sb.AppendLine($"- Replying to: `{Truncate(referencedMessage.Content, 100)}`");
+            sb.AppendLine(
+                $"- Replying to: `{Truncate(referencedMessage.Content, 100)}` (by: {referencedMessage.Author.Username})");
         else
-            sb.AppendLine("- Replying to: *[Message not found]*");
+            sb.AppendLine("- Replying to: *[Message not found or inaccessible]*");
     }
+
 
     private void AppendUrlIfPresent(StringBuilder sb, string content)
     {
@@ -551,7 +450,17 @@ public class DmRelayService
         _logger.LogDebug("Replying to original DM {OriginalDmId} in DM channel {DmChannelId}",
             originalDmId.Value, dmChannel.Id);
 
-        return new MessageReference(originalDmId.Value, dmChannel.Id);
+        // Verify the message exists in the DM channel before creating a reference
+        try
+        {
+            await dmChannel.GetMessageAsync(originalDmId.Value);
+            return new MessageReference(originalDmId.Value, dmChannel.Id, null, false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error fetching original DM {OriginalDmId} for reply reference.", originalDmId.Value);
+            return null;
+        }
     }
 
     // --- Utility Methods ---
@@ -559,7 +468,9 @@ public class DmRelayService
     private async Task<List<FileAttachment>> DownloadAttachmentsAsync(IEnumerable<IAttachment> attachments)
     {
         var fileAttachments = new List<FileAttachment>();
-        using var httpClient = _httpClientFactory.CreateClient();
+        using var
+            httpClient =
+                _httpClientFactory.CreateClient("AttachmentDownloader"); // Use a named client if specific config needed
         foreach (var attachment in attachments)
         {
             MemoryStream? memoryStream = null;
@@ -572,7 +483,7 @@ public class DmRelayService
                 memoryStream.Position = 0;
                 fileAttachments.Add(new FileAttachment(memoryStream, attachment.Filename, attachment.Description,
                     attachment.IsSpoiler()));
-                memoryStream = null;
+                memoryStream = null; // Ownership transferred
             }
             catch (Exception ex)
             {
@@ -582,32 +493,6 @@ public class DmRelayService
         }
 
         return fileAttachments;
-    }
-
-    private async Task<Image?> DownloadBotAvatarAsync()
-    {
-        var botAvatarUrl = _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl();
-
-        try
-        {
-            using var httpClient = _httpClientFactory.CreateClient();
-            var response = await httpClient.GetAsync(botAvatarUrl);
-            if (response.IsSuccessStatusCode)
-            {
-                var avatarStream = await response.Content.ReadAsStreamAsync();
-                return new Image(avatarStream);
-            }
-
-            _logger.LogWarning(
-                "Failed to download bot avatar (Status: {StatusCode}) for webhook creation. Using default.",
-                response.StatusCode);
-            return null;
-        }
-        catch (Exception avatarEx)
-        {
-            _logger.LogWarning(avatarEx, "Error downloading bot avatar for webhook creation. Using default.");
-            return null;
-        }
     }
 
     private static void DisposeFileAttachments(List<FileAttachment> attachments)
@@ -643,7 +528,7 @@ public class DmRelayService
     private static string Truncate(string? value, int maxLength)
     {
         if (string.IsNullOrEmpty(value)) return string.Empty;
-        return value.Length <= maxLength ? value : value.Substring(0, maxLength - 3) + "...";
+        return value.Length <= maxLength ? value : value[..(maxLength - 3)] + "...";
     }
 
     public static string SanitizeCodeBlock(string? content) =>

@@ -1,300 +1,167 @@
-using Assistant.Net.Configuration;
 using Assistant.Net.Modules.Music.PlayCommand;
 using Assistant.Net.Modules.Music.Player;
 using Assistant.Net.Services;
-using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
-using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
-using Lavalink4NET.Players.Queued;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Music.Commands;
 
 [CommandContextType(InteractionContextType.Guild)]
 public class CommandsInteractionModule(
-    IAudioService audioService,
-    ILogger<PlayInteractionModule> logger,
-    MusicHistoryService musicHistoryService,
-    Config config)
+    ILogger<CommandsInteractionModule> logger,
+    MusicService musicService)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private static string Clickable(string title, Uri? uri) => $"[{title}](<{uri?.AbsoluteUri}>)";
+    private async Task RespondOrFollowupAsync(
+        string? text = null,
+        bool ephemeral = false,
+        Embed? embed = null,
+        MessageComponent? components = null,
+        AllowedMentions? allowedMentions = null)
+    {
+        if (Context.Interaction.HasResponded)
+            await FollowupAsync(text, ephemeral: ephemeral, embeds: embed != null ? [embed] : null,
+                components: components, allowedMentions: allowedMentions ?? AllowedMentions.None);
+        else
+            await RespondAsync(text, ephemeral: ephemeral, embed: embed, components: components,
+                allowedMentions: allowedMentions ?? AllowedMentions.None);
+    }
+
+    private async ValueTask<(CustomPlayer? Player, PlayerRetrieveStatus Status)> GetPlayerFromServiceAsync(
+        bool connectToVoiceChannel = true)
+    {
+        if (Context.User is not IGuildUser guildUser)
+        {
+            logger.LogError("GetPlayerFromServiceAsync called by non-guild user {UserId}", Context.User.Id);
+            return (null, PlayerRetrieveStatus.UserNotInVoiceChannel);
+        }
+
+        if (Context.Channel is ITextChannel textChannel)
+            return await musicService.GetPlayerAsync(
+                Context.Guild.Id,
+                guildUser.VoiceChannel?.Id,
+                textChannel,
+                connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
+                connectToVoiceChannel ? MemberVoiceStateBehavior.RequireSame : MemberVoiceStateBehavior.Ignore);
+
+        logger.LogError("GetPlayerFromServiceAsync called from non-text channel {ChannelId}", Context.Channel.Id);
+        return (null, PlayerRetrieveStatus.UserNotInVoiceChannel);
+    }
 
     [SlashCommand("skip", "Skip songs that are in queue")]
     public async Task SkipAsync([Summary(description: "The index of the song in the queue to skip.")] int index = 0)
     {
-        var player = await GetPlayerAsync(false);
-        if (player?.CurrentTrack is null)
+        var (player, retrieveStatus) = await GetPlayerFromServiceAsync(false);
+        if (player is null)
         {
-            await RespondOrFollowupAsync("I am not playing anything right now.", true);
+            var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+            await RespondOrFollowupAsync(errorMessage, true);
             return;
         }
 
         await DeferAsync();
-        if (index < 0) index = player.Queue.Count + index + 1;
-
-        if (index == 0)
-        {
-            var currentTrack = player.CurrentTrack;
-            await player.SkipAsync();
-            await RespondOrFollowupAsync($"Skipping {Clickable(currentTrack.Title, currentTrack.Uri)}");
-            logger.LogInformation("[Player:{GuildId}] Skipped current track '{TrackTitle}' by {User} (Prefix)",
-                player.GuildId, currentTrack.Title, Context.User);
-            return;
-        }
-
-        if (index > player.Queue.Count)
-        {
-            await RespondOrFollowupAsync("Invalid index. The queue is not that long.", true);
-            return;
-        }
-
-        var queuedTrack = player.Queue[index - 1];
-        if (queuedTrack.Track is null)
-        {
-            await RespondOrFollowupAsync("Invalid track at the specified index.", true);
-            return;
-        }
-
-        await RespondOrFollowupAsync($"Skipping {Clickable(queuedTrack.Track.Title, queuedTrack.Track.Uri)}");
-        await player.Queue.RemoveAtAsync(index - 1);
-        logger.LogInformation(
-            "[Player:{GuildId}] Removed track '{TrackTitle}' from queue at index {Index} by {User} (Prefix)",
-            player.GuildId, queuedTrack.Track.Title, index, Context.User);
+        var (success, _, message) = await musicService.SkipTrackAsync(player, Context.User, index);
+        await RespondOrFollowupAsync(message, !success);
     }
 
     [SlashCommand("loop", "Loops the current song or the entire queue.")]
     public async Task LoopAsync()
     {
-        var player = await GetPlayerAsync(false);
-        if (player?.CurrentTrack is null)
+        var (player, retrieveStatus) = await GetPlayerFromServiceAsync(false);
+        if (player is null)
         {
-            await RespondOrFollowupAsync("I am not playing anything right now.", true);
+            var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+            await RespondOrFollowupAsync(errorMessage, true);
             return;
         }
 
-        string replyMessage;
         await DeferAsync();
-        switch (player.RepeatMode)
-        {
-            case TrackRepeatMode.None:
-                player.RepeatMode = TrackRepeatMode.Track;
-                replyMessage = $"Looping {Clickable(player.CurrentTrack.Title, player.CurrentTrack.Uri)}.";
-                break;
-            case TrackRepeatMode.Track:
-                player.RepeatMode = TrackRepeatMode.Queue;
-                replyMessage = $"Looping all {player.Queue.Count} tracks in the queue.";
-                break;
-            case TrackRepeatMode.Queue:
-                player.RepeatMode = TrackRepeatMode.None;
-                replyMessage = "Stopped looping.";
-                break;
-            default:
-                await RespondOrFollowupAsync("An unexpected error occurred with the loop mode.");
-                return;
-        }
-
-        await RespondOrFollowupAsync(replyMessage);
-        logger.LogInformation("[Player:{GuildId}] Loop mode set to {RepeatMode} by {User} (Prefix)", player.GuildId,
-            player.RepeatMode, Context.User);
+        var message = musicService.ToggleLoopMode(player, Context.User);
+        await RespondOrFollowupAsync(message);
     }
-
 
     [SlashCommand("volume", "Sets the player volume (0 - 200%)")]
     public async Task VolumeAsync([Summary(description: "Volume to set [0 - 200] %")] int? volume = null)
     {
-        var player = await GetPlayerAsync(false);
-        if (player is null)
+        var (player, retrieveStatus) = await GetPlayerFromServiceAsync(false);
+        switch (player)
         {
-            await RespondOrFollowupAsync("I am not connected to a voice channel.", true);
-            return;
+            case null when retrieveStatus != PlayerRetrieveStatus.BotNotConnected:
+            {
+                var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+                await RespondOrFollowupAsync(errorMessage, true);
+                return;
+            }
+            case null:
+                await RespondOrFollowupAsync("I am not connected to a voice channel.", true);
+                return;
         }
 
         await DeferAsync();
-        switch (volume)
+        if (volume is null)
         {
-            case null:
-                await RespondOrFollowupAsync($"Current Volume: {(int)(player.Volume * 100)}%");
-                return;
-            case > 0 and < 201:
-                await player.SetVolumeAsync((float)(volume / 100f));
-                await RespondOrFollowupAsync($"Volume set to `{volume}%`");
-                await musicHistoryService.SetGuildVolumeAsync(Context.Guild.Id, volume.Value / 100f);
-                logger.LogInformation("[Player:{GuildId}] Volume set to {Volume}% by {User} (Prefix)", player.GuildId,
-                    volume, Context.User);
-                break;
-            default:
-                await RespondOrFollowupAsync("Volume out of range. Please use a value between 0 and 200.");
-                return;
+            await RespondOrFollowupAsync($"Current Volume: {(int)musicService.GetCurrentVolumePercent(player)}%");
+            return;
         }
+
+        var (success, message) = await musicService.SetVolumeAsync(player, Context.User, volume.Value);
+        await RespondOrFollowupAsync(message, !success);
     }
 
     [SlashCommand("stop", "Stops the music and disconnects the bot from the voice channel")]
     public async Task StopAsync()
     {
-        var player = await GetPlayerAsync(false);
-        if (player is null)
+        var (player, retrieveStatus) = await GetPlayerFromServiceAsync(false);
+        switch (player)
         {
-            await RespondOrFollowupAsync("I am not playing anything right now.", true);
-            return;
+            case null when retrieveStatus != PlayerRetrieveStatus.BotNotConnected:
+            {
+                var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+                await RespondOrFollowupAsync(errorMessage, true);
+                return;
+            }
+            case null:
+                await RespondOrFollowupAsync("I am not playing anything right now.", true);
+                return;
         }
 
         await DeferAsync();
-
-        await player.Queue.ClearAsync();
-        await player.StopAsync();
-        await player.DisconnectAsync();
+        await musicService.StopPlaybackAsync(player, Context.User);
         await RespondOrFollowupAsync("Thanks for Listening");
-        logger.LogInformation("[Player:{GuildId}] Stopped and disconnected by {User} (Prefix)", player.GuildId,
-            Context.User);
     }
 
     [SlashCommand("skipto", "Skips to a specific song in the queue")]
     public async Task SkipToAsync([Summary(description: "Index of the song to skip to")] int index = 0)
     {
-        var player = await GetPlayerAsync(false);
-        if (player?.CurrentTrack is null)
+        var (player, retrieveStatus) = await GetPlayerFromServiceAsync(false);
+        if (player is null)
         {
-            await RespondOrFollowupAsync("I am not playing anything right now.", true);
+            var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+            await RespondOrFollowupAsync(errorMessage, true);
             return;
         }
 
         await DeferAsync();
-
-        if (index < 0) index = player.Queue.Count + index + 1;
-        var currentTrack = player.CurrentTrack;
-
-        if (index == 0)
-        {
-            await player.SeekAsync(TimeSpan.Zero);
-            await RespondOrFollowupAsync($"Restarting {Clickable(currentTrack.Title, currentTrack.Uri)}.");
-            logger.LogInformation("[Player:{GuildId}] Restarted track '{TrackTitle}' by {User} (Prefix)",
-                player.GuildId, currentTrack.Title, Context.User);
-            return;
-        }
-
-        if (index > player.Queue.Count)
-        {
-            await RespondOrFollowupAsync("Invalid index. The queue is not that long.", true);
-            return;
-        }
-
-        var trackToPlay = player.Queue[index - 1];
-        if (trackToPlay.Track is null)
-        {
-            await RespondOrFollowupAsync("Invalid track at the specified index.", true);
-            return;
-        }
-
-        await RespondOrFollowupAsync($"Skipping to {Clickable(trackToPlay.Track.Title, trackToPlay.Track.Uri)}.");
-        await player.Queue.RemoveAtAsync(index - 1);
-        await player.Queue.InsertAsync(0, new TrackQueueItem(trackToPlay.Track));
-        await player.Queue.InsertAsync(index, new TrackQueueItem(currentTrack));
-        await player.SkipAsync();
-        logger.LogInformation(
-            "[Player:{GuildId}] Skipped to track '{TrackTitle}' (from index {Index}) by {User} (Prefix)",
-            player.GuildId, trackToPlay.Track.Title, index, Context.User);
+        var (success, message) = await musicService.SkipToTrackAsync(player, Context.User, index);
+        await RespondOrFollowupAsync(message, !success);
     }
 
     [SlashCommand("seek", "Seeks to a specific time in the current song.")]
     public async Task Seek([Summary(description: "Time to seek to in MM:SS format")] string time = "0")
     {
-        var player = await GetPlayerAsync(false);
-        if (player?.CurrentTrack is null)
+        var (player, retrieveStatus) = await GetPlayerFromServiceAsync(false);
+        if (player is null)
         {
-            await RespondOrFollowupAsync("I am not playing anything right now.", true);
+            var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+            await RespondOrFollowupAsync(errorMessage, true);
             return;
         }
 
         await DeferAsync();
-        var timeSpan = TimeUtils.ParseTimestamp(time);
-        if (timeSpan > player.CurrentTrack.Duration)
-        {
-            await RespondOrFollowupAsync(
-                $"Cannot seek beyond the song's duration ({player.CurrentTrack.Duration:mm\\:ss}).", true);
-            return;
-        }
-
-        if (timeSpan < TimeSpan.Zero)
-        {
-            await RespondOrFollowupAsync("Cannot seek to a negative time.", true);
-            return;
-        }
-
-        await player.SeekAsync(timeSpan);
-        await RespondOrFollowupAsync(
-            $"Seeked {Clickable(player.CurrentTrack.Title, player.CurrentTrack.Uri)} to `{timeSpan:mm\\:ss}`.");
-        logger.LogInformation("[Player:{GuildId}] Seeked track '{TrackTitle}' to {Time} by {User} (Prefix)",
-            player.GuildId, player.CurrentTrack.Title, timeSpan, Context.User);
-    }
-
-    private async Task RespondOrFollowupAsync(
-        string? text = null,
-        bool ephemeral = false,
-        Embed? embed = null,
-        MessageComponent? components = null)
-    {
-        if (Context.Interaction.HasResponded)
-            await FollowupAsync(text, ephemeral: ephemeral, embed: embed, components: components);
-        else
-            await RespondAsync(text, ephemeral: ephemeral, embed: embed, components: components);
-    }
-
-    private async ValueTask<CustomPlayer?> GetPlayerAsync(bool connectToVoiceChannel = true)
-    {
-        if (Context.User is not IGuildUser guildUser)
-        {
-            await RespondOrFollowupAsync("You must be in a guild to use this command", true);
-            return null;
-        }
-
-        var voiceChannelId = guildUser.VoiceChannel?.Id;
-        if (connectToVoiceChannel && voiceChannelId is null)
-        {
-            await RespondOrFollowupAsync("You must be connected to a voice channel to use this command.", true);
-            return null;
-        }
-
-        var retrieveOptions = new PlayerRetrieveOptions(
-            connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
-            connectToVoiceChannel ? MemberVoiceStateBehavior.RequireSame : MemberVoiceStateBehavior.Ignore
-        );
-        var playerOptions = new CustomPlayerOptions
-        {
-            TextChannel = Context.Channel as ITextChannel ??
-                          throw new InvalidOperationException("Command invoked outside a valid text channel."),
-            SocketClient = Context.Client,
-            ApplicationConfig = config,
-            InitialVolume = await musicHistoryService.GetGuildVolumeAsync(Context.Guild.Id)
-        };
-
-        var result = await audioService.Players.RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
-            Context.Guild.Id, voiceChannelId,
-            static (props, ct) =>
-            {
-                ct.ThrowIfCancellationRequested();
-                return ValueTask.FromResult(new CustomPlayer(props));
-            },
-            playerOptions,
-            retrieveOptions);
-
-        if (result.IsSuccess) return result.Player;
-        var errorMessage = result.Status switch
-        {
-            PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-            PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected to a voice channel.",
-            PlayerRetrieveStatus.VoiceChannelMismatch => "You must be in the same voice channel as the bot.",
-            PlayerRetrieveStatus.PreconditionFailed => "The bot is already connected to a different voice channel.",
-            _ => "An unknown error occurred while retrieving the player."
-        };
-
-        logger.LogWarning("Failed to retrieve player for Guild {GuildId} by User {UserId}. Status: {Status}",
-            Context.Guild.Id, Context.User.Id, result.Status);
-
-        await RespondOrFollowupAsync(errorMessage, true);
-        return null;
+        var (success, message) = await musicService.SeekAsync(player, Context.User, time);
+        await RespondOrFollowupAsync(message, !success);
     }
 }

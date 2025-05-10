@@ -24,8 +24,8 @@ public class TicTacToeGame
     private const int BoardSize = 3;
 
     // Player1 is always X, Player2 is always O
-    public const PlayerMarker Player1Marker = PlayerMarker.X;
-    public const PlayerMarker Player2Marker = PlayerMarker.O;
+    private const PlayerMarker Player1Marker = PlayerMarker.X;
+    private const PlayerMarker Player2Marker = PlayerMarker.O;
 
     private readonly GameStatsService? _gameStatsService;
     private readonly ILogger _logger;
@@ -152,31 +152,28 @@ public class TicTacToeGame
 
             if (botMarker == PlayerMarker.O) // Bot is O (Maximizing)
             {
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestMove = move;
-                }
+                if (score <= bestScore) continue;
+                bestScore = score;
+                bestMove = move;
             }
             else // Bot is X (Minimizing)
             {
-                if (score < bestScore)
-                {
-                    bestScore = score;
-                    bestMove = move;
-                }
+                if (score >= bestScore) continue;
+                bestScore = score;
+                bestMove = move;
             }
         }
 
-        if (!bestMove.HasValue && availableMoves.Count > 0)
+        switch (bestMove)
         {
-            _logger.LogWarning("Minimax couldn't determine best move for Game {GameId}, falling back to random.",
-                GameId);
-            bestMove = availableMoves[_random.Next(availableMoves.Count)]; // Fallback if something goes wrong
-        }
-        else if (!bestMove.HasValue)
-        {
-            _logger.LogError("Minimax failed to find a move for Game {GameId} when board is not full.", GameId);
+            case null when availableMoves.Count > 0:
+                _logger.LogWarning("Minimax couldn't determine best move for Game {GameId}, falling back to random.",
+                    GameId);
+                bestMove = availableMoves[_random.Next(availableMoves.Count)];
+                break;
+            case null:
+                _logger.LogError("Minimax failed to find a move for Game {GameId} when board is not full.", GameId);
+                break;
         }
 
 

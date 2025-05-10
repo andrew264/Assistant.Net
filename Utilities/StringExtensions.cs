@@ -10,4 +10,11 @@ public static class StringExtensions
             return input.ToUpper();
         return char.ToUpper(input[0]) + input[1..];
     }
+
+    public static string AsMarkdownLink(this string text, string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return text;
+        var sanitizedText = text.Replace("[", "\\[").Replace("]", "\\]");
+        return $"[{sanitizedText}](<{url}>)";
+    }
 }

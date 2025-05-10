@@ -1,98 +1,37 @@
-using Assistant.Net.Configuration;
+using Assistant.Net.Models.Music;
 using Assistant.Net.Modules.Music.Autocomplete;
-using Assistant.Net.Modules.Music.Player;
 using Assistant.Net.Services;
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
-using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
-using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
-using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Music.PlayCommand;
 
 [CommandContextType(InteractionContextType.Guild)]
 public class PlayInteractionModule(
-    IAudioService audioService,
-    ILogger<PlayInteractionModule> logger,
-    MusicHistoryService musicHistoryService,
-    Config config)
-    : InteractionModuleBase<SocketInteractionContext>
+    MusicService musicService
+) : InteractionModuleBase<SocketInteractionContext>
 {
-    private static string Clickable(string title, Uri? uri) => $"[{title}](<{uri?.AbsoluteUri}>)";
-    private static string Clickable(string title, string? uri) => $"[{title}](<{uri}>)";
-
     private async Task RespondOrFollowupAsync(
         string? text = null,
         bool ephemeral = false,
         Embed? embed = null,
-        MessageComponent? components = null)
+        MessageComponent? components = null,
+        AllowedMentions? allowedMentions = null)
     {
         if (Context.Interaction.HasResponded)
-            await FollowupAsync(text, ephemeral: ephemeral, embed: embed, components: components);
+            await FollowupAsync(text, ephemeral: ephemeral, embeds: embed != null ? new[] { embed } : null,
+                components: components, allowedMentions: allowedMentions ?? AllowedMentions.None);
         else
-            await RespondAsync(text, ephemeral: ephemeral, embed: embed, components: components);
+            await RespondAsync(text, ephemeral: ephemeral, embed: embed, components: components,
+                allowedMentions: allowedMentions ?? AllowedMentions.None);
     }
 
-    private async ValueTask<CustomPlayer?> GetPlayerAsync(bool connectToVoiceChannel = true)
-    {
-        if (Context.User is not IGuildUser guildUser)
-        {
-            await RespondOrFollowupAsync("You must be in a guild to use this command", true);
-            return null;
-        }
-
-        var voiceChannelId = guildUser.VoiceChannel?.Id;
-        if (connectToVoiceChannel && voiceChannelId is null)
-        {
-            await RespondOrFollowupAsync("You must be connected to a voice channel to use this command.", true);
-            return null;
-        }
-
-        var retrieveOptions = new PlayerRetrieveOptions(
-            connectToVoiceChannel ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
-            connectToVoiceChannel ? MemberVoiceStateBehavior.RequireSame : MemberVoiceStateBehavior.Ignore
-        );
-        var playerOptions = new CustomPlayerOptions
-        {
-            TextChannel = Context.Channel as ITextChannel ??
-                          throw new InvalidOperationException("Command invoked outside a valid text channel."),
-            SocketClient = Context.Client,
-            ApplicationConfig = config,
-            InitialVolume = await musicHistoryService.GetGuildVolumeAsync(Context.Guild.Id)
-        };
-
-        var result = await audioService.Players.RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
-            Context.Guild.Id, voiceChannelId,
-            static (props, ct) =>
-            {
-                ct.ThrowIfCancellationRequested();
-                return ValueTask.FromResult(new CustomPlayer(props));
-            },
-            playerOptions,
-            retrieveOptions);
-
-        if (result.IsSuccess) return result.Player;
-        var errorMessage = result.Status switch
-        {
-            PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
-            PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected to a voice channel.",
-            PlayerRetrieveStatus.VoiceChannelMismatch => "You must be in the same voice channel as the bot.",
-            PlayerRetrieveStatus.PreconditionFailed => "The bot is already connected to a different voice channel.",
-            _ => "An unknown error occurred while retrieving the player."
-        };
-
-        logger.LogWarning("Failed to retrieve player for Guild {GuildId} by User {UserId}. Status: {Status}",
-            Context.Guild.Id, Context.User.Id, result.Status);
-
-        await RespondOrFollowupAsync(errorMessage, true);
-        return null;
-    }
-
-    private async Task HandleSearchResults(IReadOnlyList<LavalinkTrack> tracks)
+    private async Task HandleSearchResultsUi(IReadOnlyList<LavalinkTrack> tracks, string originalQuery)
     {
         var topTracks = tracks.Take(5).ToList();
         if (topTracks.Count == 0)
@@ -102,7 +41,7 @@ public class PlayInteractionModule(
         }
 
         var embed = new EmbedBuilder()
-            .WithTitle("🔎 Search Results")
+            .WithTitle($"🔎 Search Results for: `{originalQuery}`")
             .WithColor(Color.Blue)
             .WithDescription("Select a track to add to the queue:");
 
@@ -112,35 +51,18 @@ public class PlayInteractionModule(
             var track = topTracks[i];
             var title = track.Title.Length > 50 ? track.Title[..47] + "..." : track.Title;
             embed.AddField("\u200B",
-                $"{i + 1}: {Clickable(title, track.Uri)} by {track.Author} ({track.Duration:mm\\:ss})");
+                $"{i + 1}: {title.AsMarkdownLink(track.Uri?.ToString())} by {track.Author} ({track.Duration:mm\\:ss})");
 
-
-            var customId = $"assistant:play_search:{Context.User.Id}:{track.Uri}";
-            if (customId.Length <= 100)
+            var customId = $"assistant:play_search:{Context.User.Id}:{track.Uri?.ToString() ?? string.Empty}";
+            if (customId.Length <= 100 && track.Uri != null) // Ensure URI is not null for button
                 components.WithButton((i + 1).ToString(), customId, ButtonStyle.Secondary);
+            else if (track.Uri == null)
+                embed.Fields[i].Value += "\n*(Cannot be selected: Missing URI)*";
             else
                 embed.Fields[i].Value += "\n*(Cannot be selected via button due to URI length)*";
         }
 
-        await RespondOrFollowupAsync(embed: embed.Build(), components: components.Build());
-    }
-
-    private async Task StartPlaybackIfNeeded(CustomPlayer player)
-    {
-        if (player.State is PlayerState.NotPlaying or PlayerState.Destroyed)
-        {
-            var nextTrack = await player.Queue.TryDequeueAsync();
-            if (nextTrack != null)
-            {
-                logger.LogInformation("[Player:{GuildId}] Starting playback with track: {TrackTitle}", player.GuildId,
-                    nextTrack.Track?.Title);
-                await player.PlayAsync(nextTrack, false);
-            }
-            else
-            {
-                logger.LogDebug("[Player:{GuildId}] Tried to start playback, but queue is empty.", player.GuildId);
-            }
-        }
+        await RespondOrFollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: true);
     }
 
     [SlashCommand("play", "Plays music.", runMode: RunMode.Async)]
@@ -150,106 +72,67 @@ public class PlayInteractionModule(
     {
         await DeferAsync();
 
-        var player = await GetPlayerAsync(!string.IsNullOrWhiteSpace(query));
-        if (player is null) return;
-
-        if (string.IsNullOrWhiteSpace(query))
+        if (Context.User is not IGuildUser guildUser)
         {
-            if (player.Queue.IsEmpty && player.CurrentTrack is null)
-            {
-                await FollowupAsync("The queue is empty. Please provide a song name or URL to play.", ephemeral: true);
-                return;
-            }
-
-            var track = player.CurrentTrack;
-
-            if (track == null)
-            {
-                await FollowupAsync("I am not playing anything right now.", ephemeral: true);
-                return;
-            }
-
-            switch (player.State)
-            {
-                case PlayerState.Playing:
-                    await player.PauseAsync();
-                    await FollowupAsync($"Paused: {Clickable(track.Title, track.Uri)}", ephemeral: false);
-                    logger.LogInformation("[Player:{GuildId}] Paused playback by {User}", player.GuildId, Context.User);
-                    break;
-                case PlayerState.Paused:
-                    await player.ResumeAsync();
-                    await FollowupAsync($"Resumed: {Clickable(track.Title, track.Uri)}", ephemeral: false);
-                    logger.LogInformation("[Player:{GuildId}] Resumed playback by {User}", player.GuildId,
-                        Context.User);
-                    break;
-                case PlayerState.Destroyed:
-                case PlayerState.NotPlaying:
-                default:
-                    await FollowupAsync("I am not playing anything right now.", ephemeral: true);
-                    break;
-            }
-
+            await RespondOrFollowupAsync("You must be in a guild to use this command.", true);
             return;
         }
 
-        logger.LogInformation("[Player:{GuildId}] Received play request by {User} with query: {Query}", player.GuildId,
-            Context.User, query);
-
-        var isUrl = Uri.TryCreate(query, UriKind.Absolute, out _);
-        var searchMode = isUrl ? TrackSearchMode.None : TrackSearchMode.YouTube;
-        TrackLoadResult result;
-        try
+        if (Context.Channel is not ITextChannel textChannel)
         {
-            result = await audioService.Tracks.LoadTracksAsync(query, searchMode);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Exception during LoadTracksAsync for query '{Query}'", query);
-            await RespondOrFollowupAsync($"❌ An error occurred while searching: {ex.Message}", true);
+            await RespondOrFollowupAsync("This command must be used in a text channel.", true);
             return;
         }
 
-        if (result.IsPlaylist)
+        var connectToVoice = !string.IsNullOrWhiteSpace(query);
+        var (player, retrieveStatus) = await musicService.GetPlayerAsync(
+            Context.Guild.Id,
+            guildUser.VoiceChannel?.Id,
+            textChannel,
+            connectToVoice ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
+            connectToVoice ? MemberVoiceStateBehavior.RequireSame : MemberVoiceStateBehavior.Ignore
+        );
+
+        if (player is null)
         {
-            var playlist = result.Playlist!;
-            var tracks = result.Tracks;
-            if (tracks.IsEmpty)
-            {
-                await RespondOrFollowupAsync($"Playlist '{playlist.Name}' is empty or could not be loaded.", true);
-            }
-            else
-            {
-                var trackItems = tracks.Select(t => new TrackQueueItem(t)).ToList();
-                await player.Queue.AddRangeAsync(trackItems);
+            var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+            await RespondOrFollowupAsync(errorMessage, true);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(query)) // No query means pause/resume
+        {
+            var (success, message) = await musicService.PauseOrResumeAsync(player, Context.User);
+            await RespondOrFollowupAsync(message, !success);
+            return;
+        }
+
+        var loadResult = await musicService.LoadAndQueueTrackAsync(player, query, Context.User);
+
+        switch (loadResult.Status)
+        {
+            case TrackLoadStatus.TrackLoaded:
                 await RespondOrFollowupAsync(
-                    $"Added {trackItems.Count} tracks from playlist '{Clickable(playlist.Name, query)}' to queue.");
-                await StartPlaybackIfNeeded(player);
-            }
-        }
-        else if (searchMode != TrackSearchMode.None && !result.Tracks.IsEmpty)
-        {
-            await HandleSearchResults(result.Tracks);
-        }
-        else if (result.Track is not null)
-        {
-            var loadedTrack = result.Track;
-            await player.Queue.AddAsync(new TrackQueueItem(loadedTrack));
-            await RespondOrFollowupAsync($"Added to queue: {Clickable(loadedTrack.Title, loadedTrack.Uri)}");
-            await StartPlaybackIfNeeded(player);
-        }
-        else if (result.Exception is not null)
-        {
-            logger.LogError(
-                "Track loading failed for query '{Query}'. Reason: {Reason}, Severity: {Severity}, Cause: {Cause}",
-                query, result.Exception?.Message, result.Exception?.Severity, result.Exception?.Cause);
-            await RespondOrFollowupAsync($"❌ Failed to load track(s): {result.Exception?.Message ?? "Unknown error"}");
-        }
-        else
-        {
-            await RespondOrFollowupAsync($"❌ No results found for: `{query}`");
+                    $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}");
+                await musicService.StartPlaybackIfNeededAsync(player);
+                break;
+            case TrackLoadStatus.PlaylistLoaded:
+                await RespondOrFollowupAsync(
+                    $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.");
+                await musicService.StartPlaybackIfNeededAsync(player);
+                break;
+            case TrackLoadStatus.SearchResults:
+                await HandleSearchResultsUi(loadResult.Tracks, loadResult.OriginalQuery);
+                break;
+            case TrackLoadStatus.NoMatches:
+                await RespondOrFollowupAsync($"❌ No results found for: `{loadResult.OriginalQuery}`", true);
+                break;
+            case TrackLoadStatus.LoadFailed:
+                await RespondOrFollowupAsync($"❌ Failed to load track(s): {loadResult.ErrorMessage ?? "Unknown error"}",
+                    true);
+                break;
         }
     }
-
 
     [ComponentInteraction("assistant:play_search:*:*", true)]
     public async Task HandleSearchResultSelection(ulong requesterId, string uri)
@@ -262,27 +145,42 @@ public class PlayInteractionModule(
 
         await DeferAsync();
 
-        var player = await GetPlayerAsync();
-        if (player is null) return;
-
-        try
+        if (Context.User is not IGuildUser guildUser || Context.Channel is not ITextChannel textChannel)
         {
-            var result = await audioService.Tracks.LoadTracksAsync(uri, TrackSearchMode.None);
-            if (result.Track is null)
-                throw new Exception(result.Exception?.Message ?? "Unknown error");
+            await FollowupAsync("Error: Could not verify your context.", ephemeral: true);
+            return;
+        }
 
-            await player.Queue.AddAsync(new TrackQueueItem(result.Track));
+        var (player, retrieveStatus) = await musicService.GetPlayerAsync(
+            Context.Guild.Id,
+            guildUser.VoiceChannel?.Id,
+            textChannel,
+            PlayerChannelBehavior.Join,
+            MemberVoiceStateBehavior.RequireSame
+        );
+
+        if (player is null)
+        {
+            var errorMessage = PlayInteractionModuleHelper.GetPlayerRetrieveErrorMessage(retrieveStatus);
+            await FollowupAsync(errorMessage, ephemeral: true);
+            return;
+        }
+
+        var track = await musicService.GetTrackFromSearchSelectionAsync(uri);
+
+        if (track is not null)
+        {
+            await player.Queue.AddAsync(new TrackQueueItem(track));
             await ModifyOriginalResponseAsync(props =>
             {
-                props.Content = $"Added to queue: {Clickable(result.Track.Title, result.Track.Uri)}";
+                props.Content = $"Added to queue: {track.Title.AsMarkdownLink(track.Uri?.ToString())}";
                 props.Embed = null;
                 props.Components = new ComponentBuilder().Build();
             });
-            await StartPlaybackIfNeeded(player);
+            await musicService.StartPlaybackIfNeededAsync(player);
         }
-        catch (Exception ex)
+        else
         {
-            logger.LogError(ex, "Failed to load selected track: {Uri}", uri);
             await ModifyOriginalResponseAsync(props =>
             {
                 props.Content = "❌ Failed to load the selected track.";
@@ -291,4 +189,17 @@ public class PlayInteractionModule(
             });
         }
     }
+}
+
+// Helper class to avoid duplicating error message logic
+internal static class PlayInteractionModuleHelper
+{
+    public static string GetPlayerRetrieveErrorMessage(PlayerRetrieveStatus status) => status switch
+    {
+        PlayerRetrieveStatus.UserNotInVoiceChannel => "You are not connected to a voice channel.",
+        PlayerRetrieveStatus.BotNotConnected => "The bot is currently not connected to a voice channel.",
+        PlayerRetrieveStatus.VoiceChannelMismatch => "You must be in the same voice channel as the bot.",
+        PlayerRetrieveStatus.PreconditionFailed => "The bot is already connected to a different voice channel.",
+        _ => "An unknown error occurred while retrieving the player."
+    };
 }
