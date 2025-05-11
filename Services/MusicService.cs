@@ -24,6 +24,10 @@ public class MusicService(
 {
     private const int QueueItemsPerPage = 4;
 
+    // --- Events for NowPlayingService ---
+    public event Func<ulong, Task>? PlayerStopped;
+    public event Func<ulong, CustomPlayer, Task>? QueueEmptied;
+
     public async ValueTask<(CustomPlayer? Player, PlayerRetrieveStatus Status)> GetPlayerAsync(
         ulong guildId,
         ulong? userVoiceChannelId,
@@ -56,7 +60,7 @@ public class MusicService(
             logger.LogWarning(
                 "Failed to retrieve player for Guild {GuildId}. Status: {Status}. VoiceChannelId: {VoiceChannelId}, ChannelBehavior: {ChannelBehavior}, MemberBehavior: {MemberBehavior}",
                 guildId, result.Status, userVoiceChannelId, channelBehavior, memberBehavior);
-        else
+        else if (result.Player != null)
             logger.LogDebug(
                 "Successfully retrieved player for Guild {GuildId}. Status: {Status}. VoiceChannelId: {VoiceChannelId}, ChannelBehavior: {ChannelBehavior}, MemberBehavior: {MemberBehavior}",
                 guildId, result.Status, userVoiceChannelId, channelBehavior, memberBehavior);
@@ -89,7 +93,7 @@ public class MusicService(
 
         logger.LogError("GetPlayerForContextAsync called from non-text channel {ChannelId} ({ChannelName})",
             channel.Id, channel.Name);
-        return (null, PlayerRetrieveStatus.UserNotInVoiceChannel);
+        return (null, PlayerRetrieveStatus.UserNotInVoiceChannel); // Or a more appropriate status
     }
 
 
@@ -109,6 +113,9 @@ public class MusicService(
                 logger.LogDebug(
                     "[MusicService:{GuildId}] Tried to start playback, but queue is empty or dequeued track is null.",
                     player.GuildId);
+                // If queue is truly empty now, and player was not playing.
+                if (player.Queue.IsEmpty && player.State == PlayerState.NotPlaying && QueueEmptied != null)
+                    await QueueEmptied.Invoke(player.GuildId, player);
             }
         }
     }
@@ -212,6 +219,9 @@ public class MusicService(
             logger.LogInformation(
                 "[MusicService:{GuildId}] Removed track '{TrackTitle}' from queue at index {Index} by {User}",
                 player.GuildId, trackToReport.Title, index, requester.Username);
+
+            if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null) // Check after removal
+                await QueueEmptied.Invoke(player.GuildId, player);
         }
         else
         {
@@ -235,7 +245,7 @@ public class MusicService(
                 break;
             case TrackRepeatMode.Track:
                 player.RepeatMode = TrackRepeatMode.Queue;
-                replyMessage = $"Looping all {player.Queue.Count} tracks in the queue.";
+                replyMessage = $"Looping all {player.Queue.Count + (player.CurrentTrack != null ? 1 : 0)} tracks.";
                 break;
             case TrackRepeatMode.Queue:
                 player.RepeatMode = TrackRepeatMode.None;
@@ -256,8 +266,9 @@ public class MusicService(
     public async Task<(bool Success, string Message)> SetVolumeAsync(CustomPlayer player, IUser requester,
         int volumePercentage)
     {
-        if (volumePercentage is < 0 or > 200)
-            return (false, "Volume out of range. Please use a value between 0 and 200.");
+        var maxVolume = config.Music.MaxPlayerVolumePercent;
+        if (volumePercentage < 0 || volumePercentage > maxVolume)
+            return (false, $"Volume out of range. Please use a value between 0 and {maxVolume}.");
 
         var volumeFloat = volumePercentage / 100f;
         await player.SetVolumeAsync(volumeFloat);
@@ -272,10 +283,13 @@ public class MusicService(
 
     public async Task StopPlaybackAsync(CustomPlayer player, IUser requester)
     {
+        var guildId = player.GuildId; // Capture before player might be disposed
         await player.Queue.ClearAsync();
         await player.StopAsync();
-        logger.LogInformation("[MusicService:{GuildId}] Stopped and disconnected by {User}", player.GuildId,
+        logger.LogInformation("[MusicService:{GuildId}] Stopped and cleared queue by {User}", guildId,
             requester.Username);
+
+        PlayerStopped?.Invoke(guildId);
     }
 
     public async Task<(bool Success, string Message)> SeekAsync(CustomPlayer player, IUser requester, string timeInput)
@@ -283,6 +297,10 @@ public class MusicService(
         if (player.CurrentTrack is null) return (false, "I am not playing anything right now.");
 
         var timeSpan = TimeUtils.ParseTimestamp(timeInput);
+        if (timeSpan == TimeSpan.Zero && !string.IsNullOrWhiteSpace(timeInput) && timeInput != "0" &&
+            timeInput != "0:0" &&
+            timeInput != "0:0:0") return (false, "Invalid time format. Please use `HH:MM:SS`, `MM:SS`, or `SS`.");
+
         if (timeSpan > player.CurrentTrack.Duration)
             return (false, $"Cannot seek beyond the song's duration ({player.CurrentTrack.Duration:mm\\:ss}).");
         if (timeSpan < TimeSpan.Zero) return (false, "Cannot seek to a negative time.");
@@ -302,7 +320,7 @@ public class MusicService(
 
         var currentTrack = player.CurrentTrack;
 
-        if (index == 0)
+        if (index == 0) // Restart current track
         {
             await player.SeekAsync(TimeSpan.Zero);
             logger.LogInformation("[MusicService:{GuildId}] Restarted track '{TrackTitle}' by {User}",
@@ -316,9 +334,10 @@ public class MusicService(
         var trackToPlayItem = player.Queue[index - 1];
         if (trackToPlayItem.Track is null) return (false, "Invalid track data at the specified queue index.");
 
-        await player.Queue.RemoveAtAsync(index - 1);
-        await player.Queue.InsertAsync(0, new TrackQueueItem(trackToPlayItem.Track));
+        // Remove tracks before the target index
+        for (var i = 0; i < index - 1; i++) await player.Queue.TryDequeueAsync();
 
+        // The target track is now at the front. SkipAsync will play it.
         await player.SkipAsync();
         logger.LogInformation("[MusicService:{GuildId}] Skipped to track '{TrackTitle}' (from index {Index}) by {User}",
             player.GuildId, trackToPlayItem.Track.Title, index, requester.Username);
@@ -352,7 +371,7 @@ public class MusicService(
     // --- Queue Specific Methods ---
     public (Embed? Embed, MessageComponent? Components, string? ErrorMessage) BuildQueueEmbed(
         CustomPlayer player,
-        int currentPage,
+        int currentPage, // 0-based for this method, 1-based for display
         ulong interactionMessageId,
         ulong requesterId)
     {
@@ -368,14 +387,20 @@ public class MusicService(
 
         var queueCount = player.Queue.Count;
         var totalPages = 0;
+
+        // Adjust currentPage for 0-based internal logic if it was passed as 1-based
+        if (currentPage > 0) currentPage--;
+
         if (queueCount > 0)
         {
             totalPages = (int)Math.Ceiling((double)queueCount / QueueItemsPerPage);
-            if (currentPage < 1) currentPage = 1;
-            if (currentPage > totalPages) currentPage = totalPages;
+            if (currentPage < 0) currentPage = 0;
+            if (currentPage >= totalPages) currentPage = totalPages - 1;
+            if (totalPages == 0) totalPages = 1;
 
-            var first = (currentPage - 1) * QueueItemsPerPage;
-            var last = Math.Min(currentPage * QueueItemsPerPage, queueCount);
+            var first = currentPage * QueueItemsPerPage;
+            var last = Math.Min(first + QueueItemsPerPage, queueCount);
+
 
             var sb = new StringBuilder();
             for (var i = first; i < last; i++)
@@ -385,7 +410,7 @@ public class MusicService(
                     sb.AppendLine($"{i + 1}. {trackItem.Track.Title.AsMarkdownLink(trackItem.Track.Uri?.ToString())}");
             }
 
-            embed.AddField($"Next Up ({currentPage}/{totalPages})", sb.Length > 0 ? sb.ToString() : "\u200B");
+            embed.AddField($"Next Up ({currentPage + 1}/{totalPages})", sb.Length > 0 ? sb.ToString() : "\u200B");
         }
 
         var loopStatus = player.RepeatMode switch
@@ -399,13 +424,13 @@ public class MusicService(
             $"{loopStatus} | {totalSongsInQueueSystem} Song{(totalSongsInQueueSystem != 1 ? "s" : "")} in Queue");
 
         var components = new ComponentBuilder();
-        if (queueCount <= QueueItemsPerPage) return (embed.Build(), components.Build(), null);
+        if (totalPages <= 1) return (embed.Build(), components.Build(), null);
         components.WithButton("◀",
-            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev",
-            ButtonStyle.Secondary, disabled: currentPage == 1 && totalPages == 1);
+            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage + 1}:prev",
+            ButtonStyle.Secondary);
         components.WithButton("▶",
-            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next",
-            ButtonStyle.Secondary, disabled: currentPage == totalPages && totalPages == 1);
+            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage + 1}:next",
+            ButtonStyle.Secondary);
 
         return (embed.Build(), components.Build(), null);
     }
@@ -425,14 +450,22 @@ public class MusicService(
 
         logger.LogInformation("[MusicService:{GuildId}] Removed track at index {Index} from queue.", player.GuildId,
             oneBasedIndex);
+
+        if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null)
+            await QueueEmptied.Invoke(player.GuildId, player);
         return (true, trackToRemove, message);
     }
 
     public async Task<(bool Success, string Message)> ClearQueueAsync(CustomPlayer player)
     {
         if (player.Queue.IsEmpty) return (false, "The queue is already empty.");
+        var guildId = player.GuildId;
+
         await player.Queue.ClearAsync();
-        logger.LogInformation("[MusicService:{GuildId}] Queue cleared.", player.GuildId);
+        logger.LogInformation("[MusicService:{GuildId}] Queue cleared.", guildId);
+
+        if (QueueEmptied != null)
+            await QueueEmptied.Invoke(guildId, player);
         return (true, "Queue cleared.");
     }
 

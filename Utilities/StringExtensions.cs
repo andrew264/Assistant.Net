@@ -17,4 +17,10 @@ public static class StringExtensions
         var sanitizedText = text.Replace("[", "\\[").Replace("]", "\\]");
         return $"[{sanitizedText}](<{url}>)";
     }
+
+    public static string Truncate(this string value, int maxLength, string truncationSuffix = "...")
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= maxLength) return value;
+        return string.Concat(value.AsSpan(0, maxLength - truncationSuffix.Length), truncationSuffix);
+    }
 }

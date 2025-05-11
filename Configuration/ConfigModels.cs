@@ -44,16 +44,43 @@ public record MongoConfig
     public string GetConnectionString()
     {
         if (!string.IsNullOrWhiteSpace(ConnectionString)) return ConnectionString;
-        if (!string.IsNullOrWhiteSpace(Username) && !string.IsNullOrWhiteSpace(Password) &&
-            !string.IsNullOrWhiteSpace(Url))
+
+        if (string.IsNullOrWhiteSpace(Username) ||
+            string.IsNullOrWhiteSpace(Password) ||
+            string.IsNullOrWhiteSpace(Url))
+            throw new InvalidOperationException(
+                "MongoDB connection details are incomplete. Provide either a full ConnectionString, or Username, Password, and Url.");
+
+        string schemeToUse;
+        var addressPart = Url;
+
+        if (Url.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase))
         {
-            // Ensure URL doesn't contain protocol, driver handles it
-            var cleanUrl = Url.Replace("mongodb+srv://", "").Replace("mongodb://", "");
-            return $"mongodb+srv://{Uri.EscapeDataString(Username)}:{Uri.EscapeDataString(Password)}@{cleanUrl}";
+            schemeToUse = "mongodb+srv://";
+            addressPart = Url.Substring("mongodb+srv://".Length);
+        }
+        else if (Url.StartsWith("mongodb://", StringComparison.OrdinalIgnoreCase))
+        {
+            schemeToUse = "mongodb://";
+            addressPart = Url.Substring("mongodb://".Length);
+        }
+        else
+        {
+            schemeToUse = "mongodb://";
         }
 
-        throw new InvalidOperationException(
-            "MongoDB connection details are incomplete. Provide either ConnectionString or Username/Password/Url.");
+        var atSymbolIndex = addressPart.IndexOf('@');
+        if (atSymbolIndex > 0)
+        {
+            var colonBeforeAt = addressPart.LastIndexOf(':', atSymbolIndex - 1);
+            if (colonBeforeAt != -1 && colonBeforeAt < atSymbolIndex)
+                addressPart = addressPart.Substring(atSymbolIndex + 1);
+        }
+
+        var escapedUsername = Uri.EscapeDataString(Username);
+        var escapedPassword = Uri.EscapeDataString(Password);
+
+        return $"{schemeToUse}{escapedUsername}:{escapedPassword}@{addressPart}";
     }
 }
 
@@ -91,6 +118,7 @@ public record MusicConfig
 {
     public int MaxHistorySize { get; init; } = 100;
     public float DefaultVolume { get; init; } = 0.30f; // 30%
+    public int MaxPlayerVolumePercent { get; init; } = 100; // 100%
     public float TitleSimilarityCutoff { get; init; } = 0.80f; // 80%
     public float UriSimilarityCutoff { get; init; } = 0.70f; // 70%
 }

@@ -42,4 +42,8 @@ public static class TimeUtils
 
         return new TimeSpan(hours, minutes, seconds);
     }
+
+    public static string FormatPlayerTime(TimeSpan duration) => duration.TotalHours >= 1
+        ? $"{(int)duration.TotalHours}:{duration.Minutes:D2}:{duration.Seconds:D2}"
+        : $"{duration.Minutes:D2}:{duration.Seconds:D2}";
 }

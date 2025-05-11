@@ -186,6 +186,7 @@ public class Program
 
                 // --- Music Service ---
                 services.AddSingleton<MusicService>();
+                services.AddSingleton<NowPlayingService>();
 
                 // --- Webhook Service ---
                 services.AddSingleton<WebhookService>();
