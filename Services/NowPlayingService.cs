@@ -96,7 +96,7 @@ public class NowPlayingService : IDisposable
         ITextChannel channel, IUser requester)
     {
         var guildId = player.GuildId;
-        await RemoveNowPlayingMessageAsync(guildId, true);
+        await RemoveNowPlayingMessageAsync(guildId);
 
         var (embed, components) = BuildNowPlayingDisplay(player, guildId);
         IUserMessage? sentMessage;
@@ -328,7 +328,7 @@ public class NowPlayingService : IDisposable
                 var progressBar = MusicUtils.CreateProgressBar(position, currentTrack.Duration);
                 var currentTime = TimeUtils.FormatPlayerTime(position);
                 var totalTime = TimeUtils.FormatPlayerTime(currentTrack.Duration);
-                embedBuilder.AddField($"{currentTime} {progressBar} {totalTime}", "\u200B", false);
+                embedBuilder.AddField($"{currentTime} {progressBar} {totalTime}", "\u200B");
             }
         }
         else
