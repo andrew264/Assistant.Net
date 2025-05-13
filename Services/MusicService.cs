@@ -61,7 +61,7 @@ public class MusicService(
                 "Failed to retrieve player for Guild {GuildId}. Status: {Status}. VoiceChannelId: {VoiceChannelId}, ChannelBehavior: {ChannelBehavior}, MemberBehavior: {MemberBehavior}",
                 guildId, result.Status, userVoiceChannelId, channelBehavior, memberBehavior);
         else if (result.Player != null)
-            logger.LogDebug(
+            logger.LogTrace(
                 "Successfully retrieved player for Guild {GuildId}. Status: {Status}. VoiceChannelId: {VoiceChannelId}, ChannelBehavior: {ChannelBehavior}, MemberBehavior: {MemberBehavior}",
                 guildId, result.Status, userVoiceChannelId, channelBehavior, memberBehavior);
 
@@ -286,6 +286,7 @@ public class MusicService(
         var guildId = player.GuildId; // Capture before player might be disposed
         await player.Queue.ClearAsync();
         await player.StopAsync();
+        await player.DisconnectAsync();
         logger.LogInformation("[MusicService:{GuildId}] Stopped and cleared queue by {User}", guildId,
             requester.Username);
 

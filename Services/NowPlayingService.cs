@@ -307,7 +307,7 @@ public class NowPlayingService : IDisposable
                     guildId);
             }
 
-        _logger.LogDebug("Exited NP update loop for Guild {GuildId}", guildId);
+        _logger.LogTrace("Exited NP update loop for Guild {GuildId}", guildId);
     }
 
     public (Embed Embed, MessageComponent Components) BuildNowPlayingDisplay(CustomPlayer player, ulong guildId)

@@ -1,17 +1,10 @@
-using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Assistant.Net.Models;
+namespace Assistant.Net.Models.Playlist;
 
 public class PlaylistModel
 {
-    [BsonId]
-    [BsonRepresentation(BsonType.ObjectId)]
-    public string Id { get; set; } = null!;
-
-    [BsonElement("userId")] public ulong UserId { get; set; }
-
-    [BsonElement("guildId")] public ulong GuildId { get; set; }
+    [BsonId] public PlaylistIdKey Id { get; set; }
 
     [BsonElement("name")] [BsonRequired] public string Name { get; set; } = null!;
 
