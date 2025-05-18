@@ -46,6 +46,8 @@ public class Program
                     Console.WriteLine(
                         $"Warning: Could not parse LogLevel '{config.Client.LogLevel}'. Defaulting to Information.");
                 }
+
+                logging.AddFilter("Microsoft.Extensions.Http", LogLevel.Warning);
             })
             .ConfigureServices((_, services) =>
             {
