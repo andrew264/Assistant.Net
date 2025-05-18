@@ -8,15 +8,19 @@ namespace Assistant.Net.Services;
 // --- Result Records for Playlist Operations ---
 public record PlaylistOperationResult(bool Success, string Message, PlaylistModel? Playlist = null);
 
-public record PlaylistCreationResult(bool Success, string Message, PlaylistModel? Playlist = null,
-    bool LimitReached = false, bool NameExists = false);
+public record PlaylistCreationResult(
+    bool Success,
+    string Message,
+    PlaylistModel? Playlist = null,
+    bool LimitReached = false,
+    bool NameExists = false);
 
 public class PlaylistService
 {
-    private readonly IMongoCollection<PlaylistModel> _playlistCollection;
-    private readonly ILogger<PlaylistService> _logger;
     private const int MaxPlaylistsPerUser = 10;
     private const int MaxSongsPerPlaylist = 200;
+    private readonly ILogger<PlaylistService> _logger;
+    private readonly IMongoCollection<PlaylistModel> _playlistCollection;
 
     public PlaylistService(IMongoDatabase database, ILogger<PlaylistService> logger)
     {
@@ -56,10 +60,8 @@ public class PlaylistService
     public async Task<PlaylistCreationResult> CreatePlaylistAsync(ulong userId, ulong guildId, string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
-        {
             return new PlaylistCreationResult(false, "Playlist name must be between 1 and 100 characters.",
                 NameExists: true);
-        }
 
         var filter = Builders<PlaylistModel>.Filter.And(
             Builders<PlaylistModel>.Filter.Eq(p => p.Id.UserId, userId),
@@ -68,10 +70,8 @@ public class PlaylistService
 
         var userPlaylistCount = await _playlistCollection.CountDocumentsAsync(filter);
         if (userPlaylistCount >= MaxPlaylistsPerUser)
-        {
             return new PlaylistCreationResult(false,
                 $"You have reached the maximum limit of {MaxPlaylistsPerUser} playlists.", LimitReached: true);
-        }
 
         var nameFilter = Builders<PlaylistModel>.Filter.And(
             filter,
@@ -79,9 +79,7 @@ public class PlaylistService
         );
         var existingByName = await _playlistCollection.Find(nameFilter).FirstOrDefaultAsync();
         if (existingByName != null)
-        {
             return new PlaylistCreationResult(false, "You already have a playlist with that name.", NameExists: true);
-        }
 
         var newPlaylist = new PlaylistModel
         {
@@ -156,17 +154,12 @@ public class PlaylistService
         var initialSongCount = playlist.Songs.Count;
         var spaceAvailable = MaxSongsPerPlaylist - initialSongCount;
 
-        if (spaceAvailable <= 0)
-        {
-            return new PlaylistOperationResult(false, "Playlist is already full.");
-        }
+        if (spaceAvailable <= 0) return new PlaylistOperationResult(false, "Playlist is already full.");
 
         var actualSongsToAdd = songsToAdd.Take(spaceAvailable).ToList();
         if (actualSongsToAdd.Count == 0)
-        {
             return new PlaylistOperationResult(false,
                 "No songs provided or playlist capacity would be exceeded (even with one song).");
-        }
 
         var filter = Builders<PlaylistModel>.Filter.And(
             Builders<PlaylistModel>.Filter.Eq(p => p.Id.UserId, userId),
@@ -182,14 +175,15 @@ public class PlaylistService
         {
             var message = $"Added {actualSongsToAdd.Count} song(s) to '{playlistName}'.";
             if (songsToAdd.Count > actualSongsToAdd.Count)
-            {
-                message += $" Could not add {songsToAdd.Count - actualSongsToAdd.Count} song(s) due to playlist capacity.";
-            }
+                message +=
+                    $" Could not add {songsToAdd.Count - actualSongsToAdd.Count} song(s) due to playlist capacity.";
 
             _logger.LogInformation(
                 "Added {AddedCount} songs to playlist '{PlaylistName}' for User {UserId}, Guild {GuildId}. Original request was for {RequestedCount}",
                 actualSongsToAdd.Count, playlistName, userId, guildId, songsToAdd.Count);
-            return new PlaylistOperationResult(true, message, playlist); // Playlist here is pre-update, consider re-fetching if needed
+            return
+                new PlaylistOperationResult(true, message,
+                    playlist); // Playlist here is pre-update, consider re-fetching if needed
         }
 
         _logger.LogError(
@@ -248,21 +242,15 @@ public class PlaylistService
         string newName)
     {
         if (string.IsNullOrWhiteSpace(newName) || newName.Length > 100)
-        {
             return new PlaylistOperationResult(false, "New playlist name must be between 1 and 100 characters.");
-        }
 
         if (oldName.Equals(newName, StringComparison.OrdinalIgnoreCase))
-        {
             return new PlaylistOperationResult(false, "The new name is the same as the old name.");
-        }
 
         // Check if new_name already exists for this user/guild
         var existingWithNewName = await GetPlaylistAsync(userId, guildId, newName);
         if (existingWithNewName != null)
-        {
             return new PlaylistOperationResult(false, $"You already have a playlist named '{newName}'.");
-        }
 
         var filter = Builders<PlaylistModel>.Filter.And(
             Builders<PlaylistModel>.Filter.Eq(p => p.Id.UserId, userId),
@@ -286,7 +274,8 @@ public class PlaylistService
             default:
                 _logger.LogError(
                     "Failed to rename playlist '{OldName}' to '{NewName}' for User {UserId}, Guild {GuildId}. DB result: Ack={Ack}, Matched={Match}, Modified={Mod}",
-                    oldName, newName, userId, guildId, result.IsAcknowledged, result.MatchedCount, result.ModifiedCount);
+                    oldName, newName, userId, guildId, result.IsAcknowledged, result.MatchedCount,
+                    result.ModifiedCount);
                 return new PlaylistOperationResult(false, $"Failed to rename playlist '{oldName}'.");
         }
     }
@@ -295,7 +284,8 @@ public class PlaylistService
     {
         var playlist = await GetPlaylistAsync(userId, guildId, playlistName);
         if (playlist == null) return new PlaylistOperationResult(false, "Playlist not found.");
-        if (playlist.Songs.Count == 0) return new PlaylistOperationResult(false, "Playlist is empty, nothing to shuffle.");
+        if (playlist.Songs.Count == 0)
+            return new PlaylistOperationResult(false, "Playlist is empty, nothing to shuffle.");
 
         var random = new Random();
         playlist.Songs = playlist.Songs.OrderBy(_ => random.Next()).ToList();
@@ -336,10 +326,8 @@ public class PlaylistService
         var recipientPlaylistCount = await _playlistCollection.CountDocumentsAsync(recipientFilter);
 
         if (recipientPlaylistCount >= MaxPlaylistsPerUser)
-        {
             return new PlaylistOperationResult(false,
                 $"Recipient has reached the maximum limit of {MaxPlaylistsPerUser} playlists.");
-        }
 
         var recipientNameFilter = Builders<PlaylistModel>.Filter.And(
             recipientFilter,
@@ -347,10 +335,8 @@ public class PlaylistService
         );
         var existingRecipientPlaylist = await _playlistCollection.Find(recipientNameFilter).FirstOrDefaultAsync();
         if (existingRecipientPlaylist != null)
-        {
             return new PlaylistOperationResult(false,
                 $"Recipient already has a playlist named '{playlistName}'.");
-        }
 
         var sharedPlaylist = new PlaylistModel
         {
@@ -383,7 +369,8 @@ public class PlaylistService
             _logger.LogWarning(ex,
                 "Duplicate key on shared playlist insert (likely unique index violation) for {RecipientId}/{GuildId} - {PlaylistName}",
                 recipientId, guildId, playlistName);
-            return new PlaylistOperationResult(false, "A playlist with this name might have just been created for the recipient or there was a conflict.");
+            return new PlaylistOperationResult(false,
+                "A playlist with this name might have just been created for the recipient or there was a conflict.");
         }
         catch (Exception ex)
         {
