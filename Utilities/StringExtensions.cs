@@ -23,4 +23,6 @@ public static class StringExtensions
         if (string.IsNullOrEmpty(value) || value.Length <= maxLength) return value;
         return string.Concat(value.AsSpan(0, maxLength - truncationSuffix.Length), truncationSuffix);
     }
+
+    public static List<string> SmartChunkSplitList(this string input) => StringSplitter.SplitString(input);
 }

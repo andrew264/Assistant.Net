@@ -188,6 +188,7 @@ public class Program
                 services.AddSingleton<MusicService>();
                 services.AddSingleton<NowPlayingService>();
                 services.AddSingleton<PlaylistService>();
+                services.AddSingleton<GeniusLyricsService>();
 
                 // --- Webhook Service ---
                 services.AddSingleton<WebhookService>();

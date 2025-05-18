@@ -89,17 +89,19 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
 
             if (allChannelMessages.Count % 1000 == 0)
                 logger.LogInformation("[PURGE] Fetched {Count} messages so far...", allChannelMessages.Count);
-            
+
             if (batchList.Count < fetchBatchSize) break; // Last batch was smaller than requested
         }
-        logger.LogInformation("[PURGE] Fetched a total of {Count} messages. Filtering now...", allChannelMessages.Count);
+
+        logger.LogInformation("[PURGE] Fetched a total of {Count} messages. Filtering now...",
+            allChannelMessages.Count);
 
         var fourteenDaysAgo = DateTimeOffset.UtcNow.AddDays(-14);
 
         var matchingMessages = allChannelMessages
             .Where(msg => MassPurgeChecker(msg, userId, keywords) && msg.Id != Context.Message.Id)
             .ToList();
-        
+
         if (matchingMessages.Count == 0)
         {
             var reply = await ReplyAsync("No matching messages found to delete.");
@@ -115,7 +117,8 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
         {
             if (newerMessagesToDelete.Count > 0)
             {
-                logger.LogInformation("[PURGE] Deleting {Count} newer messages (<= 14 days old) in batches.", newerMessagesToDelete.Count);
+                logger.LogInformation("[PURGE] Deleting {Count} newer messages (<= 14 days old) in batches.",
+                    newerMessagesToDelete.Count);
                 foreach (var chunk in newerMessagesToDelete.Chunk(100))
                 {
                     switch (chunk.Length)
@@ -137,9 +140,9 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
             // Delete older messages (one by one)
             if (olderMessagesToDelete.Count > 0)
             {
-                logger.LogInformation("[PURGE] Deleting {Count} older messages (> 14 days old) one by one.", olderMessagesToDelete.Count);
+                logger.LogInformation("[PURGE] Deleting {Count} older messages (> 14 days old) one by one.",
+                    olderMessagesToDelete.Count);
                 foreach (var message in olderMessagesToDelete)
-                {
                     try
                     {
                         await textChannel.DeleteMessageAsync(message.Id);
@@ -148,13 +151,14 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
                     }
                     catch (HttpException exHttp) when (exHttp.HttpCode == HttpStatusCode.NotFound)
                     {
-                        logger.LogWarning($"[PURGE] Older message {message.Id} already deleted or too old for single delete API access.");
+                        logger.LogWarning(
+                            $"[PURGE] Older message {message.Id} already deleted or too old for single delete API access.");
                     }
                     catch (Exception exSingle)
                     {
-                        logger.LogError(exSingle, "[PURGE] Failed to delete older message {MessageId} individually.", message.Id);
+                        logger.LogError(exSingle, "[PURGE] Failed to delete older message {MessageId} individually.",
+                            message.Id);
                     }
-                }
             }
 
             logger.LogInformation("[PURGE] {User} deleted {Count} messages in {Guild}: #{Channel}",
