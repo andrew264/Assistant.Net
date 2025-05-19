@@ -109,11 +109,11 @@ public static class ActivityUtils
             {
                 case SpotifyGame spotifyGame when withUrl:
                     resultDictionary["Spotify"] =
-                        $"Listening to [{RegexPatterns.Bracket().Replace(spotifyGame.TrackTitle, "")}]({spotifyGame.TrackUrl}) by {string.Join(", ", spotifyGame.Artists)}";
+                        $"Listening to [{spotifyGame.TrackTitle.RemoveStuffInBrackets()}]({spotifyGame.TrackUrl}) by {string.Join(", ", spotifyGame.Artists)}";
                     break;
                 case SpotifyGame spotifyGame:
                     resultDictionary["Spotify"] =
-                        $"Listening to {RegexPatterns.Bracket().Replace(spotifyGame.TrackTitle, "")} by {string.Join(", ", spotifyGame.Artists)}";
+                        $"Listening to {spotifyGame.TrackTitle.RemoveStuffInBrackets()} by {string.Join(", ", spotifyGame.Artists)}";
                     break;
                 case StreamingGame streamingGame when withUrl:
                     resultDictionary["Streaming"] = $"[{streamingGame.Name}]({streamingGame.Url})";

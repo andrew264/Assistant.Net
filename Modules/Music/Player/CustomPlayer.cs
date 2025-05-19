@@ -72,8 +72,7 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
         if (IsHomeGuildPlayer)
         {
             var title = queueItem.Track?.Title ?? "Unknown Track";
-            var cleanTitle = RegexPatterns.Bracket().Replace(title, "").Trim(); // Remove brackets
-            if (cleanTitle.Length > 128) cleanTitle = cleanTitle[..125] + "..."; // Discord limit
+            var cleanTitle = title.RemoveStuffInBrackets().Trim().Truncate(128);
 
             try
             {

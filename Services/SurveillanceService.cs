@@ -73,11 +73,9 @@ public class SurveillanceService
             .WithDescription($"in <#{guildChannel.Id}> ({after.GetJumpUrl()})")
             .WithColor(Color.Orange)
             .AddField("Original Message",
-                string.IsNullOrWhiteSpace(before.Content) ? "*(Empty)*" :
-                before.Content.Length > 1024 ? before.Content[..1021] + "..." : before.Content)
+                string.IsNullOrWhiteSpace(before.Content) ? "*(Empty)*" : before.Content.Truncate(1024))
             .AddField("Altered Message",
-                string.IsNullOrWhiteSpace(after.Content) ? "*(Empty)*" :
-                after.Content.Length > 1024 ? after.Content[..1021] + "..." : after.Content)
+                string.IsNullOrWhiteSpace(after.Content) ? "*(Empty)*" : after.Content.Truncate(1024))
             .WithFooter($"User ID: {author.Id}")
             .WithTimestamp(after.EditedTimestamp ?? after.Timestamp)
             .Build();
@@ -121,8 +119,7 @@ public class SurveillanceService
             .WithDescription($"in <#{guildChannel.Id}>")
             .WithColor(Color.Red)
             .AddField("Message Content",
-                string.IsNullOrWhiteSpace(message.Content) ? "*(Empty)*" :
-                message.Content.Length > 1024 ? message.Content[..1021] + "..." : message.Content)
+                string.IsNullOrWhiteSpace(message.Content) ? "*(Empty)*" : message.Content.Truncate(1024))
             .WithFooter($"User ID: {author.Id} | Message ID: {message.Id}")
             .WithTimestamp(message.Timestamp);
 
@@ -314,9 +311,7 @@ public class SurveillanceService
         try
         {
             await webhookClient.SendMessageAsync(
-                messageContent.Length > 2000
-                    ? messageContent[..1997] + "..."
-                    : messageContent,
+                messageContent.Truncate(DiscordConfig.MaxMessageSize),
                 username: guildUser.DisplayName,
                 avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None,

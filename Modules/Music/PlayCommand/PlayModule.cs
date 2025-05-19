@@ -33,7 +33,7 @@ public class PlayModule(
         for (var i = 0; i < topTracks.Count; i++)
         {
             var track = topTracks[i];
-            var title = track.Title.Length > 50 ? track.Title[..47] + "..." : track.Title;
+            var title = track.Title.Truncate(50);
             embed.AddField("\u200B",
                 $"{i + 1}: {title.AsMarkdownLink(track.Uri?.ToString())} by {track.Author} ({track.Duration:mm\\:ss})");
 

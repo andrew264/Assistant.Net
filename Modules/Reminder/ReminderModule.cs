@@ -188,8 +188,8 @@ public class ReminderModule(ReminderService reminderService)
                 : $" (in <#{reminder.ChannelId}>)";
 
             embed.AddField(
-                title.Length > 256 ? title[..253] + "..." : title,
-                $"Time: {TimestampTag.FromDateTime(reminder.TriggerTime, TimestampTagStyles.Relative)}{recurrenceStr}{targetStr}\nMessage: {reminder.Message[..Math.Min(reminder.Message.Length, 150)]}{(reminder.Message.Length > 150 ? "..." : "")}");
+                title.Truncate(256),
+                $"Time: {TimestampTag.FromDateTime(reminder.TriggerTime, TimestampTagStyles.Relative)}{recurrenceStr}{targetStr}\nMessage: {reminder.Message.Truncate(150)}");
             count++;
         }
 

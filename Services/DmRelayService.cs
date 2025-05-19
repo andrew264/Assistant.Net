@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.RegularExpressions;
 using Assistant.Net.Configuration;
 using Assistant.Net.Utilities;
 using Discord;
@@ -420,7 +419,7 @@ public class DmRelayService
 
         if (referencedMessage != null)
             sb.AppendLine(
-                $"- Replying to: `{Truncate(referencedMessage.Content, 100)}` (by: {referencedMessage.Author.Username})");
+                $"- Replying to: `{referencedMessage.Content.Truncate(100)}` (by: {referencedMessage.Author.Username})");
         else
             sb.AppendLine("- Replying to: *[Message not found or inaccessible]*");
     }
@@ -462,10 +461,9 @@ public class DmRelayService
     // --- Utility Methods ---
     private static string SanitizeChannelName(IUser user)
     {
-        var channelName = Regex.Replace(user.Username, @"[^a-zA-Z0-9_-]", "", RegexOptions.Compiled)
-            .ToLowerInvariant();
+        var channelName = RegexPatterns.SanitizeText().Replace(user.Username, "").ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(channelName)) channelName = $"user-{user.Id}";
-        return Truncate(channelName, 100);
+        return channelName.Truncate(100);
     }
 
     private static ulong? ExtractUserIdFromTopic(string? topic)
@@ -483,12 +481,6 @@ public class DmRelayService
         if (firstLine == null || !firstLine.StartsWith(MessageIdPrefix)) return null;
 
         return ulong.TryParse(firstLine.AsSpan(MessageIdPrefix.Length), out var messageId) ? messageId : null;
-    }
-
-    private static string Truncate(string? value, int maxLength)
-    {
-        if (string.IsNullOrEmpty(value)) return string.Empty;
-        return value.Length <= maxLength ? value : value[..(maxLength - 3)] + "...";
     }
 
     public static string SanitizeCodeBlock(string? content) =>

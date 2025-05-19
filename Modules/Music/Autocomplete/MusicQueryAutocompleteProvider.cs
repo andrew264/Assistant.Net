@@ -1,4 +1,5 @@
 using Assistant.Net.Services;
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
 using Microsoft.Extensions.DependencyInjection;
@@ -34,7 +35,7 @@ public class MusicQueryAutocompleteProvider : AutocompleteHandler
             if (suggestions.Count >= 25) break;
             if (entry.Uri != userInput)
                 suggestions.Add(new AutocompleteResult(
-                    entry.Title.Length > 90 ? string.Concat(entry.Title.AsSpan(0, 87), "...") : entry.Title,
+                    entry.Title.Truncate(90),
                     entry.Uri));
         }
 

@@ -1,6 +1,7 @@
 using Assistant.Net.Configuration;
 using Assistant.Net.Models.Reddit;
 using Assistant.Net.Services;
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
 using Microsoft.Extensions.Logging;
@@ -56,7 +57,7 @@ public class RedditModule(
     {
         var embed = new EmbedBuilder()
             .WithTitle(
-                post.Submission.Title.Length > 256 ? post.Submission.Title[..253] + "..." : post.Submission.Title)
+                post.Submission.Title.Truncate(256))
             .WithColor(RedditOrange)
             .WithUrl(post.Submission.FullPermalink)
             .WithTimestamp(post.Submission.CreatedDateTime);

@@ -15,4 +15,7 @@ public static partial class RegexPatterns
 
     [GeneratedRegex(@"(?<url>https?://\S+)", RegexOptions.IgnoreCase)]
     public static partial Regex Url();
+
+    [GeneratedRegex(@"[^a-zA-Z0-9_-]")]
+    public static partial Regex SanitizeText();
 }

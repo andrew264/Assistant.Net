@@ -1,4 +1,5 @@
 using Assistant.Net.Services;
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
 using GTranslate.Translators;
@@ -37,7 +38,7 @@ public class TranslationModule(
         catch (Exception ex)
         {
             logger.LogError(ex, "GTranslate error translating text to {TargetLang}. Text: {TextSnippet}",
-                targetLanguageCode, text.Length > 50 ? text[..50] + "..." : text);
+                targetLanguageCode, text.Truncate(50));
             return (null, null);
         }
     }
@@ -104,11 +105,8 @@ public class TranslationModule(
         {
             try
             {
-                const int maxMessageLength = DiscordConfig.MaxMessageSize - 3;
                 await webhookClient.SendMessageAsync(
-                    translatedText.Length > DiscordConfig.MaxMessageSize
-                        ? translatedText[..maxMessageLength] + "..."
-                        : translatedText,
+                    translatedText.Truncate(DiscordConfig.MaxMessageSize),
                     username: Context.User.GlobalName ?? Context.User.Username,
                     avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl(),
                     allowedMentions: AllowedMentions.None,
