@@ -40,8 +40,7 @@ public class LyricsInteractionModule(
 
             if (player?.CurrentTrack != null)
             {
-                searchTitle = player.CurrentTrack.Title;
-                searchArtist = player.CurrentTrack.Author;
+                searchTitle = player.CurrentTrack.Title.RemoveStuffInBrackets();
             }
             else
             {

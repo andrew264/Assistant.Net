@@ -4,6 +4,8 @@ using Assistant.Net.Services;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.WebSocket;
+using Lavalink4NET.InactivityTracking.Players;
+using Lavalink4NET.InactivityTracking.Trackers;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Protocol.Payloads.Events;
@@ -13,7 +15,7 @@ using Microsoft.Extensions.Logging;
 namespace Assistant.Net.Modules.Music.Player;
 
 public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
-    : QueuedLavalinkPlayer(properties)
+    : QueuedLavalinkPlayer(properties), IInactivityPlayerListener
 {
     private readonly MusicHistoryService _historyService =
         properties.ServiceProvider!.GetRequiredService<MusicHistoryService>();
@@ -21,16 +23,27 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
     private readonly ILogger<CustomPlayer> _logger =
         properties.ServiceProvider!.GetRequiredService<ILogger<CustomPlayer>>();
 
-    private CustomPlayerOptions PlayerOptions => properties.Options.Value;
-    private DiscordSocketClient SocketClient => PlayerOptions.SocketClient;
-    private Config AppConfig => PlayerOptions.ApplicationConfig;
-
+    private DiscordSocketClient SocketClient => properties.Options.Value.SocketClient;
+    private Config AppConfig => properties.Options.Value.ApplicationConfig;
     private bool IsHomeGuildPlayer => GuildId == AppConfig.Client.HomeGuildId;
+
+    public ValueTask NotifyPlayerActiveAsync(PlayerTrackingState trackingState,
+        CancellationToken cancellationToken = default) => default;
+
+    public async ValueTask NotifyPlayerInactiveAsync(PlayerTrackingState trackingState,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("[Player:{GuildId}] Player is inactive. Disconnecting.", GuildId);
+        await DisconnectAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public ValueTask NotifyPlayerTrackedAsync(PlayerTrackingState trackingState,
+        CancellationToken cancellationToken = default) => default;
 
     // Add track to history when started
     private async Task AddTrackToHistoryAsync(ITrackQueueItem queueItem)
     {
-        if (queueItem.Track is null || queueItem.Track.Uri is null)
+        if (queueItem.Track?.Uri is null)
         {
             _logger.LogWarning("Cannot add track to history: Track or URI is null. Guild: {GuildId}", GuildId);
             return;

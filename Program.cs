@@ -9,6 +9,7 @@ using Discord.WebSocket;
 using Lavalink4NET.Extensions;
 using Lavalink4NET.InactivityTracking;
 using Lavalink4NET.InactivityTracking.Extensions;
+using Lavalink4NET.InactivityTracking.Trackers.Users;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -58,7 +59,11 @@ public class Program
                 // --- Discord ---
                 var discordConfig = new DiscordSocketConfig
                 {
-                    GatewayIntents = GatewayIntents.AllUnprivileged |
+                    GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildBans |
+                                     GatewayIntents.GuildVoiceStates | GatewayIntents.GuildMessages |
+                                     GatewayIntents.GuildMessageReactions | GatewayIntents.GuildMessageTyping |
+                                     GatewayIntents.DirectMessages | GatewayIntents.DirectMessageReactions |
+                                     GatewayIntents.DirectMessageTyping |
                                      GatewayIntents.GuildMembers | // for UserJoined, UserLeft, GuildMemberUpdated
                                      GatewayIntents.GuildPresences | // for PresenceUpdated
                                      GatewayIntents.MessageContent, // for Prefix Commands & Message Logging
@@ -78,7 +83,7 @@ public class Program
                         }));
 
                 // --- HTTP Client ---
-                services.AddHttpClient();
+                services.AddHttpClient().ConfigureHttpClientDefaults(defaults => defaults.RemoveAllLoggers());
 
                 // --- Memory Cache ---
                 services.AddMemoryCache();
@@ -104,10 +109,15 @@ public class Program
                             "Lavalink configuration is invalid or incomplete. Music features may not work.");
                     }
                 });
+                services.AddInactivityTracking();
                 services.ConfigureInactivityTracking(options =>
                 {
-                    options.DefaultTimeout = TimeSpan.FromSeconds(30);
-                    options.InactivityBehavior = PlayerInactivityBehavior.Pause;
+                    options.InactivityBehavior = PlayerInactivityBehavior.None;
+                    options.DefaultPollInterval = TimeSpan.FromSeconds(20);
+                });
+                services.Configure<UsersInactivityTrackerOptions>(options =>
+                {
+                    options.Timeout = TimeSpan.FromSeconds(600);
                 });
 
 

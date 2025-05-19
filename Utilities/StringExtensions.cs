@@ -25,4 +25,6 @@ public static class StringExtensions
     }
 
     public static List<string> SmartChunkSplitList(this string input) => StringSplitter.SplitString(input);
+
+    public static string RemoveStuffInBrackets(this string input) => RegexPatterns.Bracket().Replace(input, "");
 }
