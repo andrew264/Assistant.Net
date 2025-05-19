@@ -15,16 +15,16 @@ public class CommandsModule(MusicService musicService) : ModuleBase<SocketComman
     public async Task SkipPrefixAsync([Summary("The index of the song in the queue to skip.")] int index = 0)
     {
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage);
+            await ReplyAsync(errorMessage).ConfigureAwait(false);
             return;
         }
 
-        var (_, _, message) = await musicService.SkipTrackAsync(player, Context.User, index);
-        await ReplyAsync(message);
+        var (_, _, message) = await musicService.SkipTrackAsync(player, Context.User, index).ConfigureAwait(false);
+        await ReplyAsync(message).ConfigureAwait(false);
     }
 
     [Command("loop")]
@@ -33,16 +33,16 @@ public class CommandsModule(MusicService musicService) : ModuleBase<SocketComman
     public async Task LoopPrefixAsync()
     {
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage);
+            await ReplyAsync(errorMessage).ConfigureAwait(false);
             return;
         }
 
         var message = musicService.ToggleLoopMode(player, Context.User);
-        await ReplyAsync(message);
+        await ReplyAsync(message).ConfigureAwait(false);
     }
 
     [Command("volume")]
@@ -51,28 +51,28 @@ public class CommandsModule(MusicService musicService) : ModuleBase<SocketComman
     public async Task VolumePrefixAsync([Summary("The volume to set (0-200).")] int? volume = null)
     {
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
         switch (player)
         {
             case null when retrieveStatus != PlayerRetrieveStatus.BotNotConnected:
             {
                 var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-                await ReplyAsync(errorMessage);
+                await ReplyAsync(errorMessage).ConfigureAwait(false);
                 return;
             }
             case null:
-                await ReplyAsync("I am not connected to a voice channel.");
+                await ReplyAsync("I am not connected to a voice channel.").ConfigureAwait(false);
                 return;
         }
 
         if (volume is null)
         {
-            await ReplyAsync($"Current Volume: {(int)musicService.GetCurrentVolumePercent(player)}%");
+            await ReplyAsync($"Current Volume: {(int)musicService.GetCurrentVolumePercent(player)}%").ConfigureAwait(false);
             return;
         }
 
-        var (_, message) = await musicService.SetVolumeAsync(player, Context.User, volume.Value);
-        await ReplyAsync(message);
+        var (_, message) = await musicService.SetVolumeAsync(player, Context.User, volume.Value).ConfigureAwait(false);
+        await ReplyAsync(message).ConfigureAwait(false);
     }
 
     [Command("stop")]
@@ -81,23 +81,23 @@ public class CommandsModule(MusicService musicService) : ModuleBase<SocketComman
     public async Task StopPrefixAsync()
     {
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
         switch (player)
         {
             case null when retrieveStatus != PlayerRetrieveStatus.BotNotConnected:
             {
                 var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-                await ReplyAsync(errorMessage);
+                await ReplyAsync(errorMessage).ConfigureAwait(false);
                 return;
             }
             case null:
-                await ReplyAsync("I am not playing anything right now.");
+                await ReplyAsync("I am not playing anything right now.").ConfigureAwait(false);
                 return;
         }
 
-        await musicService.StopPlaybackAsync(player, Context.User);
-        await ReplyAsync("Thanks for Listening.");
-        await Context.Message.AddReactionAsync(new Emoji("👋"));
+        await musicService.StopPlaybackAsync(player, Context.User).ConfigureAwait(false);
+        await ReplyAsync("Thanks for Listening.").ConfigureAwait(false);
+        await Context.Message.AddReactionAsync(new Emoji("👋")).ConfigureAwait(false);
     }
 
     [Command("skipto")]
@@ -106,16 +106,16 @@ public class CommandsModule(MusicService musicService) : ModuleBase<SocketComman
     public async Task SkipToPrefixAsync([Summary("The index of the song to skip to.")] int index = 0)
     {
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage);
+            await ReplyAsync(errorMessage).ConfigureAwait(false);
             return;
         }
 
-        var (_, message) = await musicService.SkipToTrackAsync(player, Context.User, index);
-        await ReplyAsync(message);
+        var (_, message) = await musicService.SkipToTrackAsync(player, Context.User, index).ConfigureAwait(false);
+        await ReplyAsync(message).ConfigureAwait(false);
     }
 
     [Command("seek")]
@@ -123,15 +123,15 @@ public class CommandsModule(MusicService musicService) : ModuleBase<SocketComman
     public async Task SeekPrefixAsync([Summary("Time to seek to in MM:SS format")] string time = "0")
     {
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+            Context.Guild, Context.User, Context.Channel, PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage);
+            await ReplyAsync(errorMessage).ConfigureAwait(false);
             return;
         }
 
-        var (_, message) = await musicService.SeekAsync(player, Context.User, time);
-        await ReplyAsync(message);
+        var (_, message) = await musicService.SeekAsync(player, Context.User, time).ConfigureAwait(false);
+        await ReplyAsync(message).ConfigureAwait(false);
     }
 }

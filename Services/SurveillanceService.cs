@@ -61,10 +61,10 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(guildChannel.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var before = await beforeCache.GetOrDownloadAsync();
+        var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (before == null || before.Content == after.Content) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var author = after.Author;
@@ -86,7 +86,7 @@ public class SurveillanceService
                 embeds: [embed],
                 username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
                 avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[MESSAGE EDIT] @{User} in #{Channel}", author.Username, guildChannel.Name);
         }
         catch (Exception ex)
@@ -100,17 +100,17 @@ public class SurveillanceService
     public async Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> messageCache,
         Cacheable<IMessageChannel, ulong> channelCache)
     {
-        var channel = channelCache.HasValue ? channelCache.Value : await channelCache.GetOrDownloadAsync();
+        var channel = channelCache.HasValue ? channelCache.Value : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (channel is not SocketGuildChannel guildChannel) return;
 
         var loggingChannelId = GetLoggingChannelId(guildChannel.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var message = await messageCache.GetOrDownloadAsync();
+        var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (message == null || message.Author.IsBot ||
             (_config.Client.OwnerId.HasValue && message.Author.Id == _config.Client.OwnerId.Value)) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var author = message.Author;
@@ -133,7 +133,7 @@ public class SurveillanceService
                 embeds: [embedBuilder.Build()],
                 username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
                 avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[MESSAGE DELETE] @{User} in #{Channel}\n\tMessage: {Content}", author.Username,
                 guildChannel.Name, message.Content);
         }
@@ -156,7 +156,7 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(after.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -176,7 +176,7 @@ public class SurveillanceService
                 embeds: [embed],
                 username: "Member Update Logger",
                 avatarUrl: after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Nickname {GuildName}: @{OldName} -> @{NewName}", after.Guild.Name,
                 before.DisplayName, after.DisplayName);
         }
@@ -202,7 +202,7 @@ public class SurveillanceService
             var member = guild.GetUser(after.Id);
             if (member == null) continue;
 
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
             if (webhookClient == null) continue;
 
             var embed = new EmbedBuilder()
@@ -230,7 +230,7 @@ public class SurveillanceService
                     embeds: [embed.Build()],
                     username: "User Profile Logger",
                     avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
-                );
+                ).ConfigureAwait(false);
                 _logger.LogInformation("[UPDATE] User Profile {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
                     before, after);
             }
@@ -261,7 +261,7 @@ public class SurveillanceService
             before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
 
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var statusSummary = ActivityUtils.SummarizeStatusChange(bClients, bStatus, aClients, aStatus);
@@ -316,7 +316,7 @@ public class SurveillanceService
                 avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None,
                 flags: MessageFlags.SuppressEmbeds
-            );
+            ).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -344,7 +344,7 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -393,7 +393,7 @@ public class SurveillanceService
                 username: "Voice State Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {Action}", member.Guild.Name,
                 member.Username, actionDescription.ToString().Replace("\n", " "));
         }
@@ -407,8 +407,8 @@ public class SurveillanceService
         Cacheable<IMessageChannel, ulong> channelCache) =>
         // Typing logs can be very noisy.
         /*
-        var user = await userCache.GetOrDownloadAsync();
-        var channel = await channelCache.GetOrDownloadAsync();
+        var user = await userCache.GetOrDownloadAsync().ConfigureAwait(false);
+        var channel = await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
 
         if (user.IsBot || (_config.Client.OwnerId.HasValue && user.Id == _config.Client.OwnerId.Value)) return Task.CompletedTask;
         if (channel is not SocketGuildChannel guildChannel) return Task.CompletedTask;
@@ -425,7 +425,7 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -442,7 +442,7 @@ public class SurveillanceService
                 embeds: [embed.Build()],
                 username: "Join/Leave Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Leave @{User}: {GuildName}", user.Username, guild.Name);
         }
         catch (Exception ex)
@@ -459,7 +459,7 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -480,7 +480,7 @@ public class SurveillanceService
                 embeds: [embed.Build()],
                 username: "Join/Leave Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Join @{User}: {GuildName}", member.Username, member.Guild.Name);
         }
         catch (Exception ex)
@@ -497,13 +497,13 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var banReason = "Not specified";
         try
         {
-            var ban = await guild.GetBanAsync(user);
+            var ban = await guild.GetBanAsync(user).ConfigureAwait(false);
             if (ban != null && !string.IsNullOrWhiteSpace(ban.Reason)) banReason = ban.Reason;
         }
         catch (Exception ex)
@@ -527,7 +527,7 @@ public class SurveillanceService
                 embeds: [embed.Build()],
                 username: "Moderation Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Ban @{User}: {GuildName}. Reason: {Reason}", user.Username, guild.Name,
                 banReason);
         }
@@ -545,7 +545,7 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -562,7 +562,7 @@ public class SurveillanceService
                 embeds: [embed.Build()],
                 username: "Moderation Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
-            );
+            ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Unban @{User}: {GuildName}", user.Username, guild.Name);
         }
         catch (Exception ex)

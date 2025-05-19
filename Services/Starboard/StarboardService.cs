@@ -49,7 +49,7 @@ public class StarboardService
         {
             try
             {
-                await ProcessReactionAddedAsync(msg, chan, reaction);
+                await ProcessReactionAddedAsync(msg, chan, reaction).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -66,7 +66,7 @@ public class StarboardService
         {
             try
             {
-                await ProcessReactionRemovedAsync(msg, chan, reaction);
+                await ProcessReactionRemovedAsync(msg, chan, reaction).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -82,7 +82,7 @@ public class StarboardService
         {
             try
             {
-                await ProcessReactionsClearedAsync(msg, chan);
+                await ProcessReactionsClearedAsync(msg, chan).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -98,7 +98,7 @@ public class StarboardService
         {
             try
             {
-                await ProcessMessageDeletedAsync(msg, chan);
+                await ProcessMessageDeletedAsync(msg, chan).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -115,7 +115,7 @@ public class StarboardService
         {
             try
             {
-                await ProcessMessagesBulkDeletedAsync(msgs, chan);
+                await ProcessMessagesBulkDeletedAsync(msgs, chan).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -142,7 +142,7 @@ public class StarboardService
 
             if (indexModels.Count > 0)
             {
-                await _starredMessagesCollection.Indexes.CreateManyAsync(indexModels);
+                await _starredMessagesCollection.Indexes.CreateManyAsync(indexModels).ConfigureAwait(false);
                 _logger.LogInformation("Ensured Starboard MongoDB indexes.");
             }
             else
@@ -176,7 +176,7 @@ public class StarboardService
     private async Task<StarredMessageModel?> GetStarredMessageEntryAsync(ulong guildId, ulong originalMessageId)
     {
         var filter = CreateIdFilter(guildId, originalMessageId);
-        return await _starredMessagesCollection.Find(filter).FirstOrDefaultAsync();
+        return await _starredMessagesCollection.Find(filter).FirstOrDefaultAsync().ConfigureAwait(false);
     }
 
     private async Task SaveStarredMessageEntryAsync(StarredMessageModel entry)
@@ -184,13 +184,13 @@ public class StarboardService
         entry.LastUpdated = DateTime.UtcNow;
         var filter = Builders<StarredMessageModel>.Filter.Eq(m => m.Id, entry.Id);
         var options = new ReplaceOptions { IsUpsert = true };
-        await _starredMessagesCollection.ReplaceOneAsync(filter, entry, options);
+        await _starredMessagesCollection.ReplaceOneAsync(filter, entry, options).ConfigureAwait(false);
     }
 
     private async Task DeleteStarredMessageEntryAsync(ulong guildId, ulong originalMessageId)
     {
         var filter = CreateIdFilter(guildId, originalMessageId);
-        await _starredMessagesCollection.DeleteOneAsync(filter);
+        await _starredMessagesCollection.DeleteOneAsync(filter).ConfigureAwait(false);
     }
 
     private async Task DeleteManyStarredMessageEntriesAsync(ulong guildId, IEnumerable<ulong> originalMessageIds)
@@ -198,7 +198,7 @@ public class StarboardService
         var compositeIds = originalMessageIds.Select(msgId => new StarredMessageIdKey
             { GuildId = guildId, OriginalMessageId = msgId });
         var filter = Builders<StarredMessageModel>.Filter.In(m => m.Id, compositeIds);
-        await _starredMessagesCollection.DeleteManyAsync(filter);
+        await _starredMessagesCollection.DeleteManyAsync(filter).ConfigureAwait(false);
     }
 
     // --- Helper Functions ---
@@ -255,7 +255,7 @@ public class StarboardService
         if (config.StarboardChannelId == null) return;
 
         var starboardChannel = _client.GetChannel(config.StarboardChannelId.Value) as ITextChannel ??
-                               await _client.Rest.GetChannelAsync(config.StarboardChannelId.Value) as ITextChannel;
+                               await _client.Rest.GetChannelAsync(config.StarboardChannelId.Value).ConfigureAwait(false) as ITextChannel;
         if (starboardChannel == null)
         {
             _logger.LogWarning(
@@ -297,10 +297,10 @@ public class StarboardService
         {
             var starboardMsg =
                 await starboardChannel.SendMessageAsync(content, embed: embed,
-                    allowedMentions: AllowedMentions.None);
+                    allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             entry.StarboardMessageId = starboardMsg.Id;
             entry.IsPosted = true;
-            await SaveStarredMessageEntryAsync(entry);
+            await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
             _logger.LogInformation(
                 "[CreateStarboardPost] Posted message {OriginalMessageId} to starboard in guild {GuildId}",
                 entry.Id.OriginalMessageId, guildId);
@@ -331,7 +331,7 @@ public class StarboardService
         if (entry.StarboardMessageId == null || config.StarboardChannelId == null) return;
 
         var starboardChannel = _client.GetChannel(config.StarboardChannelId.Value) as ITextChannel ??
-                               await _client.Rest.GetChannelAsync(config.StarboardChannelId.Value) as ITextChannel;
+                               await _client.Rest.GetChannelAsync(config.StarboardChannelId.Value).ConfigureAwait(false) as ITextChannel;
         if (starboardChannel == null)
         {
             _logger.LogWarning(
@@ -342,15 +342,14 @@ public class StarboardService
 
         try
         {
-            var starboardMsg = await starboardChannel.GetMessageAsync(entry.StarboardMessageId.Value) as IUserMessage;
-            if (starboardMsg == null)
+            if (await starboardChannel.GetMessageAsync(entry.StarboardMessageId.Value).ConfigureAwait(false) is not IUserMessage starboardMsg)
             {
                 _logger.LogWarning(
                     "[UpdateStarboardPost] Starboard message {StarboardMessageId} not found or not IUserMessage in guild {GuildId}.",
                     entry.StarboardMessageId.Value, guildId);
                 entry.IsPosted = false;
                 entry.StarboardMessageId = null;
-                await SaveStarredMessageEntryAsync(entry);
+                await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
                 return;
             }
 
@@ -385,7 +384,7 @@ public class StarboardService
                     return;
                 }
 
-                await starboardMsg.ModifyAsync(props => props.Content = newContent);
+                await starboardMsg.ModifyAsync(props => props.Content = newContent).ConfigureAwait(false);
                 _logger.LogDebug(
                     "[UpdateStarboardPost] Updated star count for starboard message {StarboardMessageId} in guild {GuildId} to {StarCount}",
                     entry.StarboardMessageId.Value, guildId, entry.StarCount);
@@ -398,7 +397,7 @@ public class StarboardService
                 entry.StarboardMessageId, guildId);
             entry.IsPosted = false;
             entry.StarboardMessageId = null;
-            await SaveStarredMessageEntryAsync(entry);
+            await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
         {
@@ -426,7 +425,7 @@ public class StarboardService
         if (entry.StarboardMessageId == null || config.StarboardChannelId == null) return;
 
         var starboardChannel = _client.GetChannel(config.StarboardChannelId.Value) as ITextChannel ??
-                               await _client.Rest.GetChannelAsync(config.StarboardChannelId.Value) as ITextChannel;
+                               await _client.Rest.GetChannelAsync(config.StarboardChannelId.Value).ConfigureAwait(false) as ITextChannel;
         if (starboardChannel == null)
         {
             _logger.LogWarning(
@@ -434,7 +433,7 @@ public class StarboardService
                 config.StarboardChannelId.Value, guildId);
             entry.IsPosted = false;
             entry.StarboardMessageId = null;
-            await SaveStarredMessageEntryAsync(entry);
+            await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
             return;
         }
 
@@ -463,11 +462,11 @@ public class StarboardService
                     entry.StarboardMessageId.Value, starboardChannel.Id);
                 entry.IsPosted = false;
                 entry.StarboardMessageId = null;
-                await SaveStarredMessageEntryAsync(entry);
+                await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
                 return;
             }
 
-            await starboardChannel.DeleteMessageAsync(entry.StarboardMessageId.Value);
+            await starboardChannel.DeleteMessageAsync(entry.StarboardMessageId.Value).ConfigureAwait(false);
             _logger.LogInformation(
                 "[DeleteStarboardPost] Deleted starboard message {StarboardMessageId} for original {OriginalMessageId} in guild {GuildId}",
                 entry.StarboardMessageId.Value, entry.Id.OriginalMessageId, guildId);
@@ -502,7 +501,7 @@ public class StarboardService
             {
                 entry.IsPosted = false;
                 entry.StarboardMessageId = null;
-                await SaveStarredMessageEntryAsync(entry);
+                await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
             }
         }
     }
@@ -519,7 +518,7 @@ public class StarboardService
         else
             try
             {
-                channel = await channelCache.GetOrDownloadAsync();
+                channel = await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -535,7 +534,7 @@ public class StarboardService
         var user = reaction.User.IsSpecified ? reaction.User.Value : _client.GetUser(reaction.UserId);
         if (user == null || user.IsBot) return;
 
-        var config = await _configService.GetGuildConfigAsync(guildId);
+        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (!config.IsEnabled || config.StarboardChannelId == null) return;
 
         var emojiStr = reaction.Emote.ToString();
@@ -543,11 +542,11 @@ public class StarboardService
 
         if (guildChannel.Id == config.StarboardChannelId.Value) return;
 
-        var originalMessage = await messageCache.GetOrDownloadAsync();
+        var originalMessage = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (originalMessage == null)
         {
             _logger.LogDebug("[ReactionAdded] Original message {MessageId} not found.", messageCache.Id);
-            await DeleteStarredMessageEntryAsync(guildId, messageCache.Id);
+            await DeleteStarredMessageEntryAsync(guildId, messageCache.Id).ConfigureAwait(false);
             return;
         }
 
@@ -557,7 +556,7 @@ public class StarboardService
             if (guildChannel.Guild.CurrentUser.GetPermissions(guildChannel).ManageMessages)
                 try
                 {
-                    await originalMessage.RemoveReactionAsync(reaction.Emote, user);
+                    await originalMessage.RemoveReactionAsync(reaction.Emote, user).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -575,7 +574,7 @@ public class StarboardService
         if (config.IgnoreNsfwChannels && guildChannel is ITextChannel { IsNsfw: true }) return;
 
         // --- Process Star ---
-        var entry = await GetStarredMessageEntryAsync(guildId, originalMessage.Id);
+        var entry = await GetStarredMessageEntryAsync(guildId, originalMessage.Id).ConfigureAwait(false);
         entry ??= new StarredMessageModel
         {
             Id = new StarredMessageIdKey { GuildId = guildId, OriginalMessageId = originalMessage.Id },
@@ -587,11 +586,11 @@ public class StarboardService
         if (starrerAdded)
         {
             entry.StarCount = entry.StarrerUserIds.Count;
-            await SaveStarredMessageEntryAsync(entry);
+            await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
 
-            if (entry.IsPosted) await UpdateStarboardPostAsync(entry, config);
+            if (entry.IsPosted) await UpdateStarboardPostAsync(entry, config).ConfigureAwait(false);
             else if (entry.StarCount >= config.Threshold)
-                await CreateStarboardPostAsync(originalMessage, entry, config);
+                await CreateStarboardPostAsync(originalMessage, entry, config).ConfigureAwait(false);
         }
         else
         {
@@ -609,7 +608,7 @@ public class StarboardService
         else
             try
             {
-                channel = await channelCache.GetOrDownloadAsync();
+                channel = await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -620,7 +619,7 @@ public class StarboardService
         if (channel is not SocketGuildChannel guildChannel) return;
         var guildId = guildChannel.Guild.Id;
 
-        var config = await _configService.GetGuildConfigAsync(guildId);
+        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (config.StarboardChannelId == null) return;
 
         var emojiStr = reaction.Emote.ToString();
@@ -629,7 +628,7 @@ public class StarboardService
 
         // --- Process Unstar ---
         var messageId = messageCache.Id;
-        var entry = await GetStarredMessageEntryAsync(guildId, messageId);
+        var entry = await GetStarredMessageEntryAsync(guildId, messageId).ConfigureAwait(false);
         if (entry == null) return;
 
         var starrerRemoved = entry.StarrerUserIds.Remove(reaction.UserId);
@@ -640,17 +639,17 @@ public class StarboardService
             {
                 if (entry.StarCount < config.Threshold && config.DeleteIfUnStarred)
                 {
-                    await DeleteStarboardPostAsync(entry, config);
+                    await DeleteStarboardPostAsync(entry, config).ConfigureAwait(false);
                 }
                 else
                 {
-                    await UpdateStarboardPostAsync(entry, config);
-                    await SaveStarredMessageEntryAsync(entry);
+                    await UpdateStarboardPostAsync(entry, config).ConfigureAwait(false);
+                    await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
                 }
             }
             else
             {
-                await SaveStarredMessageEntryAsync(entry);
+                await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
             }
         }
         else
@@ -668,7 +667,7 @@ public class StarboardService
         else
             try
             {
-                channel = await channelCache.GetOrDownloadAsync();
+                channel = await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -679,12 +678,12 @@ public class StarboardService
         if (channel is not IGuildChannel guildChannel) return;
         var guildId = guildChannel.GuildId;
 
-        var config = await _configService.GetGuildConfigAsync(guildId);
+        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (config.StarboardChannelId == null) return;
 
         // --- Process Clear ---
         var messageId = messageCache.Id;
-        var entry = await GetStarredMessageEntryAsync(guildId, messageId);
+        var entry = await GetStarredMessageEntryAsync(guildId, messageId).ConfigureAwait(false);
         if (entry == null) return;
 
         entry.StarrerUserIds.Clear();
@@ -694,17 +693,17 @@ public class StarboardService
         {
             if (config.DeleteIfUnStarred)
             {
-                await DeleteStarboardPostAsync(entry, config);
+                await DeleteStarboardPostAsync(entry, config).ConfigureAwait(false);
             }
             else
             {
-                await UpdateStarboardPostAsync(entry, config);
-                await SaveStarredMessageEntryAsync(entry);
+                await UpdateStarboardPostAsync(entry, config).ConfigureAwait(false);
+                await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
             }
         }
         else
         {
-            await SaveStarredMessageEntryAsync(entry);
+            await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
         }
 
         _logger.LogInformation("[ReactionsCleared] Cleared stars on message {MessageId} in guild {GuildId}", messageId,
@@ -720,7 +719,7 @@ public class StarboardService
         else
             try
             {
-                channel = await channelCache.GetOrDownloadAsync();
+                channel = await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -731,19 +730,19 @@ public class StarboardService
         if (channel is not IGuildChannel guildChannel) return;
         var guildId = guildChannel.GuildId;
 
-        var config = await _configService.GetGuildConfigAsync(guildId);
+        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (config.StarboardChannelId == null) return;
 
         // --- Process Deletion ---
         var messageId = messageCache.Id;
-        var entry = await GetStarredMessageEntryAsync(guildId, messageId);
+        var entry = await GetStarredMessageEntryAsync(guildId, messageId).ConfigureAwait(false);
 
-        if (entry is { IsPosted: true }) await DeleteStarboardPostAsync(entry, config);
+        if (entry is { IsPosted: true }) await DeleteStarboardPostAsync(entry, config).ConfigureAwait(false);
 
         // Delete DB entry regardless
         if (entry != null)
         {
-            await DeleteStarredMessageEntryAsync(guildId, messageId);
+            await DeleteStarredMessageEntryAsync(guildId, messageId).ConfigureAwait(false);
             _logger.LogDebug("[MessageDeleted] Deleted DB entry for {MessageId} in {GuildId}", messageId, guildId);
         }
     }
@@ -757,7 +756,7 @@ public class StarboardService
         else
             try
             {
-                channel = await channelCache.GetOrDownloadAsync();
+                channel = await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -768,7 +767,7 @@ public class StarboardService
         if (channel is not IGuildChannel guildChannel) return;
         var guildId = guildChannel.GuildId;
 
-        var config = await _configService.GetGuildConfigAsync(guildId);
+        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (config.StarboardChannelId == null) return;
 
         var messageIds = messageCaches.Select(mc => mc.Id).ToList();
@@ -780,7 +779,7 @@ public class StarboardService
         var filter = Builders<StarredMessageModel>.Filter.In(m => m.Id, compositeIds);
         filter &= Builders<StarredMessageModel>.Filter.Eq(m => m.IsPosted, true);
 
-        var entriesToDeleteSbMsg = await _starredMessagesCollection.Find(filter).ToListAsync();
+        var entriesToDeleteSbMsg = await _starredMessagesCollection.Find(filter).ToListAsync().ConfigureAwait(false);
 
         // --- Delete Starboard Posts ---
         if (entriesToDeleteSbMsg.Count != 0)
@@ -788,7 +787,7 @@ public class StarboardService
             var deleteTasks = entriesToDeleteSbMsg.Select(entry => DeleteStarboardPostAsync(entry, config)).ToList();
             try
             {
-                await Task.WhenAll(deleteTasks);
+                await Task.WhenAll(deleteTasks).ConfigureAwait(false);
                 _logger.LogInformation(
                     "[BulkDelete] Attempted deletion of {Count} starboard posts for bulk delete in {GuildId}",
                     deleteTasks.Count, guildId);
@@ -801,7 +800,7 @@ public class StarboardService
         }
 
         // --- Delete Database Records ---
-        await DeleteManyStarredMessageEntriesAsync(guildId, messageIds);
+        await DeleteManyStarredMessageEntriesAsync(guildId, messageIds).ConfigureAwait(false);
         _logger.LogInformation("[BulkDelete] Cleaned DB for {Count} bulk deleted messages in {GuildId}",
             messageIds.Count, guildId);
     }

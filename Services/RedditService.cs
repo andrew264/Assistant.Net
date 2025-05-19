@@ -78,7 +78,7 @@ public class RedditService(
             HttpResponseMessage response;
             try
             {
-                response = await httpClient.SendAsync(request);
+                response = await httpClient.SendAsync(request).ConfigureAwait(false);
             }
             catch (HttpRequestException ex)
             {
@@ -88,7 +88,7 @@ public class RedditService(
                 return null;
             }
 
-            var responseBody = await response.Content.ReadAsStringAsync();
+            var responseBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -172,7 +172,7 @@ public class RedditService(
 
         logger.LogDebug("Cache miss for Reddit top posts: {Key}", cacheKey);
 
-        var token = await GetAccessTokenAsync();
+        var token = await GetAccessTokenAsync().ConfigureAwait(false);
         if (token == null)
         {
             logger.LogError("Failed to get Reddit access token. Cannot fetch posts for r/{Subreddit}.", subreddit);
@@ -193,7 +193,7 @@ public class RedditService(
             request.Headers.TryAddWithoutValidation("User-Agent", userAgent);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            response = await httpClient.SendAsync(request);
+            response = await httpClient.SendAsync(request).ConfigureAwait(false);
 
             switch (response.StatusCode)
             {
@@ -226,14 +226,14 @@ public class RedditService(
 
             if (!response.IsSuccessStatusCode)
             {
-                var errorBody = await response.Content.ReadAsStringAsync();
+                var errorBody = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 logger.LogError(
                     "Reddit API request failed (OAuth). Status: {StatusCode}, Reason: {ReasonPhrase}, URL: {Url}, Body: {Body}",
                     response.StatusCode, response.ReasonPhrase, apiUrl, errorBody);
                 return null;
             }
 
-            var jsonString = await response.Content.ReadAsStringAsync();
+            var jsonString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             var listingResponse = JsonConvert.DeserializeObject<RedditListingResponse>(jsonString);
 
             if (listingResponse?.Data?.Children == null)

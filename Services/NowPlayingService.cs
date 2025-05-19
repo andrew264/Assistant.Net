@@ -62,7 +62,7 @@ public class NowPlayingService : IDisposable
     private async Task OnPlayerStoppedAsync(ulong guildId)
     {
         _logger.LogDebug("[NP Service] Player stopped for guild {GuildId}, ensuring NP message is removed.", guildId);
-        await RemoveNowPlayingMessageAsync(guildId);
+        await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
     }
 
     private async Task OnQueueEmptiedAsync(ulong guildId, CustomPlayer player)
@@ -75,7 +75,7 @@ public class NowPlayingService : IDisposable
             _logger.LogDebug(
                 "[NP Service] Queue emptied and player not actively playing for guild {GuildId}, ensuring NP message is removed.",
                 guildId);
-            await RemoveNowPlayingMessageAsync(guildId);
+            await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
         }
     }
 
@@ -83,27 +83,27 @@ public class NowPlayingService : IDisposable
         SocketInteractionContext interactionContext)
     {
         if (interactionContext.Channel is ITextChannel textChannel)
-            return await CreateOrReplaceNowPlayingMessageInternalAsync(player, textChannel, interactionContext.User);
+            return await CreateOrReplaceNowPlayingMessageInternalAsync(player, textChannel, interactionContext.User).ConfigureAwait(false);
         _logger.LogWarning("Interaction context channel is not ITextChannel for NP message. Guild: {GuildId}",
             interactionContext.Guild.Id);
         return null;
     }
 
     public async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageAsync(CustomPlayer player, ITextChannel channel,
-        IUser requester) => await CreateOrReplaceNowPlayingMessageInternalAsync(player, channel, requester);
+        IUser requester) => await CreateOrReplaceNowPlayingMessageInternalAsync(player, channel, requester).ConfigureAwait(false);
 
     private async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageInternalAsync(CustomPlayer player,
         ITextChannel channel, IUser requester)
     {
         var guildId = player.GuildId;
-        await RemoveNowPlayingMessageAsync(guildId);
+        await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
 
         var (embed, components) = BuildNowPlayingDisplay(player, guildId);
         IUserMessage? sentMessage;
 
         try
         {
-            sentMessage = await channel.SendMessageAsync(embed: embed, components: components);
+            sentMessage = await channel.SendMessageAsync(embed: embed, components: components).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -135,7 +135,7 @@ public class NowPlayingService : IDisposable
             cts.Dispose();
             try
             {
-                await sentMessage.DeleteAsync();
+                await sentMessage.DeleteAsync().ConfigureAwait(false);
             }
             catch
             {
@@ -158,7 +158,7 @@ public class NowPlayingService : IDisposable
             if (deleteDiscordMessage && info.MessageInstance != null)
                 try
                 {
-                    await info.MessageInstance.DeleteAsync();
+                    await info.MessageInstance.DeleteAsync().ConfigureAwait(false);
                     _logger.LogInformation("Deleted Now Playing message {MessageId} for Guild {GuildId}.",
                         info.MessageId, guildId);
                 }
@@ -176,8 +176,8 @@ public class NowPlayingService : IDisposable
                 if (_client.GetChannel(info.TextChannelId) is ITextChannel textChannel)
                     try
                     {
-                        var msg = await textChannel.GetMessageAsync(info.MessageId);
-                        if (msg != null) await msg.DeleteAsync();
+                        var msg = await textChannel.GetMessageAsync(info.MessageId).ConfigureAwait(false);
+                        if (msg != null) await msg.DeleteAsync().ConfigureAwait(false);
                         _logger.LogInformation(
                             "Fetched and deleted Now Playing message {MessageId} for Guild {GuildId}.", info.MessageId,
                             guildId);
@@ -203,7 +203,7 @@ public class NowPlayingService : IDisposable
     {
         if (!_activeNowPlayingMessages.TryGetValue(guildId, out var npInfo) || npInfo.MessageInstance == null)
         {
-            if (npInfo != null && npInfo.MessageInstance == null)
+            if (npInfo is { MessageInstance: null })
             {
                 // Info exists but message instance is gone
                 _logger.LogDebug("NP Message instance for guild {GuildId} is null, attempting to re-fetch or remove.",
@@ -212,7 +212,7 @@ public class NowPlayingService : IDisposable
                 {
                     try
                     {
-                        if (await textChannel.GetMessageAsync(npInfo.MessageId) is IUserMessage fetchedMsg)
+                        if (await textChannel.GetMessageAsync(npInfo.MessageId).ConfigureAwait(false) is IUserMessage fetchedMsg)
                         {
                             _activeNowPlayingMessages.TryUpdate(guildId,
                                 npInfo with { MessageInstance = fetchedMsg },
@@ -221,13 +221,13 @@ public class NowPlayingService : IDisposable
                         }
                         else
                         {
-                            await RemoveNowPlayingMessageAsync(guildId, false);
+                            await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
                             return;
                         }
                     }
                     catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
                     {
-                        await RemoveNowPlayingMessageAsync(guildId, false);
+                        await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
                         return;
                     }
                     catch (Exception ex)
@@ -239,7 +239,7 @@ public class NowPlayingService : IDisposable
                 }
                 else
                 {
-                    await RemoveNowPlayingMessageAsync(guildId, false); // Channel no longer accessible
+                    await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false); // Channel no longer accessible
                     return;
                 }
             }
@@ -254,13 +254,13 @@ public class NowPlayingService : IDisposable
             if (_client.GetGuild(guildId)?.GetTextChannel(npInfo.TextChannelId) is ITextChannel tc)
             {
                 var (retrievedPlayer, _) = await _musicService.GetPlayerAsync(guildId, null, tc,
-                    PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+                    PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
                 player = retrievedPlayer;
             }
 
         if (player == null || player.CurrentTrack == null || player.State == PlayerState.Destroyed)
         {
-            await RemoveNowPlayingMessageAsync(guildId, player == null || player.CurrentTrack == null);
+            await RemoveNowPlayingMessageAsync(guildId, player == null || player.CurrentTrack == null).ConfigureAwait(false);
             return;
         }
 
@@ -271,13 +271,13 @@ public class NowPlayingService : IDisposable
             {
                 props.Embed = embed;
                 props.Components = components;
-            });
+            }).ConfigureAwait(false);
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
         {
             _logger.LogWarning("Now Playing message {MessageId} for Guild {GuildId} not found during update. Removing.",
                 npInfo.MessageId, guildId);
-            await RemoveNowPlayingMessageAsync(guildId, false);
+            await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -292,10 +292,10 @@ public class NowPlayingService : IDisposable
         while (!cancellationToken.IsCancellationRequested)
             try
             {
-                await Task.Delay(_updateInterval, cancellationToken);
+                await Task.Delay(_updateInterval, cancellationToken).ConfigureAwait(false);
                 if (cancellationToken.IsCancellationRequested) break;
 
-                await UpdateNowPlayingMessageAsync(guildId);
+                await UpdateNowPlayingMessageAsync(guildId).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

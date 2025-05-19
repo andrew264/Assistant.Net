@@ -39,7 +39,7 @@ public class StarboardConfigService
         }
 
         _logger.LogTrace("Starboard config cache miss for Guild {GuildId}", guildId);
-        var config = await _configCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync();
+        var config = await _configCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync().ConfigureAwait(false);
 
         config ??= new StarboardConfigModel { GuildId = guildId };
 
@@ -55,7 +55,7 @@ public class StarboardConfigService
         var filter = Builders<StarboardConfigModel>.Filter.Eq(x => x.GuildId, config.GuildId);
         var options = new ReplaceOptions { IsUpsert = true };
 
-        await _configCollection.ReplaceOneAsync(filter, config, options);
+        await _configCollection.ReplaceOneAsync(filter, config, options).ConfigureAwait(false);
 
         var cacheKey = $"{CachePrefix}{config.GuildId}";
         AddToCache(cacheKey, config);

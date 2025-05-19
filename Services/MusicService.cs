@@ -40,7 +40,7 @@ public class MusicService(
             TextChannel = targetTextChannel,
             SocketClient = client,
             ApplicationConfig = config,
-            InitialVolume = await musicHistoryService.GetGuildVolumeAsync(guildId)
+            InitialVolume = await musicHistoryService.GetGuildVolumeAsync(guildId).ConfigureAwait(false)
         };
 
         var retrieveOptions = new PlayerRetrieveOptions(channelBehavior, memberBehavior);
@@ -54,7 +54,7 @@ public class MusicService(
                 return ValueTask.FromResult(new CustomPlayer(props));
             },
             playerOptions,
-            retrieveOptions);
+            retrieveOptions).ConfigureAwait(false);
 
         if (!result.IsSuccess)
             logger.LogWarning(
@@ -89,7 +89,7 @@ public class MusicService(
                 guildUser.VoiceChannel?.Id,
                 textChannel,
                 channelBehavior,
-                memberBehavior);
+                memberBehavior).ConfigureAwait(false);
 
         logger.LogError("GetPlayerForContextAsync called from non-text channel {ChannelId} ({ChannelName})",
             channel.Id, channel.Name);
@@ -101,12 +101,12 @@ public class MusicService(
     {
         if (player.State is PlayerState.NotPlaying or PlayerState.Destroyed)
         {
-            var nextTrack = await player.Queue.TryDequeueAsync();
+            var nextTrack = await player.Queue.TryDequeueAsync().ConfigureAwait(false);
             if (nextTrack?.Track is not null)
             {
                 logger.LogInformation("[MusicService:{GuildId}] Starting playback with track: {TrackTitle}",
                     player.GuildId, nextTrack.Track.Title);
-                await player.PlayAsync(nextTrack, false);
+                await player.PlayAsync(nextTrack, false).ConfigureAwait(false);
             }
             else
             {
@@ -115,7 +115,7 @@ public class MusicService(
                     player.GuildId);
                 // If queue is truly empty now, and player was not playing.
                 if (player.Queue.IsEmpty && player.State == PlayerState.NotPlaying && QueueEmptied != null)
-                    await QueueEmptied.Invoke(player.GuildId, player);
+                    await QueueEmptied.Invoke(player.GuildId, player).ConfigureAwait(false);
             }
         }
     }
@@ -131,7 +131,7 @@ public class MusicService(
 
         try
         {
-            lavalinkResult = await audioService.Tracks.LoadTracksAsync(query, searchMode);
+            lavalinkResult = await audioService.Tracks.LoadTracksAsync(query, searchMode).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -149,7 +149,7 @@ public class MusicService(
                     query);
 
             var trackItems = tracks.Select(t => new TrackQueueItem(t)).ToList();
-            await player.Queue.AddRangeAsync(trackItems);
+            await player.Queue.AddRangeAsync(trackItems).ConfigureAwait(false);
             return TrackLoadResultInfo.FromPlaylist(tracks, playlist, query);
         }
 
@@ -159,7 +159,7 @@ public class MusicService(
 
         if (lavalinkResult.Track is not null)
         {
-            await player.Queue.AddAsync(new TrackQueueItem(lavalinkResult.Track));
+            await player.Queue.AddAsync(new TrackQueueItem(lavalinkResult.Track)).ConfigureAwait(false);
             return TrackLoadResultInfo.FromSuccess(lavalinkResult.Track, query);
         }
 
@@ -179,7 +179,7 @@ public class MusicService(
     {
         try
         {
-            var result = await audioService.Tracks.LoadTracksAsync(uri, TrackSearchMode.None);
+            var result = await audioService.Tracks.LoadTracksAsync(uri, TrackSearchMode.None).ConfigureAwait(false);
             return result.Track; // Will be null if not found or error
         }
         catch (Exception ex)
@@ -203,7 +203,7 @@ public class MusicService(
         if (index == 0) // Skip current track
         {
             trackToReport = player.CurrentTrack;
-            await player.SkipAsync();
+            await player.SkipAsync().ConfigureAwait(false);
             actionMessage = $"Skipping {trackToReport.Title.AsMarkdownLink(trackToReport.Uri?.ToString())}";
             logger.LogInformation("[MusicService:{GuildId}] Skipped current track '{TrackTitle}' by {User}",
                 player.GuildId, trackToReport.Title, requester.Username);
@@ -214,14 +214,14 @@ public class MusicService(
             if (queuedTrackItem.Track is null)
                 return (false, null, "Invalid track at the specified index in the queue.");
             trackToReport = queuedTrackItem.Track;
-            await player.Queue.RemoveAtAsync(index - 1);
+            await player.Queue.RemoveAtAsync(index - 1).ConfigureAwait(false);
             actionMessage = $"Removed from queue: {trackToReport.Title.AsMarkdownLink(trackToReport.Uri?.ToString())}";
             logger.LogInformation(
                 "[MusicService:{GuildId}] Removed track '{TrackTitle}' from queue at index {Index} by {User}",
                 player.GuildId, trackToReport.Title, index, requester.Username);
 
             if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null) // Check after removal
-                await QueueEmptied.Invoke(player.GuildId, player);
+                await QueueEmptied.Invoke(player.GuildId, player).ConfigureAwait(false);
         }
         else
         {
@@ -271,8 +271,8 @@ public class MusicService(
             return (false, $"Volume out of range. Please use a value between 0 and {maxVolume}.");
 
         var volumeFloat = volumePercentage / 100f;
-        await player.SetVolumeAsync(volumeFloat);
-        await musicHistoryService.SetGuildVolumeAsync(player.GuildId, volumeFloat);
+        await player.SetVolumeAsync(volumeFloat).ConfigureAwait(false);
+        await musicHistoryService.SetGuildVolumeAsync(player.GuildId, volumeFloat).ConfigureAwait(false);
         logger.LogInformation("[MusicService:{GuildId}] Volume set to {Volume}% by {User}", player.GuildId,
             volumePercentage, requester.Username);
         return (true, $"Volume set to `{volumePercentage}%`");
@@ -284,9 +284,9 @@ public class MusicService(
     public async Task StopPlaybackAsync(CustomPlayer player, IUser requester)
     {
         var guildId = player.GuildId; // Capture before player might be disposed
-        await player.Queue.ClearAsync();
-        await player.StopAsync();
-        await player.DisconnectAsync();
+        await player.Queue.ClearAsync().ConfigureAwait(false);
+        await player.StopAsync().ConfigureAwait(false);
+        await player.DisconnectAsync().ConfigureAwait(false);
         logger.LogInformation("[MusicService:{GuildId}] Stopped and cleared queue by {User}", guildId,
             requester.Username);
 
@@ -306,7 +306,7 @@ public class MusicService(
             return (false, $"Cannot seek beyond the song's duration ({player.CurrentTrack.Duration:mm\\:ss}).");
         if (timeSpan < TimeSpan.Zero) return (false, "Cannot seek to a negative time.");
 
-        await player.SeekAsync(timeSpan);
+        await player.SeekAsync(timeSpan).ConfigureAwait(false);
         logger.LogInformation("[MusicService:{GuildId}] Seeked track '{TrackTitle}' to {Time} by {User}",
             player.GuildId, player.CurrentTrack.Title, timeSpan, requester.Username);
         return (true,
@@ -323,7 +323,7 @@ public class MusicService(
 
         if (index == 0) // Restart current track
         {
-            await player.SeekAsync(TimeSpan.Zero);
+            await player.SeekAsync(TimeSpan.Zero).ConfigureAwait(false);
             logger.LogInformation("[MusicService:{GuildId}] Restarted track '{TrackTitle}' by {User}",
                 player.GuildId, currentTrack.Title, requester.Username);
             return (true, $"Restarting {currentTrack.Title.AsMarkdownLink(currentTrack.Uri?.ToString())}.");
@@ -336,10 +336,10 @@ public class MusicService(
         if (trackToPlayItem.Track is null) return (false, "Invalid track data at the specified queue index.");
 
         // Remove tracks before the target index
-        for (var i = 0; i < index - 1; i++) await player.Queue.TryDequeueAsync();
+        for (var i = 0; i < index - 1; i++) await player.Queue.TryDequeueAsync().ConfigureAwait(false);
 
         // The target track is now at the front. SkipAsync will play it.
-        await player.SkipAsync();
+        await player.SkipAsync().ConfigureAwait(false);
         logger.LogInformation("[MusicService:{GuildId}] Skipped to track '{TrackTitle}' (from index {Index}) by {User}",
             player.GuildId, trackToPlayItem.Track.Title, index, requester.Username);
         return (true,
@@ -353,13 +353,13 @@ public class MusicService(
         switch (player.State)
         {
             case PlayerState.Playing:
-                await player.PauseAsync();
+                await player.PauseAsync().ConfigureAwait(false);
                 logger.LogInformation("[MusicService:{GuildId}] Paused playback by {User}", player.GuildId,
                     requester.Username);
                 return (true,
                     $"Paused: {player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}");
             case PlayerState.Paused:
-                await player.ResumeAsync();
+                await player.ResumeAsync().ConfigureAwait(false);
                 logger.LogInformation("[MusicService:{GuildId}] Resumed playback by {User}", player.GuildId,
                     requester.Username);
                 return (true,
@@ -443,7 +443,7 @@ public class MusicService(
         if (oneBasedIndex <= 0 || oneBasedIndex > player.Queue.Count) return (false, null, "Invalid index.");
 
         var trackToRemove = player.Queue[oneBasedIndex - 1].Track;
-        await player.Queue.RemoveAtAsync(oneBasedIndex - 1);
+        await player.Queue.RemoveAtAsync(oneBasedIndex - 1).ConfigureAwait(false);
 
         var message = trackToRemove != null
             ? $"Removed {trackToRemove.Title.AsMarkdownLink(trackToRemove.Uri?.ToString())} from the queue."
@@ -453,7 +453,7 @@ public class MusicService(
             oneBasedIndex);
 
         if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null)
-            await QueueEmptied.Invoke(player.GuildId, player);
+            await QueueEmptied.Invoke(player.GuildId, player).ConfigureAwait(false);
         return (true, trackToRemove, message);
     }
 
@@ -462,18 +462,18 @@ public class MusicService(
         if (player.Queue.IsEmpty) return (false, "The queue is already empty.");
         var guildId = player.GuildId;
 
-        await player.Queue.ClearAsync();
+        await player.Queue.ClearAsync().ConfigureAwait(false);
         logger.LogInformation("[MusicService:{GuildId}] Queue cleared.", guildId);
 
         if (QueueEmptied != null)
-            await QueueEmptied.Invoke(guildId, player);
+            await QueueEmptied.Invoke(guildId, player).ConfigureAwait(false);
         return (true, "Queue cleared.");
     }
 
     public async Task<(bool Success, string Message)> ShuffleQueueAsync(CustomPlayer player)
     {
         if (player.Queue.Count < 2) return (false, "Not enough songs in the queue to shuffle.");
-        await player.Queue.ShuffleAsync();
+        await player.Queue.ShuffleAsync().ConfigureAwait(false);
         logger.LogInformation("[MusicService:{GuildId}] Queue shuffled.", player.GuildId);
         return (true, "Queue shuffled.");
     }
@@ -488,8 +488,8 @@ public class MusicService(
         if (fromOneBasedIndex == toOneBasedIndex) return (false, null, "Song is already in that position.");
 
         var trackToMoveItem = player.Queue[fromOneBasedIndex - 1];
-        await player.Queue.RemoveAtAsync(fromOneBasedIndex - 1);
-        await player.Queue.InsertAsync(toOneBasedIndex - 1, trackToMoveItem);
+        await player.Queue.RemoveAtAsync(fromOneBasedIndex - 1).ConfigureAwait(false);
+        await player.Queue.InsertAsync(toOneBasedIndex - 1, trackToMoveItem).ConfigureAwait(false);
 
         var message = trackToMoveItem.Track != null
             ? $"Moved {trackToMoveItem.Track.Title.AsMarkdownLink(trackToMoveItem.Track.Uri?.ToString())} from position `{fromOneBasedIndex}` to `{toOneBasedIndex}`."

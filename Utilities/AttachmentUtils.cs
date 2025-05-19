@@ -28,11 +28,11 @@ public static class AttachmentUtils
             {
                 logger.LogTrace("Downloading attachment: {AttachmentUrl} ({FileName})", attachment.Url,
                     attachment.Filename);
-                var response = await httpClient.GetAsync(attachment.Url);
+                var response = await httpClient.GetAsync(attachment.Url).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
 
                 memoryStream = new MemoryStream();
-                await response.Content.CopyToAsync(memoryStream);
+                await response.Content.CopyToAsync(memoryStream).ConfigureAwait(false);
                 memoryStream.Position = 0;
 
                 fileAttachments.Add(new FileAttachment(memoryStream, attachment.Filename, attachment.Description,
@@ -44,13 +44,13 @@ public static class AttachmentUtils
             {
                 logger.LogError(ex, "Failed to download attachment: {AttachmentUrl} ({FileName})", attachment.Url,
                     attachment.Filename);
-                if (memoryStream != null) await memoryStream.DisposeAsync();
+                if (memoryStream != null) await memoryStream.DisposeAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "An unexpected error occurred processing attachment: {AttachmentUrl} ({FileName})",
                     attachment.Url, attachment.Filename);
-                if (memoryStream != null) await memoryStream.DisposeAsync();
+                if (memoryStream != null) await memoryStream.DisposeAsync().ConfigureAwait(false);
             }
         }
 

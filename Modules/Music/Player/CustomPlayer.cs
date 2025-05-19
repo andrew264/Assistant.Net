@@ -60,7 +60,7 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
             Artist = queueItem.Track.Author
         };
 
-        await _historyService.AddSongToHistoryAsync(GuildId, historyEntry);
+        await _historyService.AddSongToHistoryAsync(GuildId, historyEntry).ConfigureAwait(false);
     }
 
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem queueItem,
@@ -87,7 +87,7 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
         }
 
         // Add to history
-        await AddTrackToHistoryAsync(queueItem);
+        await AddTrackToHistoryAsync(queueItem).ConfigureAwait(false);
 
         _logger.LogInformation("[Player:{GuildId}] Track started: {TrackTitle} ({TrackUri})", GuildId,
             queueItem.Track?.Title, queueItem.Track?.Uri);
@@ -110,8 +110,7 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
                 if (!string.IsNullOrEmpty(activityText))
                     await SocketClient.SetActivityAsync(new Game(activityText, activityType)).ConfigureAwait(false);
                 else
-                    await SocketClient.SetActivityAsync(null)
-                        .ConfigureAwait(false); // Clear activity if default text is empty
+                    await SocketClient.SetActivityAsync(null).ConfigureAwait(false);
                 _logger.LogDebug("Reset bot presence for Home Guild {GuildId} as queue ended.", GuildId);
             }
             catch (Exception ex)

@@ -75,13 +75,13 @@ public class RedditModule(
 
         if (post.IsVideo)
         {
-            await FollowupAsync(embed: embed.Build(), components: view.Build());
-            await Task.Delay(250);
-            await FollowupAsync(post.ContentUrl);
+            await FollowupAsync(embed: embed.Build(), components: view.Build()).ConfigureAwait(false);
+            await Task.Delay(250).ConfigureAwait(false);
+            await FollowupAsync(post.ContentUrl).ConfigureAwait(false);
         }
         else if (post.IsGallery)
         {
-            await FollowupAsync(embed: embed.Build(), components: view.Build());
+            await FollowupAsync(embed: embed.Build(), components: view.Build()).ConfigureAwait(false);
         }
         else
         {
@@ -93,7 +93,7 @@ public class RedditModule(
                 embed.WithImageUrl(post.ContentUrl);
             else
                 embed.Description = $"{post.ContentUrl}\n\n{post.Submission.SelfText}";
-            await FollowupAsync(embed: embed.Build(), components: view.Build());
+            await FollowupAsync(embed: embed.Build(), components: view.Build()).ConfigureAwait(false);
         }
     }
 
@@ -112,7 +112,7 @@ public class RedditModule(
             throw new InvalidOperationException("Reddit client is not configured in config.yaml.");
 
         var postsData =
-            await redditService.GetTopPostsAsync(subreddit, 100, timeFilter, allowNsfw); // Fetch more to sample from
+            await redditService.GetTopPostsAsync(subreddit, 100, timeFilter, allowNsfw).ConfigureAwait(false); // Fetch more to sample from
 
         if (postsData == null) throw new Exception($"Failed to fetch posts from r/{subreddit}.");
         if (postsData.Count == 0) return [];
@@ -144,12 +144,12 @@ public class RedditModule(
         [Summary("count", "Number of memes to fetch (1-5).")] [MinValue(1)] [MaxValue(MaxPosts)]
         int count = 1)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
         var memeSubs = config.Reddit.MemeSubreddits;
         if (memeSubs == null || memeSubs.Count == 0)
         {
-            await FollowupAsync("🚫 Meme subreddits are not configured.", ephemeral: true);
+            await FollowupAsync("🚫 Meme subreddits are not configured.", ephemeral: true).ConfigureAwait(false);
             logger.LogWarning("Meme command failed: MemeSubreddits not configured in config.yaml.");
             return;
         }
@@ -159,31 +159,31 @@ public class RedditModule(
 
         try
         {
-            var posts = await GetRandomPostsAsync(subreddit, DefaultTimeFilter, false, count);
+            var posts = await GetRandomPostsAsync(subreddit, DefaultTimeFilter, false, count).ConfigureAwait(false);
             if (posts.Count == 0)
             {
                 await FollowupAsync($"🚫 Couldn't find any suitable memes in r/{subreddit} right now.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
-            await FollowupAsync($"Found {posts.Count} meme(s) from r/{subreddit}. Sending now...", ephemeral: true);
+            await FollowupAsync($"Found {posts.Count} meme(s) from r/{subreddit}. Sending now...", ephemeral: true).ConfigureAwait(false);
 
             foreach (var post in posts)
             {
-                await SendPostAsync(post!);
-                await Task.Delay(1100);
+                await SendPostAsync(post!).ConfigureAwait(false);
+                await Task.Delay(1100).ConfigureAwait(false);
             }
         }
         catch (InvalidOperationException ex)
         {
             logger.LogError(ex, "Reddit configuration error during meme command.");
-            await FollowupAsync($"❌ {ex.Message}", ephemeral: true);
+            await FollowupAsync($"❌ {ex.Message}", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error executing meme command for r/{Subreddit}", subreddit);
-            await FollowupAsync("❌ Failed to fetch memes. Please try again later.", ephemeral: true);
+            await FollowupAsync("❌ Failed to fetch memes. Please try again later.", ephemeral: true).ConfigureAwait(false);
         }
     }
 
@@ -194,12 +194,12 @@ public class RedditModule(
         [Summary("count", "Number of posts to fetch (1-5).")] [MinValue(1)] [MaxValue(MaxPosts)]
         int count = 1)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
         var nsfwSubs = config.Reddit.NsfwSubreddits;
         if (nsfwSubs == null || nsfwSubs.Count == 0)
         {
-            await FollowupAsync("🚫 NSFW subreddits are not configured.", ephemeral: true);
+            await FollowupAsync("🚫 NSFW subreddits are not configured.", ephemeral: true).ConfigureAwait(false);
             logger.LogWarning("NSFW command failed: NsfwSubreddits not configured");
             return;
         }
@@ -209,33 +209,33 @@ public class RedditModule(
 
         try
         {
-            var posts = await GetRandomPostsAsync(subreddit, DefaultTimeFilter, true, count);
+            var posts = await GetRandomPostsAsync(subreddit, DefaultTimeFilter, true, count).ConfigureAwait(false);
             if (posts.Count == 0)
             {
                 await FollowupAsync($"🚫 Couldn't find any suitable NSFW content in r/{subreddit} right now.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
             // Send initial confirmation
             await FollowupAsync($"Found {posts.Count} NSFW post(s) from r/{subreddit}. Sending now...",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
 
             foreach (var post in posts)
             {
-                await SendPostAsync(post!);
-                await Task.Delay(1100);
+                await SendPostAsync(post!).ConfigureAwait(false);
+                await Task.Delay(1100).ConfigureAwait(false);
             }
         }
         catch (InvalidOperationException ex)
         {
             logger.LogError(ex, "Reddit configuration error during NSFW command.");
-            await FollowupAsync($"❌ {ex.Message}", ephemeral: true);
+            await FollowupAsync($"❌ {ex.Message}", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error executing NSFW command for r/{Subreddit}", subreddit);
-            await FollowupAsync("❌ Failed to fetch NSFW content. Please try again later.", ephemeral: true);
+            await FollowupAsync("❌ Failed to fetch NSFW content. Please try again later.", ephemeral: true).ConfigureAwait(false);
         }
     }
 }

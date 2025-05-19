@@ -19,7 +19,7 @@ public class ReminderModule(ReminderService reminderService)
         string? recurrence = null,
         string? title = null)
     {
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         var parsedTime = ReminderService.ParseTime(timeString);
 
@@ -27,19 +27,19 @@ public class ReminderModule(ReminderService reminderService)
         {
             await FollowupAsync(
                 "Invalid time format. Please use a recognizable format (e.g., 'in 5 minutes', 'at 2:30 PM', 'tomorrow 9am').",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (parsedTime.Value <= DateTime.UtcNow)
         {
-            await FollowupAsync("Reminder time must be in the future.", ephemeral: true);
+            await FollowupAsync("Reminder time must be in the future.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (message.Length > 1000)
         {
-            await FollowupAsync("Reminder message is too long (max 1000 characters).", ephemeral: true);
+            await FollowupAsync("Reminder message is too long (max 1000 characters).", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -47,7 +47,7 @@ public class ReminderModule(ReminderService reminderService)
         {
             await FollowupAsync(
                 "Invalid recurrence interval. Use 'daily', 'weekly', 'monthly', 'yearly', 'hourly', 'minutely', 'every X unit', or 'none'.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -62,7 +62,7 @@ public class ReminderModule(ReminderService reminderService)
             isDm,
             actualTargetUser.Id,
             recurrence,
-            title);
+            title).ConfigureAwait(false);
 
         if (reminder != null)
         {
@@ -71,11 +71,11 @@ public class ReminderModule(ReminderService reminderService)
             var timeUntil = ReminderService.GetRelativeTimeString(reminder.TriggerTime);
             await FollowupAsync(
                 $"Okay {Context.User.Mention}, I'll remind {targetString} {timeUntil}: \"{reminder.Message}\" (ID: `{reminder.Id.SequenceNumber}`)",
-                ephemeral: false, allowedMentions: AllowedMentions.None);
+                ephemeral: false, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
         else
         {
-            await FollowupAsync("Failed to create the reminder due to an internal error.", ephemeral: true);
+            await FollowupAsync("Failed to create the reminder due to an internal error.", ephemeral: true).ConfigureAwait(false);
         }
     }
 
@@ -111,7 +111,7 @@ public class ReminderModule(ReminderService reminderService)
         string? repeat = null
     )
     {
-        await CreateReminderInteractionAsync(time, message, true, Context.User, repeat, title);
+        await CreateReminderInteractionAsync(time, message, true, Context.User, repeat, title).ConfigureAwait(false);
     }
 
     [SlashCommand("channel", "Sets a reminder in this channel.")]
@@ -126,7 +126,7 @@ public class ReminderModule(ReminderService reminderService)
         [Autocomplete(typeof(RecurrenceAutocompleteProvider))]
         string? repeat = null)
     {
-        await CreateReminderInteractionAsync(time, message, false, Context.User, repeat, title);
+        await CreateReminderInteractionAsync(time, message, false, Context.User, repeat, title).ConfigureAwait(false);
     }
 
     [SlashCommand("other", "Sets a reminder for another user (DM).")]
@@ -146,22 +146,22 @@ public class ReminderModule(ReminderService reminderService)
     {
         if (user.IsBot)
         {
-            await RespondAsync("You cannot set reminders for bots.", ephemeral: true);
+            await RespondAsync("You cannot set reminders for bots.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await CreateReminderInteractionAsync(time, message, true, user, repeat, title);
+        await CreateReminderInteractionAsync(time, message, true, user, repeat, title).ConfigureAwait(false);
     }
 
     [SlashCommand("list", "Lists your upcoming reminders.")]
     public async Task ListRemindersAsync()
     {
-        await DeferAsync(true);
-        var reminders = await reminderService.ListUserRemindersAsync(Context.User.Id);
+        await DeferAsync(true).ConfigureAwait(false);
+        var reminders = await reminderService.ListUserRemindersAsync(Context.User.Id).ConfigureAwait(false);
 
         if (reminders.Count == 0)
         {
-            await FollowupAsync("You have no pending reminders.", ephemeral: true);
+            await FollowupAsync("You have no pending reminders.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -193,7 +193,7 @@ public class ReminderModule(ReminderService reminderService)
             count++;
         }
 
-        await FollowupAsync(embed: embed.Build(), ephemeral: true);
+        await FollowupAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
     }
 
     [SlashCommand("cancel", "Cancels or deletes one of your reminders.")]
@@ -203,22 +203,22 @@ public class ReminderModule(ReminderService reminderService)
         [Summary(description: "Permanently delete the reminder instead of just deactivating it.")]
         bool delete = false)
     {
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
-        var (success, found) = await reminderService.CancelReminderAsync(Context.User.Id, id, delete);
+        var (success, found) = await reminderService.CancelReminderAsync(Context.User.Id, id, delete).ConfigureAwait(false);
 
         if (found)
         {
             if (success)
-                await FollowupAsync($"Reminder ID `{id}` {(delete ? "deleted" : "deactivated")}.", ephemeral: true);
+                await FollowupAsync($"Reminder ID `{id}` {(delete ? "deleted" : "deactivated")}.", ephemeral: true).ConfigureAwait(false);
             else
                 await FollowupAsync(
                     $"Failed to {(delete ? "delete" : "deactivate")} reminder ID `{id}`. An internal error occurred.",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
         }
         else
         {
-            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true);
+            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true).ConfigureAwait(false);
         }
     }
 
@@ -240,11 +240,11 @@ public class ReminderModule(ReminderService reminderService)
         if (message == null && time == null && repeat == null && title == null)
         {
             await RespondAsync("You must provide at least one field to edit (message, time, repeat, or title).",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         DateTime? newParsedTime = null;
         if (time != null)
@@ -252,26 +252,26 @@ public class ReminderModule(ReminderService reminderService)
             newParsedTime = ReminderService.ParseTime(time);
             if (newParsedTime == null)
             {
-                await FollowupAsync("Invalid new time format provided.", ephemeral: true);
+                await FollowupAsync("Invalid new time format provided.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
             if (newParsedTime <= DateTime.UtcNow)
             {
-                await FollowupAsync("New reminder time must be in the future.", ephemeral: true);
+                await FollowupAsync("New reminder time must be in the future.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
         }
 
         if (message?.Length > 1000)
         {
-            await FollowupAsync("New reminder message is too long (max 1000 characters).", ephemeral: true);
+            await FollowupAsync("New reminder message is too long (max 1000 characters).", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (repeat != null && !IsValidRecurrence(repeat))
         {
-            await FollowupAsync("Invalid recurrence interval provided.", ephemeral: true);
+            await FollowupAsync("Invalid recurrence interval provided.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -283,7 +283,7 @@ public class ReminderModule(ReminderService reminderService)
             newParsedTime,
             repeat,
             title
-        );
+        ).ConfigureAwait(false);
 
         if (found)
         {
@@ -312,24 +312,24 @@ public class ReminderModule(ReminderService reminderService)
                     embed.AddField("Target", targetStr);
 
 
-                    await FollowupAsync(embed: embed.Build(), ephemeral: true);
+                    await FollowupAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
                 }
                 else
                 {
                     // Should not happen if success is true, but fallback
-                    await FollowupAsync($"Reminder ID `{id}` updated successfully.", ephemeral: true);
+                    await FollowupAsync($"Reminder ID `{id}` updated successfully.", ephemeral: true).ConfigureAwait(false);
                 }
             }
             else
             {
                 await FollowupAsync(
                     $"Failed to edit reminder ID `{id}`. An internal error occurred or input was invalid (e.g., time in the past).",
-                    ephemeral: true);
+                    ephemeral: true).ConfigureAwait(false);
             }
         }
         else
         {
-            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true);
+            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true).ConfigureAwait(false);
         }
     }
 
@@ -354,7 +354,7 @@ public class ReminderModule(ReminderService reminderService)
             .AddField("Repeat Format Examples",
                 "`none`, `daily`, `weekly`, `monthly`, `yearly`, `hourly`, `minutely`, `every 2 days`, `every 3 weeks`");
 
-        await RespondAsync(embed: embed.Build(), ephemeral: true);
+        await RespondAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
     }
 }
 

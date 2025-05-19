@@ -33,11 +33,11 @@ public class QueueInteractionModule(
                     props.Content = error;
                     props.Embed = null;
                     props.Components = new ComponentBuilder().Build();
-                });
+                }).ConfigureAwait(false);
             }
             catch
             {
-                await FollowupAsync(error, ephemeral: true);
+                await FollowupAsync(error, ephemeral: true).ConfigureAwait(false);
             }
 
             return;
@@ -50,12 +50,12 @@ public class QueueInteractionModule(
                 props.Content = "";
                 props.Embed = embed;
                 props.Components = components;
-            });
+            }).ConfigureAwait(false);
         }
         catch
         {
             if (!ephemeral)
-                await FollowupAsync(embed: embed, components: components, ephemeral: ephemeral);
+                await FollowupAsync(embed: embed, components: components, ephemeral: ephemeral).ConfigureAwait(false);
             else
                 logger.LogWarning(
                     "Failed to modify original ephemeral response for queue. User: {UserId}, InteractionMsgId: {MsgId}",
@@ -70,18 +70,18 @@ public class QueueInteractionModule(
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.Ignore);
+            MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondAsync(errorMessage, ephemeral: true);
+            await RespondAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await RespondAsync("Fetching queue...");
-        var initialResponse = await GetOriginalResponseAsync();
-        await ModifyOrFollowupWithQueueAsync(player, 1, initialResponse.Id);
+        await RespondAsync("Fetching queue...").ConfigureAwait(false);
+        var initialResponse = await GetOriginalResponseAsync().ConfigureAwait(false);
+        await ModifyOrFollowupWithQueueAsync(player, 1, initialResponse.Id).ConfigureAwait(false);
     }
 
     [ComponentInteraction("assistant:queue_page_action:*:*:*:*", true)]
@@ -90,16 +90,16 @@ public class QueueInteractionModule(
     {
         if (Context.User.Id != requesterId)
         {
-            await RespondAsync("This is not your queue interaction!", ephemeral: true);
+            await RespondAsync("This is not your queue interaction!", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.Ignore);
+            MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
 
         if (player is null)
         {
@@ -111,11 +111,11 @@ public class QueueInteractionModule(
                     props.Content = errorMessage;
                     props.Embed = null;
                     props.Components = new ComponentBuilder().Build();
-                });
+                }).ConfigureAwait(false);
             }
             catch
             {
-                await FollowupAsync(errorMessage, ephemeral: true);
+                await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             }
 
             return;
@@ -141,7 +141,7 @@ public class QueueInteractionModule(
             }
         }
 
-        await ModifyOrFollowupWithQueueAsync(player, newPage, interactionMessageId);
+        await ModifyOrFollowupWithQueueAsync(player, newPage, interactionMessageId).ConfigureAwait(false);
     }
 
     [SlashCommand("remove", "Remove a song from the queue by its 1-based index.")]
@@ -150,18 +150,18 @@ public class QueueInteractionModule(
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame);
+            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondAsync(errorMessage, ephemeral: true);
+            await RespondAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
-        var (success, _, message) = await musicService.RemoveFromQueueAsync(player, index);
-        await FollowupAsync(message, ephemeral: !success);
+        await DeferAsync().ConfigureAwait(false);
+        var (success, _, message) = await musicService.RemoveFromQueueAsync(player, index).ConfigureAwait(false);
+        await FollowupAsync(message, ephemeral: !success).ConfigureAwait(false);
     }
 
     [SlashCommand("clear", "Clear the entire song queue.")]
@@ -170,18 +170,18 @@ public class QueueInteractionModule(
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame);
+            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondAsync(errorMessage, ephemeral: true);
+            await RespondAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
-        var (success, message) = await musicService.ClearQueueAsync(player);
-        await FollowupAsync(message, ephemeral: !success);
+        await DeferAsync().ConfigureAwait(false);
+        var (success, message) = await musicService.ClearQueueAsync(player).ConfigureAwait(false);
+        await FollowupAsync(message, ephemeral: !success).ConfigureAwait(false);
     }
 
     [SlashCommand("shuffle", "Shuffle the songs in the queue.")]
@@ -190,23 +190,23 @@ public class QueueInteractionModule(
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame);
+            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondAsync(errorMessage, ephemeral: true);
+            await RespondAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
-        var (success, message) = await musicService.ShuffleQueueAsync(player);
-        await FollowupAsync(message, ephemeral: !success);
+        await DeferAsync().ConfigureAwait(false);
+        var (success, message) = await musicService.ShuffleQueueAsync(player).ConfigureAwait(false);
+        await FollowupAsync(message, ephemeral: !success).ConfigureAwait(false);
 
         if (success)
         {
-            var followupResponse = await GetOriginalResponseAsync();
-            await ModifyOrFollowupWithQueueAsync(player, 1, followupResponse.Id);
+            var followupResponse = await GetOriginalResponseAsync().ConfigureAwait(false);
+            await ModifyOrFollowupWithQueueAsync(player, 1, followupResponse.Id).ConfigureAwait(false);
         }
     }
 
@@ -220,18 +220,18 @@ public class QueueInteractionModule(
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame);
+            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondAsync(errorMessage, ephemeral: true);
+            await RespondAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
-        var (success, _, message) = await musicService.MoveInQueueAsync(player, fromIndex, toIndex);
-        await FollowupAsync(message, ephemeral: !success);
+        await DeferAsync().ConfigureAwait(false);
+        var (success, _, message) = await musicService.MoveInQueueAsync(player, fromIndex, toIndex).ConfigureAwait(false);
+        await FollowupAsync(message, ephemeral: !success).ConfigureAwait(false);
     }
 
     [SlashCommand("loop", "Toggle looping for the entire queue.")]
@@ -240,17 +240,17 @@ public class QueueInteractionModule(
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame);
+            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondAsync(errorMessage, ephemeral: true);
+            await RespondAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
         var (_, message) = musicService.ToggleQueueLoop(player);
-        await FollowupAsync(message);
+        await FollowupAsync(message).ConfigureAwait(false);
     }
 }

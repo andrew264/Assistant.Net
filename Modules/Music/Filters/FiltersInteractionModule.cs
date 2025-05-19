@@ -24,7 +24,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame);
+            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
 
         if (player is null) return (null, MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus));
         if (player.CurrentTrack is null)
@@ -35,11 +35,11 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
     [SlashCommand("nightcore", "Enable/Disable the nightcore filter.")]
     public async Task NightcoreAsync()
     {
-        await DeferAsync();
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        await DeferAsync().ConfigureAwait(false);
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -52,18 +52,18 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         logger.LogInformation("[FILTERS] User {User} {Action} nightcore in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
-        await FollowupAsync(embed: embed);
-        await player.Filters.CommitAsync();
+        await FollowupAsync(embed: embed).ConfigureAwait(false);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
     }
 
     [SlashCommand("vaporwave", "Enable/Disable the vaporwave filter.")]
     public async Task VaporwaveAsync()
     {
-        await DeferAsync();
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        await DeferAsync().ConfigureAwait(false);
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -84,18 +84,18 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         logger.LogInformation("[FILTERS] User {User} {Action} vaporwave in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
-        await player.Filters.CommitAsync();
-        await FollowupAsync(embed: embed);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
+        await FollowupAsync(embed: embed).ConfigureAwait(false);
     }
 
     [SlashCommand("8d", "Enable/Disable the 8D audio filter.")]
     public async Task EightDAsync()
     {
-        await DeferAsync();
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        await DeferAsync().ConfigureAwait(false);
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -108,114 +108,114 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         logger.LogInformation("[FILTERS] User {User} {Action} 8D audio in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
-        await player.Filters.CommitAsync();
-        await FollowupAsync(embed: embed);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
+        await FollowupAsync(embed: embed).ConfigureAwait(false);
     }
 
     [SlashCommand("reset", "Reset all audio filters to default.")]
     public async Task ResetFiltersAsync()
     {
-        await DeferAsync();
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        await DeferAsync().ConfigureAwait(false);
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         player.Filters.Clear();
         var embed = FilterUiBuilder.BuildResetConfirmationEmbed();
-        await FollowupAsync(embed: embed);
+        await FollowupAsync(embed: embed).ConfigureAwait(false);
         logger.LogInformation("[FILTERS] User {User} reset all filters in {GuildName}", Context.User.Username,
             Context.Guild.Name);
-        await player.Filters.CommitAsync();
+        await player.Filters.CommitAsync().ConfigureAwait(false);
     }
 
     [SlashCommand("bassboost", "Adjust the bass boost filter.")]
     public async Task BassBoostAsync()
     {
-        await DeferAsync();
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        await DeferAsync().ConfigureAwait(false);
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
-        var msg = await FollowupAsync(embed: embed, components: components);
+        var msg = await FollowupAsync(embed: embed, components: components).ConfigureAwait(false);
         // No commit needed here, as this command only displays UI. Button handler commits.
 
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(3));
+            await Task.Delay(TimeSpan.FromMinutes(3)).ConfigureAwait(false);
             try
             {
-                await msg.DeleteAsync();
+                await msg.DeleteAsync().ConfigureAwait(false);
             }
             catch
             {
                 // ignored
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     [SlashCommand("trebleboost", "Adjust the treble boost filter.")]
     public async Task TrebleBoostAsync()
     {
-        await DeferAsync();
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        await DeferAsync().ConfigureAwait(false);
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
-        var msg = await FollowupAsync(embed: embed, components: components);
+        var msg = await FollowupAsync(embed: embed, components: components).ConfigureAwait(false);
         // No commit needed here.
 
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(3));
+            await Task.Delay(TimeSpan.FromMinutes(3)).ConfigureAwait(false);
             try
             {
-                await msg.DeleteAsync();
+                await msg.DeleteAsync().ConfigureAwait(false);
             }
             catch
             {
                 // ignored
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     [SlashCommand("timescale", "Adjust playback speed, pitch, and rate.")]
     public async Task TimescaleAsync()
     {
-        await DeferAsync();
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        await DeferAsync().ConfigureAwait(false);
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
-        var msg = await FollowupAsync(embed: embed, components: components);
+        var msg = await FollowupAsync(embed: embed, components: components).ConfigureAwait(false);
         // No commit needed here.
 
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(3));
+            await Task.Delay(TimeSpan.FromMinutes(3)).ConfigureAwait(false);
             try
             {
-                await msg.DeleteAsync();
+                await msg.DeleteAsync().ConfigureAwait(false);
             }
             catch
             {
                 // ignored   
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     // --- Component Interaction Handlers ---
@@ -225,13 +225,13 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
     {
         if (Context.User.Id != originalRequesterId)
         {
-            await RespondAsync("This interaction is not for you.", ephemeral: true);
+            await RespondAsync("This interaction is not for you.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
             await ModifyOriginalResponseAsync(props =>
@@ -239,7 +239,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
                 props.Content = errorMessage ?? "Player not available or not playing anything.";
                 props.Embed = null;
                 props.Components = null;
-            });
+            }).ConfigureAwait(false);
             return;
         }
 
@@ -256,8 +256,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         {
             props.Embed = newEmbed;
             props.Components = newComponents;
-        });
-        await player.Filters.CommitAsync();
+        }).ConfigureAwait(false);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
     }
 
     [ComponentInteraction(FilterUiBuilder.TrebleBoostCustomIdPrefix + ":*:*", true)]
@@ -265,13 +265,13 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
     {
         if (Context.User.Id != originalRequesterId)
         {
-            await RespondAsync("This interaction is not for you.", ephemeral: true);
+            await RespondAsync("This interaction is not for you.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
             await ModifyOriginalResponseAsync(props =>
@@ -279,7 +279,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
                 props.Content = errorMessage ?? "Player not available or not playing anything.";
                 props.Embed = null;
                 props.Components = null;
-            });
+            }).ConfigureAwait(false);
             return;
         }
 
@@ -296,8 +296,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         {
             props.Embed = newEmbed;
             props.Components = newComponents;
-        });
-        await player.Filters.CommitAsync();
+        }).ConfigureAwait(false);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
     }
 
     [ComponentInteraction(FilterUiBuilder.TimescaleCustomIdPrefix + ":*:*:*", true)]
@@ -305,13 +305,13 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
     {
         if (Context.User.Id != originalRequesterId)
         {
-            await RespondAsync("This interaction is not for you.", ephemeral: true);
+            await RespondAsync("This interaction is not for you.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (!float.TryParse(stepString, NumberStyles.Any, CultureInfo.InvariantCulture, out var buttonStepValue))
         {
-            await RespondAsync("Invalid step parameter in button ID. Please try the command again.", ephemeral: true);
+            await RespondAsync("Invalid step parameter in button ID. Please try the command again.", ephemeral: true).ConfigureAwait(false);
             logger.LogError(
                 "Failed to parse step '{StepString}' from timescale button ID for user {User}. Button CustomID was likely {FullCustomID}",
                 stepString, Context.User.Id,
@@ -319,9 +319,9 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             return;
         }
 
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
             await ModifyOriginalResponseAsync(props =>
@@ -329,7 +329,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
                 props.Content = errorMessage ?? "Player not available or not playing anything.";
                 props.Embed = null;
                 props.Components = null;
-            });
+            }).ConfigureAwait(false);
             return;
         }
 
@@ -368,12 +368,12 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
                 {
                     props.Embed = resetEmbed;
                     props.Components = resetComponents;
-                });
-                await player.Filters.CommitAsync();
+                }).ConfigureAwait(false);
+                await player.Filters.CommitAsync().ConfigureAwait(false);
                 return;
             default:
                 logger.LogWarning("Unknown timescale action: {Action} by {User}", action, Context.User.Username);
-                await ModifyOriginalResponseAsync(props => props.Content = "Unknown timescale action.");
+                await ModifyOriginalResponseAsync(props => props.Content = "Unknown timescale action.").ConfigureAwait(false);
                 return;
         }
 
@@ -396,8 +396,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         {
             props.Embed = updatedEmbed;
             props.Components = updatedComponents;
-        });
+        }).ConfigureAwait(false);
 
-        if (action != "step_toggle") await player.Filters.CommitAsync();
+        if (action != "step_toggle") await player.Filters.CommitAsync().ConfigureAwait(false);
     }
 }

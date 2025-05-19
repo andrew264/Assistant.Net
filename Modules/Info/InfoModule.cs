@@ -18,7 +18,7 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
     public async Task PingAsync()
     {
         var latency = _client.Latency;
-        await RespondAsync($"Pong! Latency: {latency}ms", ephemeral: true);
+        await RespondAsync($"Pong! Latency: {latency}ms", ephemeral: true).ConfigureAwait(false);
     }
 
     [SlashCommand("info", "Get information about the bot.")]
@@ -30,6 +30,6 @@ public class InfoModule : InteractionModuleBase<SocketInteractionContext>
             .WithColor(Color.Blue)
             .WithCurrentTimestamp();
 
-        await RespondAsync(embed: embed.Build(), ephemeral: true);
+        await RespondAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
     }
 }

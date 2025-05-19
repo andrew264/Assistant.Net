@@ -35,9 +35,9 @@ public class PlaylistInteractionModule(
         [Summary("name", "The name for your new playlist (1-100 characters).")]
         string name)
     {
-        await DeferAsync();
-        var result = await playlistService.CreatePlaylistAsync(Context.User.Id, Context.Guild.Id, name);
-        await FollowupAsync(result.Message, ephemeral: !result.Success);
+        await DeferAsync().ConfigureAwait(false);
+        var result = await playlistService.CreatePlaylistAsync(Context.User.Id, Context.Guild.Id, name).ConfigureAwait(false);
+        await FollowupAsync(result.Message, ephemeral: !result.Success).ConfigureAwait(false);
     }
 
     // --- Delete ---
@@ -47,11 +47,11 @@ public class PlaylistInteractionModule(
         [Autocomplete(typeof(PlaylistNameAutocompleteProvider))]
         string name)
     {
-        await DeferAsync(true);
-        var playlist = await playlistService.GetPlaylistAsync(Context.User.Id, Context.Guild.Id, name);
+        await DeferAsync(true).ConfigureAwait(false);
+        var playlist = await playlistService.GetPlaylistAsync(Context.User.Id, Context.Guild.Id, name).ConfigureAwait(false);
         if (playlist == null)
         {
-            await FollowupAsync("Playlist not found.", ephemeral: true);
+            await FollowupAsync("Playlist not found.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -64,7 +64,7 @@ public class PlaylistInteractionModule(
             .Build();
 
         await FollowupAsync($"Are you sure you want to delete playlist '{name}'? This action cannot be undone.",
-            components: components, ephemeral: true);
+            components: components, ephemeral: true).ConfigureAwait(false);
     }
 
     [ComponentInteraction("playlist:delete_confirm:*:*", true)]
@@ -72,24 +72,24 @@ public class PlaylistInteractionModule(
     {
         if (Context.User.Id != userId)
         {
-            await RespondAsync("This confirmation is not for you.", ephemeral: true);
+            await RespondAsync("This confirmation is not for you.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync(true);
-        var success = await playlistService.DeletePlaylistAsync(userId, Context.Guild.Id, playlistName);
+        await DeferAsync(true).ConfigureAwait(false);
+        var success = await playlistService.DeletePlaylistAsync(userId, Context.Guild.Id, playlistName).ConfigureAwait(false);
         if (success)
             await ModifyOriginalResponseAsync(props =>
             {
                 props.Content = $"Playlist '{playlistName}' deleted.";
                 props.Components = null;
-            });
+            }).ConfigureAwait(false);
         else
             await ModifyOriginalResponseAsync(props =>
             {
                 props.Content = $"Failed to delete playlist '{playlistName}'. It might have been already deleted.";
                 props.Components = null;
-            });
+            }).ConfigureAwait(false);
     }
 
     [ComponentInteraction("playlist:delete_cancel:*:*", true)]
@@ -97,7 +97,7 @@ public class PlaylistInteractionModule(
     {
         if (Context.User.Id != userId)
         {
-            await RespondAsync("This confirmation is not for you.", ephemeral: true);
+            await RespondAsync("This confirmation is not for you.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -105,7 +105,7 @@ public class PlaylistInteractionModule(
         {
             props.Content = "Playlist deletion cancelled.";
             props.Components = null;
-        });
+        }).ConfigureAwait(false);
     }
 
     // --- Add ---
@@ -117,24 +117,22 @@ public class PlaylistInteractionModule(
         [Summary("query", "Song name, URL, or playlist URL. Leave empty to add current song.")]
         string? query = null)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             !string.IsNullOrWhiteSpace(query) ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
             MemberVoiceStateBehavior.RequireSame // User must be in a VC to add songs
-        );
+        ).ConfigureAwait(false);
 
-        if (player == null && !string.IsNullOrWhiteSpace(query))
+        switch (player)
         {
-            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true);
-            return;
-        }
-
-        if (player == null && string.IsNullOrWhiteSpace(query))
-        {
-            await FollowupAsync("I'm not connected to a voice channel to get the current song.", ephemeral: true);
-            return;
+            case null when !string.IsNullOrWhiteSpace(query):
+                await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true).ConfigureAwait(false);
+                return;
+            case null when string.IsNullOrWhiteSpace(query):
+                await FollowupAsync("I'm not connected to a voice channel to get the current song.", ephemeral: true).ConfigureAwait(false);
+                return;
         }
 
 
@@ -142,12 +140,12 @@ public class PlaylistInteractionModule(
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var loadResult = await musicService.LoadAndQueueTrackAsync(player!, query, Context.User);
+            var loadResult = await musicService.LoadAndQueueTrackAsync(player!, query, Context.User).ConfigureAwait(false);
 
             if (loadResult.Status == TrackLoadStatus.LoadFailed || loadResult.Status == TrackLoadStatus.NoMatches ||
                 loadResult.Tracks.Count == 0)
             {
-                await FollowupAsync(loadResult.ErrorMessage ?? "No tracks found for your query.", ephemeral: true);
+                await FollowupAsync(loadResult.ErrorMessage ?? "No tracks found for your query.", ephemeral: true).ConfigureAwait(false);
                 return;
             }
 
@@ -176,19 +174,19 @@ public class PlaylistInteractionModule(
         }
         else
         {
-            await FollowupAsync("Please provide a song/URL, or play a song to add the current one.", ephemeral: true);
+            await FollowupAsync("Please provide a song/URL, or play a song to add the current one.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (songsToAdd.Count == 0)
         {
-            await FollowupAsync("No valid songs found to add.", ephemeral: true);
+            await FollowupAsync("No valid songs found to add.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var addResult =
-            await playlistService.AddTracksToPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName, songsToAdd);
-        await FollowupAsync(addResult.Message, ephemeral: !addResult.Success);
+            await playlistService.AddTracksToPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName, songsToAdd).ConfigureAwait(false);
+        await FollowupAsync(addResult.Message, ephemeral: !addResult.Success).ConfigureAwait(false);
     }
 
     // --- Remove ---
@@ -200,22 +198,22 @@ public class PlaylistInteractionModule(
         [Summary("position", "The 1-based position of the song to remove.")]
         int position)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
         var result =
             await playlistService.RemoveSongFromPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName,
-                position);
-        await FollowupAsync(result.Message, ephemeral: !result.Success);
+                position).ConfigureAwait(false);
+        await FollowupAsync(result.Message, ephemeral: !result.Success).ConfigureAwait(false);
     }
 
     // --- List ---
     [SlashCommand("list", "Show all your playlists in this server.")]
     public async Task ListPlaylistsCommand()
     {
-        await DeferAsync();
-        var playlists = await playlistService.GetUserPlaylistsAsync(Context.User.Id, Context.Guild.Id);
+        await DeferAsync().ConfigureAwait(false);
+        var playlists = await playlistService.GetUserPlaylistsAsync(Context.User.Id, Context.Guild.Id).ConfigureAwait(false);
         if (playlists.Count == 0)
         {
-            await FollowupAsync("You don't have any playlists in this server.", ephemeral: true);
+            await FollowupAsync("You don't have any playlists in this server.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -228,7 +226,7 @@ public class PlaylistInteractionModule(
             playlists.Select((p, i) => $"{i + 1}. {p.Name.Truncate(50)} ({p.Songs.Count} songs)"));
         embed.WithDescription(description.Length > 0 ? description : "No playlists found.");
 
-        await FollowupAsync(embed: embed.Build());
+        await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
     }
 
     // --- Show ---
@@ -239,23 +237,23 @@ public class PlaylistInteractionModule(
         [Summary("page", "The page number to display (default: 1).")]
         int page = 1)
     {
-        await DeferAsync();
-        var playlist = await playlistService.GetPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName);
+        await DeferAsync().ConfigureAwait(false);
+        var playlist = await playlistService.GetPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName).ConfigureAwait(false);
 
         if (playlist == null)
         {
-            await FollowupAsync("Playlist not found.", ephemeral: true);
+            await FollowupAsync("Playlist not found.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (playlist.Songs.Count == 0)
         {
-            await FollowupAsync($"Playlist '{playlistName}' is empty.", ephemeral: true);
+            await FollowupAsync($"Playlist '{playlistName}' is empty.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = BuildShowPlaylistResponse(playlist, page, Context.User.Id);
-        var message = await FollowupAsync(embed: embed, components: components);
+        var message = await FollowupAsync(embed: embed, components: components).ConfigureAwait(false);
         if (message != null && components != null)
         {
             ActiveShowViews[message.Id] = message;
@@ -264,7 +262,7 @@ public class PlaylistInteractionModule(
                 if (ActiveShowViews.TryRemove(message.Id, out var msgToClean))
                     try
                     {
-                        await msgToClean.ModifyAsync(m => m.Components = new ComponentBuilder().Build());
+                        await msgToClean.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
                     }
                     catch (Exception ex)
                     {
@@ -329,12 +327,12 @@ public class PlaylistInteractionModule(
     {
         if (Context.User.Id != requesterId)
         {
-            await RespondAsync("This interaction is not for you.", ephemeral: true);
+            await RespondAsync("This interaction is not for you.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
-        var playlist = await playlistService.GetPlaylistAsync(requesterId, Context.Guild.Id, playlistName);
+        await DeferAsync().ConfigureAwait(false);
+        var playlist = await playlistService.GetPlaylistAsync(requesterId, Context.Guild.Id, playlistName).ConfigureAwait(false);
         if (playlist == null)
         {
             await ModifyOriginalResponseAsync(m =>
@@ -342,7 +340,7 @@ public class PlaylistInteractionModule(
                 m.Content = "Playlist was deleted.";
                 m.Embed = null;
                 m.Components = null;
-            });
+            }).ConfigureAwait(false);
             return;
         }
 
@@ -351,7 +349,7 @@ public class PlaylistInteractionModule(
         {
             m.Embed = embed;
             m.Components = components;
-        });
+        }).ConfigureAwait(false);
     }
 
     [ComponentInteraction("playlist:show_next:*:*:*", true)]
@@ -359,12 +357,12 @@ public class PlaylistInteractionModule(
     {
         if (Context.User.Id != requesterId)
         {
-            await RespondAsync("This interaction is not for you.", ephemeral: true);
+            await RespondAsync("This interaction is not for you.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync(); // Defer update
-        var playlist = await playlistService.GetPlaylistAsync(requesterId, Context.Guild.Id, playlistName);
+        await DeferAsync().ConfigureAwait(false); // Defer update
+        var playlist = await playlistService.GetPlaylistAsync(requesterId, Context.Guild.Id, playlistName).ConfigureAwait(false);
         if (playlist == null)
         {
             await ModifyOriginalResponseAsync(m =>
@@ -372,7 +370,7 @@ public class PlaylistInteractionModule(
                 m.Content = "Playlist was deleted.";
                 m.Embed = null;
                 m.Components = null;
-            });
+            }).ConfigureAwait(false);
             return;
         }
 
@@ -381,7 +379,7 @@ public class PlaylistInteractionModule(
         {
             m.Embed = embed;
             m.Components = components;
-        });
+        }).ConfigureAwait(false);
     }
 
     // --- Play ---
@@ -391,29 +389,29 @@ public class PlaylistInteractionModule(
         [Autocomplete(typeof(PlaylistNameAutocompleteProvider))]
         string playlistName)
     {
-        await DeferAsync();
-        var playlist = await playlistService.GetPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName);
+        await DeferAsync().ConfigureAwait(false);
+        var playlist = await playlistService.GetPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName).ConfigureAwait(false);
         if (playlist == null)
         {
-            await FollowupAsync("Playlist not found.", ephemeral: true);
+            await FollowupAsync("Playlist not found.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (playlist.Songs.Count == 0)
         {
-            await FollowupAsync($"Playlist '{playlistName}' is empty.", ephemeral: true);
+            await FollowupAsync($"Playlist '{playlistName}' is empty.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(Context.Guild, Context.User,
-            Context.Channel, PlayerChannelBehavior.Join, MemberVoiceStateBehavior.RequireSame);
+            Context.Channel, PlayerChannelBehavior.Join, MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
         if (player == null)
         {
-            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true);
+            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await player.Queue.ClearAsync();
+        await player.Queue.ClearAsync().ConfigureAwait(false);
         var addedCount = 0;
         var failedTracks = new List<string>();
 
@@ -429,10 +427,10 @@ public class PlaylistInteractionModule(
 
             try
             {
-                var trackLoadResult = await audioService.Tracks.LoadTracksAsync(song.Uri, TrackSearchMode.None);
+                var trackLoadResult = await audioService.Tracks.LoadTracksAsync(song.Uri, TrackSearchMode.None).ConfigureAwait(false);
                 if (trackLoadResult.Track != null)
                 {
-                    await player.Queue.AddAsync(new TrackQueueItem(trackLoadResult.Track));
+                    await player.Queue.AddAsync(new TrackQueueItem(trackLoadResult.Track)).ConfigureAwait(false);
                     addedCount++;
                 }
                 else
@@ -455,17 +453,17 @@ public class PlaylistInteractionModule(
         if (addedCount == 0)
         {
             await FollowupAsync($"No songs could be loaded from playlist '{playlistName}'. Check logs for details.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await musicService.StartPlaybackIfNeededAsync(player);
+        await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
 
         var responseMessage = $"Playing {addedCount} songs from playlist '{playlistName}'.";
         if (failedTracks.Count != 0)
             responseMessage +=
                 $"\nCould not load {failedTracks.Count} song(s): {string.Join(", ", failedTracks).Truncate(200)}";
-        await FollowupAsync(responseMessage);
+        await FollowupAsync(responseMessage).ConfigureAwait(false);
     }
 
     // --- Rename ---
@@ -477,9 +475,9 @@ public class PlaylistInteractionModule(
         [Summary("new_name", "The new name for the playlist (1-100 characters).")]
         string newName)
     {
-        await DeferAsync();
-        var result = await playlistService.RenamePlaylistAsync(Context.User.Id, Context.Guild.Id, oldName, newName);
-        await FollowupAsync(result.Message, ephemeral: !result.Success);
+        await DeferAsync().ConfigureAwait(false);
+        var result = await playlistService.RenamePlaylistAsync(Context.User.Id, Context.Guild.Id, oldName, newName).ConfigureAwait(false);
+        await FollowupAsync(result.Message, ephemeral: !result.Success).ConfigureAwait(false);
     }
 
     // --- Shuffle ---
@@ -489,9 +487,9 @@ public class PlaylistInteractionModule(
         [Autocomplete(typeof(PlaylistNameAutocompleteProvider))]
         string playlistName)
     {
-        await DeferAsync();
-        var result = await playlistService.ShufflePlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName);
-        await FollowupAsync(result.Message, ephemeral: !result.Success);
+        await DeferAsync().ConfigureAwait(false);
+        var result = await playlistService.ShufflePlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName).ConfigureAwait(false);
+        await FollowupAsync(result.Message, ephemeral: !result.Success).ConfigureAwait(false);
     }
 
     // --- Share ---
@@ -505,26 +503,26 @@ public class PlaylistInteractionModule(
     {
         if (user.IsBot)
         {
-            await RespondAsync("You cannot share playlists with bots.", ephemeral: true);
+            await RespondAsync("You cannot share playlists with bots.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (user.Id == Context.User.Id)
         {
-            await RespondAsync("You cannot share a playlist with yourself.", ephemeral: true);
+            await RespondAsync("You cannot share a playlist with yourself.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync(true);
-        var result = await playlistService.SharePlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName, user.Id);
-        await FollowupAsync(result.Message, ephemeral: true);
+        await DeferAsync(true).ConfigureAwait(false);
+        var result = await playlistService.SharePlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName, user.Id).ConfigureAwait(false);
+        await FollowupAsync(result.Message, ephemeral: true).ConfigureAwait(false);
 
         if (result.Success)
             try
             {
                 await Context.Channel.SendMessageAsync(
                     $"{Context.User.Mention} shared the playlist '{playlistName.Truncate(50)}' with {user.Mention}!",
-                    allowedMentions: AllowedMentions.None);
+                    allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

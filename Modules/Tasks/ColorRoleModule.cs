@@ -46,7 +46,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
     {
         if (Context.Guild.Id != config.Client.HomeGuildId)
         {
-            await RespondAsync("This command can only be used in the home server.", ephemeral: true);
+            await RespondAsync("This command can only be used in the home server.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -73,8 +73,8 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
                     colorSuffix);
         }
 
-        await RespondAsync("Setting up color roles message...", ephemeral: true);
-        await Context.Channel.SendMessageAsync(embed: embed, components: components.Build());
+        await RespondAsync("Setting up color roles message...", ephemeral: true).ConfigureAwait(false);
+        await Context.Channel.SendMessageAsync(embed: embed, components: components.Build()).ConfigureAwait(false);
 
         logger.LogInformation("Color roles message deployed in Home Guild {GuildId}, Channel {ChannelId} by {User}",
             Context.Guild.Id, Context.Channel.Id, Context.User);
@@ -90,7 +90,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
         if (Context.Guild == null || Context.Guild.Id != config.Client.HomeGuildId)
         {
             await interaction.RespondAsync("This feature is only available in the designated home server.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -100,7 +100,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
         if (user == null)
         {
             await interaction.RespondAsync("Could not retrieve your user information within the server.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             logger.LogWarning(
                 "Could not cast Context.User to SocketGuildUser in color role handler for interaction {InteractionId}",
                 interaction.Id);
@@ -111,7 +111,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
         var selectedCustomId = interaction.Data.CustomId;
         if (!selectedCustomId.StartsWith(CustomIdPrefix))
         {
-            await interaction.RespondAsync("Invalid button ID format.", ephemeral: true);
+            await interaction.RespondAsync("Invalid button ID format.", ephemeral: true).ConfigureAwait(false);
             logger.LogError("Received unexpected custom ID format '{CustomId}' in color role handler.",
                 selectedCustomId);
             return;
@@ -121,7 +121,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
 
         if (!ColorRolesMap.TryGetValue(colorSuffix, out var selectedRoleId))
         {
-            await interaction.RespondAsync("Invalid role selection identifier.", ephemeral: true);
+            await interaction.RespondAsync("Invalid role selection identifier.", ephemeral: true).ConfigureAwait(false);
             logger.LogError(
                 "Invalid color suffix '{ColorSuffix}' derived from custom ID '{CustomId}'. No mapping found.",
                 colorSuffix, selectedCustomId);
@@ -132,14 +132,14 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
         if (roleToAdd == null)
         {
             await interaction.RespondAsync($"The role for '{colorSuffix}' seems to be missing on this server.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             logger.LogError("Color role with ID {RoleId} (Suffix: {ColorSuffix}) not found in Home Guild {GuildId}.",
                 selectedRoleId, colorSuffix, guild.Id);
             return;
         }
 
         // --- Role Management Logic ---
-        await interaction.DeferAsync(true);
+        await interaction.DeferAsync(true).ConfigureAwait(false);
 
         var currentRoleIds = user.Roles.Select(r => r.Id).ToHashSet();
         var managedRoleIds = ColorRolesMap.Values.ToHashSet();
@@ -157,7 +157,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
             // Remove other managed roles
             if (rolesBeingRemoved.Count != 0)
             {
-                await user.RemoveRolesAsync(rolesBeingRemoved);
+                await user.RemoveRolesAsync(rolesBeingRemoved).ConfigureAwait(false);
                 logger.LogDebug("Removed roles [{RoleNames}] from User {UserId} before managing role {RoleToAddName}.",
                     string.Join(", ", rolesBeingRemoved.Select(r => r.Name)), user.Id, roleToAdd.Name);
             }
@@ -166,18 +166,18 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
             if (alreadyHadRole)
             {
                 // User clicked the role they already have - remove it
-                await user.RemoveRoleAsync(roleToAdd);
+                await user.RemoveRoleAsync(roleToAdd).ConfigureAwait(false);
                 logger.LogInformation("Removed role {RoleName} ({RoleId}) from User {UserId} (toggle off).",
                     roleToAdd.Name, roleToAdd.Id, user.Id);
-                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' removed.", ephemeral: true);
+                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' removed.", ephemeral: true).ConfigureAwait(false);
             }
             else
             {
                 // User clicked a role they didn't have - add it
-                await user.AddRoleAsync(roleToAdd);
+                await user.AddRoleAsync(roleToAdd).ConfigureAwait(false);
                 logger.LogInformation("Added role {RoleName} ({RoleId}) to User {UserId}.", roleToAdd.Name,
                     roleToAdd.Id, user.Id);
-                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' added.", ephemeral: true);
+                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' added.", ephemeral: true).ConfigureAwait(false);
             }
         }
         catch (HttpException httpEx) when (httpEx.HttpCode == HttpStatusCode.Forbidden)
@@ -187,14 +187,14 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
                 user.Id, user.Username, guild.Id, roleToAdd.Name, roleToAdd.Id);
             await interaction.FollowupAsync(
                 "I don't have permission to modify your roles. This could be due to missing permissions or the role being higher than mine in the hierarchy.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error handling color role button click for User {UserId}, CustomId {CustomId}",
                 user.Id, selectedCustomId);
             await interaction.FollowupAsync("An error occurred while updating your roles. Please try again later.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
     }
 }

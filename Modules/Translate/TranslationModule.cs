@@ -24,14 +24,14 @@ public class TranslationModule(
         {
             if (transliterate)
             {
-                var result = await _translator.TransliterateAsync(text, targetLanguageCode);
+                var result = await _translator.TransliterateAsync(text, targetLanguageCode).ConfigureAwait(false);
                 return string.IsNullOrWhiteSpace(result.Transliteration)
                     ? (null, result.SourceLanguage?.Name)
                     : (result.Transliteration, result.SourceLanguage?.Name);
             }
             else
             {
-                var result = await _translator.TranslateAsync(text, targetLanguageCode);
+                var result = await _translator.TranslateAsync(text, targetLanguageCode).ConfigureAwait(false);
                 return (result.Translation, result.SourceLanguage?.Name);
             }
         }
@@ -47,26 +47,26 @@ public class TranslationModule(
     [MessageCommand("Translate to English")]
     public async Task TranslateMessageToEnglishAsync(IMessage message)
     {
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(message.Content))
         {
-            await FollowupAsync("The selected message has no text content to translate.", ephemeral: true);
+            await FollowupAsync("The selected message has no text content to translate.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var (translatedText, sourceLang) =
-            await TranslateTextAsync(message.Content, Language.English.ToLanguageCode(), false);
+            await TranslateTextAsync(message.Content, Language.English.ToLanguageCode(), false).ConfigureAwait(false);
 
         if (translatedText == null)
         {
-            await FollowupAsync("Sorry, I couldn't translate that message.", ephemeral: true);
+            await FollowupAsync("Sorry, I couldn't translate that message.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         await FollowupAsync(
             $"**Original ({sourceLang}):**\n> {message.Content}\n\n**Translation (English):**\n> {translatedText}",
-            ephemeral: true);
+            ephemeral: true).ConfigureAwait(false);
     }
 
     // --- Slash Command: Translate Text ---
@@ -79,27 +79,27 @@ public class TranslationModule(
         [Summary("transliterate", "Show pronunciation/transliteration instead of translation (if available).")]
         bool transliterate = false)
     {
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            await FollowupAsync("Please provide text to translate.", ephemeral: true);
+            await FollowupAsync("Please provide text to translate.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var targetLangCode = language.ToLanguageCode();
-        var (translatedText, _) = await TranslateTextAsync(text, targetLangCode, transliterate);
+        var (translatedText, _) = await TranslateTextAsync(text, targetLangCode, transliterate).ConfigureAwait(false);
 
         if (translatedText == null)
         {
             await FollowupAsync("Sorry, translation failed. Please check the text or try again later.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(Context.Channel.Id,
             WebhookService.DefaultWebhookName,
-            Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl());
+            Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl()).ConfigureAwait(false);
 
         if (webhookClient != null)
         {
@@ -111,22 +111,22 @@ public class TranslationModule(
                     avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl(),
                     allowedMentions: AllowedMentions.None,
                     flags: MessageFlags.SuppressEmbeds
-                );
+                ).ConfigureAwait(false);
 
-                await FollowupAsync("Translation sent!", ephemeral: true);
+                await FollowupAsync("Translation sent!", ephemeral: true).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to send translation via webhook for Channel {ChannelId}.",
                     Context.Channel.Id);
-                await FollowupAsync($"Translation: {translatedText}", ephemeral: true);
+                await FollowupAsync($"Translation: {translatedText}", ephemeral: true).ConfigureAwait(false);
             }
         }
         else
         {
             logger.LogWarning("Could not get webhook for Channel {ChannelId}, sending translation ephemerally.",
                 Context.Channel.Id);
-            await FollowupAsync($"Translation: {translatedText}", ephemeral: true);
+            await FollowupAsync($"Translation: {translatedText}", ephemeral: true).ConfigureAwait(false);
         }
     }
 }

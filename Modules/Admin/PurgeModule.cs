@@ -19,13 +19,13 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
     {
         if (Context.Channel is not ITextChannel textChannel)
         {
-            await ReplyAsync("This command can only be used in text channels.");
+            await ReplyAsync("This command can only be used in text channels.").ConfigureAwait(false);
             return;
         }
 
         try
         {
-            await Context.Message.DeleteAsync();
+            await Context.Message.DeleteAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -35,7 +35,7 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
         if (string.IsNullOrWhiteSpace(rawArgs))
         {
             await ReplyAsync(
-                $"Usage: `{config.Client.Prefix}purgeuser [userId] [comma,separated,keywords]` or `{config.Client.Prefix}purgeuser [comma,separated,keywords]`");
+                $"Usage: `{config.Client.Prefix}purgeuser [userId] [comma,separated,keywords]` or `{config.Client.Prefix}purgeuser [comma,separated,keywords]`").ConfigureAwait(false);
             return;
         }
 
@@ -58,7 +58,7 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
 
         if (!userId.HasValue && keywords.Count == 0)
         {
-            await ReplyAsync("Please provide a UserID or comma-separated keywords to search for.");
+            await ReplyAsync("Please provide a UserID or comma-separated keywords to search for.").ConfigureAwait(false);
             return;
         }
 
@@ -76,10 +76,10 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
         {
             IEnumerable<IMessage> batch;
             if (lastMessageId == null)
-                batch = await textChannel.GetMessagesAsync().FlattenAsync();
+                batch = await textChannel.GetMessagesAsync().FlattenAsync().ConfigureAwait(false);
             else
                 batch = await textChannel.GetMessagesAsync(lastMessageId.Value, Direction.Before)
-                    .FlattenAsync();
+                    .FlattenAsync().ConfigureAwait(false);
 
             var batchList = batch.ToList();
             if (batchList.Count == 0) break;
@@ -105,7 +105,7 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
         if (matchingMessages.Count == 0)
         {
             var reply = await ReplyAsync("No matching messages found to delete.");
-            _ = Task.Delay(30000).ContinueWith(_ => reply.DeleteAsync());
+            _ = Task.Delay(30000).ContinueWith(_ => reply.DeleteAsync().ConfigureAwait(false));
             return;
         }
 
@@ -124,16 +124,16 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
                     switch (chunk.Length)
                     {
                         case 1:
-                            await textChannel.DeleteMessageAsync(chunk[0]);
+                            await textChannel.DeleteMessageAsync(chunk[0]).ConfigureAwait(false);
                             deletedCount++;
                             break;
                         case > 1:
-                            await textChannel.DeleteMessagesAsync(chunk.Where(m => m.Id != Context.Message.Id));
+                            await textChannel.DeleteMessagesAsync(chunk.Where(m => m.Id != Context.Message.Id)).ConfigureAwait(false);
                             deletedCount += chunk.Length;
                             break;
                     }
 
-                    if (newerMessagesToDelete.Count > 100 && chunk.Length > 1) await Task.Delay(1100);
+                    if (newerMessagesToDelete.Count > 100 && chunk.Length > 1) await Task.Delay(1100).ConfigureAwait(false);
                 }
             }
 
@@ -145,9 +145,9 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
                 foreach (var message in olderMessagesToDelete)
                     try
                     {
-                        await textChannel.DeleteMessageAsync(message.Id);
+                        await textChannel.DeleteMessageAsync(message.Id).ConfigureAwait(false);
                         deletedCount++;
-                        await Task.Delay(1100); // Be respectful of rate limits
+                        await Task.Delay(1100).ConfigureAwait(false); // Be respectful of rate limits
                     }
                     catch (HttpException exHttp) when (exHttp.HttpCode == HttpStatusCode.NotFound)
                     {
@@ -163,19 +163,19 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
 
             logger.LogInformation("[PURGE] {User} deleted {Count} messages in {Guild}: #{Channel}",
                 Context.User.Username, deletedCount, Context.Guild.Name, textChannel.Name);
-            var reply = await ReplyAsync($"Deleted {deletedCount} messages.");
+            var reply = await ReplyAsync($"Deleted {deletedCount} messages.").ConfigureAwait(false);
             _ = Task.Delay(30000).ContinueWith(_ => reply.DeleteAsync());
         }
         catch (HttpException ex)
         {
             logger.LogError(ex, "[PURGE] HTTP error during message deletion.");
-            var reply = await ReplyAsync($"An error occurred: {ex.Message}");
+            var reply = await ReplyAsync($"An error occurred: {ex.Message}").ConfigureAwait(false);
             _ = Task.Delay(30000).ContinueWith(_ => reply.DeleteAsync());
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "[PURGE] General error during message deletion.");
-            var reply = await ReplyAsync("An unexpected error occurred while deleting messages.");
+            var reply = await ReplyAsync("An unexpected error occurred while deleting messages.").ConfigureAwait(false);
             _ = Task.Delay(30000).ContinueWith(_ => reply.DeleteAsync());
         }
     }

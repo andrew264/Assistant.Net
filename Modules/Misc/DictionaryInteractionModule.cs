@@ -19,13 +19,13 @@ public class DictionaryInteractionModule(
         [Summary("word", "The word to define (optional, gets random if empty)")]
         string? word = null)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
-        var results = await urbanService.GetDefinitionsAsync(word);
+        var results = await urbanService.GetDefinitionsAsync(word).ConfigureAwait(false);
 
         if (results == null)
         {
-            await FollowupAsync("Sorry, I couldn't fetch the definition due to an error.", ephemeral: true);
+            await FollowupAsync("Sorry, I couldn't fetch the definition due to an error.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -34,7 +34,7 @@ public class DictionaryInteractionModule(
             var message = string.IsNullOrEmpty(word)
                 ? "Sorry, I couldn't find any random definitions right now."
                 : $"No definition found for **{word.Trim()}**.";
-            await FollowupAsync(message, ephemeral: true);
+            await FollowupAsync(message, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -43,7 +43,7 @@ public class DictionaryInteractionModule(
         var selectedEntry = topResults[_random.Next(topResults.Count)];
         var markdown = selectedEntry.Markdown;
 
-        await SendDefinitionResponseAsync(Context.Interaction, markdown);
+        await SendDefinitionResponseAsync(Context.Interaction, markdown).ConfigureAwait(false);
     }
 
     private async Task SendDefinitionResponseAsync(SocketInteraction interaction, string markdown)
@@ -57,24 +57,24 @@ public class DictionaryInteractionModule(
                 p.Content = markdown;
                 p.AllowedMentions = AllowedMentions.None;
                 p.Flags = MessageFlags.SuppressEmbeds;
-            });
+            }).ConfigureAwait(false);
         }
         else
         {
             logger.LogInformation(
                 "Definition exceeds {MaxLength} characters, attempting to split and send (interaction).", maxLen);
-            var parts = MessageUtils.SplitMessage(markdown, maxLen);
+            var parts = MessageUtils.SplitMessage(markdown, maxLen); // TODO: SmartSplit?
 
             await interaction.ModifyOriginalResponseAsync(p =>
             {
                 p.Content = parts[0];
                 p.AllowedMentions = AllowedMentions.None;
                 p.Flags = MessageFlags.SuppressEmbeds;
-            });
+            }).ConfigureAwait(false);
 
 
             for (var i = 1; i < parts.Count; i++)
-                await interaction.FollowupAsync(parts[i], allowedMentions: AllowedMentions.None);
+                await interaction.FollowupAsync(parts[i], allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
     }
 }

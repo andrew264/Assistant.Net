@@ -23,7 +23,7 @@ public class DmRelayModule(
     {
         if (string.IsNullOrWhiteSpace(msg) && Context.Message.Attachments.Count == 0)
         {
-            await ReplyAsync("Please provide a message or attachment to send.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync("Please provide a message or attachment to send.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -32,17 +32,17 @@ public class DmRelayModule(
         try
         {
             files = await AttachmentUtils.DownloadAttachmentsAsync(Context.Message.Attachments, httpClientFactory,
-                logger);
+                logger).ConfigureAwait(false);
 
             // Send the DM
-            var dmChannel = await user.CreateDMChannelAsync();
-            var sentMessage = await dmChannel.SendFilesAsync(files, msg, embeds: Context.Message.Embeds.ToArray());
+            var dmChannel = await user.CreateDMChannelAsync().ConfigureAwait(false);
+            var sentMessage = await dmChannel.SendFilesAsync(files, msg, embeds: Context.Message.Embeds.ToArray()).ConfigureAwait(false);
 
-            await LogSentDmViaWebhookAsync(user, sentMessage);
+            await LogSentDmViaWebhookAsync(user, sentMessage).ConfigureAwait(false);
 
             try
             {
-                await Context.Message.DeleteAsync();
+                await Context.Message.DeleteAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -50,20 +50,20 @@ public class DmRelayModule(
             }
 
             logger.LogInformation("[DM SENT by Owner Command] to {User} ({UserId}): {Content}", user, user.Id, msg);
-            await Context.Message.AddReactionAsync(Emoji.Parse("✅"));
+            await Context.Message.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
         }
         catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
         {
             logger.LogError(httpEx, "Failed to send !dm command to user {UserId} (User blocked bot or disabled DMs)",
                 user.Id);
-            await Context.Message.AddReactionAsync(Emoji.Parse("❌"));
+            await Context.Message.AddReactionAsync(Emoji.Parse("❌")).ConfigureAwait(false);
             await ReplyAsync($"Failed to send DM to {user.Mention}. User might have DMs disabled or blocked the bot.",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send !dm command to user {UserId}", user.Id);
-            await Context.Message.AddReactionAsync(Emoji.Parse("❌"));
+            await Context.Message.AddReactionAsync(Emoji.Parse("❌")).ConfigureAwait(false);
         }
         finally
         {
@@ -78,7 +78,7 @@ public class DmRelayModule(
         try
         {
             logFiles = await AttachmentUtils.DownloadAttachmentsAsync(sentDmMessage.Attachments, httpClientFactory,
-                logger);
+                logger).ConfigureAwait(false);
 
             var sb = new StringBuilder();
             sb.AppendLine($"{MessageIdPrefix}{sentDmMessage.Id}");
@@ -94,7 +94,7 @@ public class DmRelayModule(
             sb.AppendLine("----------");
             var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(Context.Channel.Id,
                 WebhookService.DefaultWebhookName,
-                Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl());
+                Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl()).ConfigureAwait(false);
             if (webhookClient == null)
             {
                 logger.LogWarning("Could not get webhook to log !dm command for user {UserId}", recipientUser.Id);
@@ -103,7 +103,7 @@ public class DmRelayModule(
 
             await webhookClient.SendFilesAsync(logFiles, sb.ToString(),
                 username: Context.User.Username,
-                avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl());
+                avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl()).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

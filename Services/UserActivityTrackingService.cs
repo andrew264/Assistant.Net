@@ -43,7 +43,7 @@ public class UserActivityTrackingService
         {
             _logger.LogTrace("Presence transition detected for {User} ({Before} -> {After}). Updating LastSeen.",
                 user.Username, beforeStatus, afterStatus);
-            await UpdateUserLastSeen(user.Id, "PresenceUpdate");
+            await UpdateUserLastSeen(user.Id, "PresenceUpdate").ConfigureAwait(false);
         }
     }
 
@@ -57,7 +57,7 @@ public class UserActivityTrackingService
 
         _logger.LogTrace("Message received from {User} in guild channel. Updating LastSeen.",
             userMessage.Author.Username);
-        await UpdateUserLastSeen(userMessage.Author.Id, "MessageReceived");
+        await UpdateUserLastSeen(userMessage.Author.Id, "MessageReceived").ConfigureAwait(false);
     }
 
 
@@ -71,7 +71,7 @@ public class UserActivityTrackingService
         if (user.Status != UserStatus.Offline) return;
 
         _logger.LogTrace("Typing started by {User}(offline) in guild channel. Updating LastSeen.", user.Username);
-        await UpdateUserLastSeen(user.Id, "TypingStarted");
+        await UpdateUserLastSeen(user.Id, "TypingStarted").ConfigureAwait(false);
     }
 
     private async Task OnVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
@@ -79,7 +79,7 @@ public class UserActivityTrackingService
         if (user.IsBot || user is not SocketGuildUser || user.Status != UserStatus.Offline) return;
 
         _logger.LogTrace("Voice state updated for {User}(offline). Updating LastSeen.", user.Username);
-        await UpdateUserLastSeen(user.Id, "VoiceStateUpdate");
+        await UpdateUserLastSeen(user.Id, "VoiceStateUpdate").ConfigureAwait(false);
     }
 
     private async Task OnUserJoinedAsync(SocketGuildUser user)
@@ -87,14 +87,14 @@ public class UserActivityTrackingService
         if (user.IsBot) return;
 
         _logger.LogTrace("User {User} joined guild. Updating LastSeen.", user.Username);
-        await UpdateUserLastSeen(user.Id, "UserJoined");
+        await UpdateUserLastSeen(user.Id, "UserJoined").ConfigureAwait(false);
     }
 
     private async Task UpdateUserLastSeen(ulong userId, string eventSource)
     {
         try
         {
-            await _userService.UpdateLastSeenAsync(userId);
+            await _userService.UpdateLastSeenAsync(userId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

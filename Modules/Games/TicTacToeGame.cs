@@ -126,7 +126,7 @@ public class TicTacToeGame
 
         // Use Task.Run to avoid blocking the gateway thread if minimax takes time,
         // although for Tic Tac Toe it's very fast.
-        return await Task.Run(FindBestMoveInternal);
+        return await Task.Run(FindBestMoveInternal).ConfigureAwait(false);
     }
 
     private (int row, int col)? FindBestMoveInternal()
@@ -290,7 +290,7 @@ public class TicTacToeGame
                     GameStatsService.TicTacToeGameName, true),
                 _ => Task.CompletedTask
             };
-            await recordTask;
+            await recordTask.ConfigureAwait(false);
         }
         catch (Exception ex)
         {

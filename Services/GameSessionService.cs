@@ -146,9 +146,9 @@ public class GameSessionService(
                 messageId);
             _ = Task.Run(async () =>
             {
-                await Task.Delay(100);
+                await Task.Delay(100).ConfigureAwait(false);
                 if (_activeRpsGames.TryGetValue(gameKey, out var immediateGame) && immediateGame.BothPlayersChosen)
-                    await ProcessRpsEndOfGame(gameKey, immediateGame, guildId);
+                    await ProcessRpsEndOfGame(gameKey, immediateGame, guildId).ConfigureAwait(false);
             });
         }
         else
@@ -168,7 +168,7 @@ public class GameSessionService(
             logger.LogDebug("[RPS] Game {GameKey} ended. Result: {Result}", gameKey, game.GetResultMessage());
 
             if (guildId != 0)
-                await game.RecordStatsIfApplicable(guildId);
+                await game.RecordStatsIfApplicable(guildId).ConfigureAwait(false);
             else if (!game.Player1.IsBot && !game.Player2.IsBot)
                 logger.LogWarning("[RPS] Could not record stats for game {GameKey} (no valid GuildId provided).",
                     gameKey);
@@ -206,7 +206,7 @@ public class GameSessionService(
 
         if (game.BothPlayersChosen)
         {
-            await ProcessRpsEndOfGame(gameKey, game, guildId);
+            await ProcessRpsEndOfGame(gameKey, game, guildId).ConfigureAwait(false);
             return new GameUpdateResult(
                 GameUpdateStatus.GameOver,
                 $"{game.Player1.Mention} vs {game.Player2.Mention}",
@@ -291,7 +291,7 @@ public class GameSessionService(
         // Bot move logic
         if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
         {
-            var botMoveCoords = await game.GetBestMoveAsync();
+            var botMoveCoords = await game.GetBestMoveAsync().ConfigureAwait(false);
             if (botMoveCoords.HasValue)
                 game.MakeMove(botMoveCoords.Value.row, botMoveCoords.Value.col);
             else
@@ -304,7 +304,7 @@ public class GameSessionService(
 
         if (game.IsGameOver)
         {
-            if (guildId != 0) await game.RecordStatsIfApplicable(guildId);
+            if (guildId != 0) await game.RecordStatsIfApplicable(guildId).ConfigureAwait(false);
             else if (!game.Player1.IsBot && !game.Player2.IsBot)
                 logger.LogWarning("[TTT] Cannot record stats for game {GameId} (no valid GuildId).", game.GameId);
 
@@ -458,7 +458,7 @@ public class GameSessionService(
                                 var (_, gameOver) = game.ResolveTurn();
                                 if (gameOver)
                                 {
-                                    var finalResultMessage = await game.GetResultStringAndRecordStats(guildId);
+                                    var finalResultMessage = await game.GetResultStringAndRecordStats(guildId).ConfigureAwait(false);
                                     _activeHandCricketGames.TryRemove(game.GameId, out _);
                                     CancelTimeoutTask(game.GameId);
                                     logger.LogInformation("[HC] Game {GameId} finished.", game.GameId);

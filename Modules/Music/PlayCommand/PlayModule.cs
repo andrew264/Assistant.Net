@@ -20,7 +20,7 @@ public class PlayModule(
         var topTracks = tracks.Take(5).ToList();
         if (topTracks.Count == 0)
         {
-            await ReplyAsync("No search results found.");
+            await ReplyAsync("No search results found.").ConfigureAwait(false);
             return;
         }
 
@@ -47,7 +47,7 @@ public class PlayModule(
         }
 
         // Prefix commands typically don't use ephemeral messages for search results easily
-        await Context.Channel.SendMessageAsync(embed: embed.Build(), components: components.Build());
+        await Context.Channel.SendMessageAsync(embed: embed.Build(), components: components.Build()).ConfigureAwait(false);
     }
 
     [Command("play", RunMode = RunMode.Async)]
@@ -57,13 +57,13 @@ public class PlayModule(
     {
         if (Context.User is not SocketGuildUser guildUser)
         {
-            await ReplyAsync("You must be in a guild to use this command.");
+            await ReplyAsync("You must be in a guild to use this command.").ConfigureAwait(false);
             return;
         }
 
         if (Context.Channel is not ITextChannel textChannel)
         {
-            await ReplyAsync("This command must be used in a text channel.");
+            await ReplyAsync("This command must be used in a text channel.").ConfigureAwait(false);
             return;
         }
 
@@ -74,44 +74,44 @@ public class PlayModule(
             textChannel,
             connectToVoice ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
             connectToVoice ? MemberVoiceStateBehavior.RequireSame : MemberVoiceStateBehavior.Ignore
-        );
+        ).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage);
+            await ReplyAsync(errorMessage).ConfigureAwait(false);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(query)) // No query means pause/resume
         {
-            var (_, message) = await musicService.PauseOrResumeAsync(player, Context.User);
-            await ReplyAsync(message);
+            var (_, message) = await musicService.PauseOrResumeAsync(player, Context.User).ConfigureAwait(false);
+            await ReplyAsync(message).ConfigureAwait(false);
             return;
         }
 
-        var loadResult = await musicService.LoadAndQueueTrackAsync(player, query, Context.User);
+        var loadResult = await musicService.LoadAndQueueTrackAsync(player, query, Context.User).ConfigureAwait(false);
 
         switch (loadResult.Status)
         {
             case TrackLoadStatus.TrackLoaded:
                 await ReplyAsync(
-                    $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}");
-                await musicService.StartPlaybackIfNeededAsync(player);
+                    $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}").ConfigureAwait(false);
+                await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.PlaylistLoaded:
                 await ReplyAsync(
-                    $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.");
-                await musicService.StartPlaybackIfNeededAsync(player);
+                    $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.").ConfigureAwait(false);
+                await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.SearchResults:
-                await HandleSearchResultsUi(loadResult.Tracks, loadResult.OriginalQuery);
+                await HandleSearchResultsUi(loadResult.Tracks, loadResult.OriginalQuery).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.NoMatches:
-                await ReplyAsync($"❌ No results found for: `{loadResult.OriginalQuery}`");
+                await ReplyAsync($"❌ No results found for: `{loadResult.OriginalQuery}`").ConfigureAwait(false);
                 break;
             case TrackLoadStatus.LoadFailed:
-                await ReplyAsync($"❌ Failed to load track(s): {loadResult.ErrorMessage ?? "Unknown error"}");
+                await ReplyAsync($"❌ Failed to load track(s): {loadResult.ErrorMessage ?? "Unknown error"}").ConfigureAwait(false);
                 break;
         }
     }

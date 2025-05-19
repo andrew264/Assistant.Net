@@ -25,22 +25,22 @@ public class GameStatsModule(
         [Summary("game", "The game to show the leaderboard for.")] [Autocomplete(typeof(GameAutocompleteProvider))]
         string gameName)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
         var guildId = Context.Guild.Id;
 
         if (!GameAutocompleteProvider.GameNames.Contains(gameName, StringComparer.OrdinalIgnoreCase))
         {
-            await FollowupAsync($"Invalid game specified: {gameName}", ephemeral: true);
+            await FollowupAsync($"Invalid game specified: {gameName}", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         try
         {
-            var leaderboardData = await gameStatsService.GetLeaderboardAsync(guildId, gameName, ResultsPerPage);
+            var leaderboardData = await gameStatsService.GetLeaderboardAsync(guildId, gameName, ResultsPerPage).ConfigureAwait(false);
 
             if (leaderboardData.Count == 0)
             {
-                await FollowupAsync($"No stats found for {gameName.CapitalizeFirstLetter()} in this server yet.");
+                await FollowupAsync($"No stats found for {gameName.CapitalizeFirstLetter()} in this server yet.").ConfigureAwait(false);
                 return;
             }
 
@@ -53,8 +53,7 @@ public class GameStatsModule(
             for (var i = 0; i < leaderboardData.Count; i++)
             {
                 var entry = leaderboardData[i];
-                var user = await client.Rest.GetUserAsync(entry.Id
-                    .UserId);
+                var user = await client.Rest.GetUserAsync(entry.Id.UserId).ConfigureAwait(false);
                 var userName = user?.ToString() ?? $"User ID: {entry.Id.UserId}";
 
                 if (entry.Games.TryGetValue(gameName, out var stats))
@@ -77,18 +76,18 @@ public class GameStatsModule(
             }
 
             embed.Description = description.ToString();
-            await FollowupAsync(embed: embed.Build());
+            await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
         }
         catch (MongoException ex)
         {
             logger.LogError(ex, "MongoDB error fetching leaderboard for {GameName} in Guild {GuildId}", gameName,
                 guildId);
-            await FollowupAsync($"A database error occurred while fetching the leaderboard: {ex.Message}");
+            await FollowupAsync($"A database error occurred while fetching the leaderboard: {ex.Message}").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error fetching leaderboard for {GameName} in Guild {GuildId}", gameName, guildId);
-            await FollowupAsync("An error occurred while fetching the leaderboard.");
+            await FollowupAsync("An error occurred while fetching the leaderboard.").ConfigureAwait(false);
         }
     }
 
@@ -101,7 +100,7 @@ public class GameStatsModule(
         [Autocomplete(typeof(GameAutocompleteProvider))]
         string? gameName = null)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
         var guildId = Context.Guild.Id;
         var targetUser = user ?? Context.User;
 
@@ -109,17 +108,17 @@ public class GameStatsModule(
         if (gameName != null &&
             !GameAutocompleteProvider.GameNames.Contains(gameName, StringComparer.OrdinalIgnoreCase))
         {
-            await FollowupAsync($"Invalid game specified: {gameName}", ephemeral: true);
+            await FollowupAsync($"Invalid game specified: {gameName}", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         try
         {
-            var userStatsData = await gameStatsService.GetUserGuildStatsAsync(targetUser.Id, guildId);
+            var userStatsData = await gameStatsService.GetUserGuildStatsAsync(targetUser.Id, guildId).ConfigureAwait(false);
 
             if (userStatsData == null || userStatsData.Games.Count == 0)
             {
-                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.");
+                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.").ConfigureAwait(false);
                 return;
             }
 
@@ -152,7 +151,7 @@ public class GameStatsModule(
                 else
                 {
                     await FollowupAsync(
-                        $"{targetUser.Mention} hasn't played {gameName.CapitalizeFirstLetter()} in this server yet.");
+                        $"{targetUser.Mention} hasn't played {gameName.CapitalizeFirstLetter()} in this server yet.").ConfigureAwait(false);
                     return;
                 }
             }
@@ -164,7 +163,7 @@ public class GameStatsModule(
 
                 if (gamesPlayed.Count == 0)
                 {
-                    await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.");
+                    await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.").ConfigureAwait(false);
                     return;
                 }
 
@@ -187,23 +186,23 @@ public class GameStatsModule(
 
             if (embed.Fields.Count == 0)
             {
-                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.");
+                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.").ConfigureAwait(false);
                 return;
             }
 
-            await FollowupAsync(embed: embed.Build());
+            await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
         }
         catch (MongoException ex)
         {
             logger.LogError(ex, "MongoDB error fetching stats for User {UserId} in Guild {GuildId} (Game: {GameName})",
                 targetUser.Id, guildId, gameName ?? "All");
-            await FollowupAsync($"A database error occurred while fetching stats: {ex.Message}");
+            await FollowupAsync($"A database error occurred while fetching stats: {ex.Message}").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error fetching stats for User {UserId} in Guild {GuildId} (Game: {GameName})",
                 targetUser.Id, guildId, gameName ?? "All");
-            await FollowupAsync("An error occurred while fetching stats.");
+            await FollowupAsync("An error occurred while fetching stats.").ConfigureAwait(false);
         }
     }
 }

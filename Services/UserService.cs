@@ -19,7 +19,7 @@ public class UserService(IMongoDatabase database, ILogger<UserService> logger)
 
             var options = new UpdateOptions { IsUpsert = true };
 
-            var result = await _userCollection.UpdateOneAsync(filter, update, options);
+            var result = await _userCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
 
             if (result.IsAcknowledged)
             {
@@ -55,7 +55,7 @@ public class UserService(IMongoDatabase database, ILogger<UserService> logger)
                 .SetOnInsert(u => u.UserId, userId);
 
             var options = new UpdateOptions { IsUpsert = true };
-            var result = await _userCollection.UpdateOneAsync(filter, update, options);
+            var result = await _userCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
 
             if (result.IsAcknowledged)
             {
@@ -80,7 +80,7 @@ public class UserService(IMongoDatabase database, ILogger<UserService> logger)
         try
         {
             var filter = Builders<UserModel>.Filter.Eq(u => u.UserId, userId);
-            return await _userCollection.Find(filter).FirstOrDefaultAsync();
+            return await _userCollection.Find(filter).FirstOrDefaultAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {

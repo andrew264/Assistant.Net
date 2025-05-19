@@ -29,7 +29,7 @@ public class MusicQueryAutocompleteProvider : AutocompleteHandler
 
         // Add suggestions from history if user has typed something
         if (string.IsNullOrWhiteSpace(userInput)) return AutocompletionResult.FromSuccess(suggestions.Take(25));
-        var historyResults = await musicHistoryService.SearchSongHistoryAsync(context.Guild.Id, userInput);
+        var historyResults = await musicHistoryService.SearchSongHistoryAsync(context.Guild.Id, userInput).ConfigureAwait(false);
         foreach (var entry in historyResults)
         {
             if (suggestions.Count >= 25) break;

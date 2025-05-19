@@ -55,8 +55,8 @@ public class BotHostService(
 
         try
         {
-            await client.LoginAsync(TokenType.Bot, config.Client.Token);
-            await client.StartAsync();
+            await client.LoginAsync(TokenType.Bot, config.Client.Token).ConfigureAwait(false);
+            await client.StartAsync().ConfigureAwait(false);
             logger.LogInformation("Bot started. Waiting for Ready event...");
         }
         catch (Exception ex)
@@ -70,8 +70,8 @@ public class BotHostService(
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation("Bot stopping...");
-        await client.LogoutAsync();
-        await client.StopAsync();
+        await client.LogoutAsync().ConfigureAwait(false);
+        await client.StopAsync().ConfigureAwait(false);
         logger.LogInformation("Bot stopped.");
     }
 
@@ -82,10 +82,10 @@ public class BotHostService(
         try
         {
             // Discover and register modules
-            await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
+            await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider).ConfigureAwait(false);
             logger.LogInformation("Interaction modules loaded.");
 
-            await commandService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider);
+            await commandService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider).ConfigureAwait(false);
             logger.LogInformation("Command Service modules loaded.");
 
             // Register commands globally or to test guilds
@@ -93,7 +93,7 @@ public class BotHostService(
                 foreach (var guildId in config.Client.TestGuilds)
                     try
                     {
-                        await interactionService.RegisterCommandsToGuildAsync(guildId);
+                        await interactionService.RegisterCommandsToGuildAsync(guildId).ConfigureAwait(false);
                         logger.LogInformation("Registered commands to test guild {GuildId}", guildId);
                     }
                     catch (Exception ex)
@@ -103,7 +103,7 @@ public class BotHostService(
             else
                 try
                 {
-                    await interactionService.RegisterCommandsGloballyAsync();
+                    await interactionService.RegisterCommandsGloballyAsync().ConfigureAwait(false);
                     logger.LogInformation("Registered commands globally.");
                 }
                 catch (Exception ex)
@@ -114,7 +114,7 @@ public class BotHostService(
             // Initialize Lavalink after Discord client is ready
             if (config.Lavalink.IsValid)
             {
-                await audioService.WaitForReadyAsync(CancellationToken.None);
+                await audioService.WaitForReadyAsync(CancellationToken.None).ConfigureAwait(false);
                 logger.LogInformation("Lavalink4NET initialized.");
             }
             else
@@ -123,7 +123,7 @@ public class BotHostService(
             }
 
             // Set initial presence
-            await SetBotStartPresenceAsync();
+            await SetBotStartPresenceAsync().ConfigureAwait(false);
 
             logger.LogInformation("Startup complete. Bot username: {Username}", client.CurrentUser.Username);
         }
@@ -153,8 +153,8 @@ public class BotHostService(
             var activityText = config.Client.ActivityText;
 
             if (!string.IsNullOrEmpty(activityText))
-                await client.SetActivityAsync(new Game(activityText, activityType));
-            await client.SetStatusAsync(status);
+                await client.SetActivityAsync(new Game(activityText, activityType)).ConfigureAwait(false);
+            await client.SetStatusAsync(status).ConfigureAwait(false);
             logger.LogInformation("Set bot presence: Status={Status}, Activity={ActivityType} {ActivityText}", status,
                 activityType, activityText ?? "None");
         }
@@ -170,7 +170,7 @@ public class BotHostService(
         try
         {
             var context = new SocketInteractionContext(client, interaction);
-            var result = await interactionService.ExecuteCommandAsync(context, serviceProvider);
+            var result = await interactionService.ExecuteCommandAsync(context, serviceProvider).ConfigureAwait(false);
 
             if (!result.IsSuccess)
             {
@@ -179,9 +179,9 @@ public class BotHostService(
                 try
                 {
                     if (interaction.HasResponded)
-                        await interaction.FollowupAsync($"Error: {result.ErrorReason}", ephemeral: true);
+                        await interaction.FollowupAsync($"Error: {result.ErrorReason}", ephemeral: true).ConfigureAwait(false);
                     else
-                        await interaction.RespondAsync($"Error: {result.ErrorReason}", ephemeral: true);
+                        await interaction.RespondAsync($"Error: {result.ErrorReason}", ephemeral: true).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -196,10 +196,10 @@ public class BotHostService(
             {
                 if (interaction.HasResponded)
                     await interaction.FollowupAsync("An internal error occurred while processing your command.",
-                        ephemeral: true);
+                        ephemeral: true).ConfigureAwait(false);
                 else
                     await interaction.RespondAsync("An internal error occurred while processing your command.",
-                        ephemeral: true);
+                        ephemeral: true).ConfigureAwait(false);
             }
             catch (Exception iex)
             {
@@ -226,7 +226,7 @@ public class BotHostService(
         var context = new SocketCommandContext(client, message);
 
         // Execute the command
-        await commandService.ExecuteAsync(context, argPos, serviceProvider);
+        await commandService.ExecuteAsync(context, argPos, serviceProvider).ConfigureAwait(false);
     }
 
     private async Task OnCommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
@@ -250,7 +250,7 @@ public class BotHostService(
         // command failed
         logger.LogError("Text command '{CommandName}' failed for {User}. Reason: {ErrorReason}", command.Value.Name,
             context.User, result.ErrorReason);
-        await context.Channel.SendMessageAsync($"Error executing command: {result.ErrorReason}");
+        await context.Channel.SendMessageAsync($"Error executing command: {result.ErrorReason}").ConfigureAwait(false);
     }
 
 

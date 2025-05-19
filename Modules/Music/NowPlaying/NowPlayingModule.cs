@@ -21,22 +21,22 @@ public class NowPlayingModule(
     {
         var (player, _) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore);
+            PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
 
         if (player == null || player.CurrentTrack == null)
         {
-            await ReplyAsync("I am not playing anything right now.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync("I am not playing anything right now.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
         if (Context.Channel is not ITextChannel textChannel)
         {
-            await ReplyAsync("This command can only be used in a text channel.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync("This command can only be used in a text channel.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
         var npMessage =
-            await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, textChannel, Context.User);
+            await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, textChannel, Context.User).ConfigureAwait(false);
 
         if (npMessage != null)
         {
@@ -44,7 +44,7 @@ public class NowPlayingModule(
                 Context.Guild.Id, Context.User.Username);
             try
             {
-                await Context.Message.AddReactionAsync(new Emoji("✅"));
+                await Context.Message.AddReactionAsync(new Emoji("✅")).ConfigureAwait(false);
             }
             catch
             {
@@ -54,7 +54,7 @@ public class NowPlayingModule(
         else
         {
             await ReplyAsync("Failed to create or update the Now Playing message.",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
     }
 }

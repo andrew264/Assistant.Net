@@ -24,7 +24,7 @@ public class LyricsInteractionModule(
         [Summary("query", "Song title or URL. Leave empty for the current song.")]
         string? query = null)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
         string? searchTitle;
         string? searchArtist = null;
@@ -36,7 +36,7 @@ public class LyricsInteractionModule(
                 Context.User,
                 Context.Channel,
                 PlayerChannelBehavior.None,
-                MemberVoiceStateBehavior.Ignore);
+                MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
 
             if (player?.CurrentTrack != null)
             {
@@ -57,7 +57,7 @@ public class LyricsInteractionModule(
                 {
                     await FollowupAsync(
                         "I am not playing anything right now, and you don't seem to be listening to Spotify.",
-                        ephemeral: true);
+                        ephemeral: true).ConfigureAwait(false);
                     return;
                 }
             }
@@ -70,28 +70,28 @@ public class LyricsInteractionModule(
         logger.LogInformation("Searching lyrics for Title: '{SearchTitle}', Artist: '{SearchArtist}'", searchTitle,
             searchArtist ?? "N/A");
 
-        var geniusSongs = await geniusLyricsService.SearchSongsAsync(searchTitle, searchArtist);
+        var geniusSongs = await geniusLyricsService.SearchSongsAsync(searchTitle, searchArtist).ConfigureAwait(false);
 
         if (geniusSongs == null || geniusSongs.Count == 0)
         {
-            await FollowupAsync($"Sorry, I couldn't find lyrics for '{searchTitle}'.", ephemeral: true);
+            await FollowupAsync($"Sorry, I couldn't find lyrics for '{searchTitle}'.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var initialBestMatch = geniusSongs.First();
         // Ensure full song details are fetched and cached if not already
-        var bestMatch = await geniusLyricsService.GetSongByIdAsync(initialBestMatch.Id);
+        var bestMatch = await geniusLyricsService.GetSongByIdAsync(initialBestMatch.Id).ConfigureAwait(false);
 
         if (bestMatch == null)
         {
-            await FollowupAsync("Could not retrieve full song details from Genius.", ephemeral: true);
+            await FollowupAsync("Could not retrieve full song details from Genius.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         logger.LogInformation(
             "Genius song found for query '{Query}': {FullTitle} by {ArtistNames}, Path: {Path}, ID: {Id}",
             query ?? "(current song)", bestMatch.FullTitle, bestMatch.ArtistNames, bestMatch.Path, bestMatch.Id);
-        var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(bestMatch.Id, bestMatch.Path);
+        var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(bestMatch.Id, bestMatch.Path).ConfigureAwait(false);
         if (lyrics == null)
             return;
 
@@ -106,10 +106,10 @@ public class LyricsInteractionModule(
         }
 
         var (embed, components) = BuildLyricsPage(bestMatch, lyricsChunks, 0, embedColor);
-        await FollowupAsync(embed: embed, components: components, ephemeral: false);
+        await FollowupAsync(embed: embed, components: components, ephemeral: false).ConfigureAwait(false);
     }
 
-    private (Embed Embed, MessageComponent? Components) BuildLyricsPage(GeniusSong song, List<string> lyricsChunks,
+    private static (Embed Embed, MessageComponent? Components) BuildLyricsPage(GeniusSong song, List<string> lyricsChunks,
         int currentPage, Color embedColor)
     {
         var totalPages = lyricsChunks.Count;
@@ -142,16 +142,16 @@ public class LyricsInteractionModule(
     [ComponentInteraction(LyricsPageButtonPrefix + ":*:*:*", true)]
     public async Task HandleLyricsPageButtonAsync(long songId, int currentPage, string action)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
         var song = geniusLyricsService.GetSongFromCache(songId);
         if (song == null)
         {
             await FollowupAsync("Sorry, the song data for these lyrics has expired. Please search again.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             try
             {
-                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build());
+                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
             }
             catch
             {
@@ -161,14 +161,14 @@ public class LyricsInteractionModule(
             return;
         }
 
-        var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(songId, song.Path, false);
+        var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(songId, song.Path, false).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(lyrics))
         {
             await FollowupAsync("Sorry, the lyrics data has expired or could not be retrieved. Please search again.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             try
             {
-                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build());
+                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
             }
             catch
             {
@@ -191,7 +191,7 @@ public class LyricsInteractionModule(
                 newPage++;
                 break;
             default:
-                await FollowupAsync("Unknown pagination action.", ephemeral: true);
+                await FollowupAsync("Unknown pagination action.", ephemeral: true).ConfigureAwait(false);
                 return;
         }
 
@@ -211,6 +211,6 @@ public class LyricsInteractionModule(
         {
             props.Embed = updatedEmbed;
             props.Components = updatedComponents;
-        });
+        }).ConfigureAwait(false);
     }
 }

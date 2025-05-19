@@ -257,7 +257,7 @@ public class HandCricketGame
             try
             {
                 await _gameStatsService.RecordGameResultAsync(winnerId.Value, loserId.Value, guildId,
-                    GameStatsService.HandCricketGameName, isTie);
+                    GameStatsService.HandCricketGameName, isTie).ConfigureAwait(false);
                 _logger.LogInformation(
                     "[HC {GameId}] Recorded stats for Guild {GuildId}. Winner: {Winner}, Loser: {Loser}, Tie: {IsTie}",
                     GameId, guildId, winnerId, loserId, isTie);

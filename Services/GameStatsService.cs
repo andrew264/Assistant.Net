@@ -48,7 +48,7 @@ public class GameStatsService
 
         try
         {
-            await _gameStatsCollection.Indexes.CreateManyAsync(leaderboardIndexModels);
+            await _gameStatsCollection.Indexes.CreateManyAsync(leaderboardIndexModels).ConfigureAwait(false);
             _logger.LogInformation("Ensured leaderboard indexes on gameStats collection.");
         }
         catch (MongoCommandException ex) when (ex.CodeName is "IndexOptionsConflict" or "IndexKeySpecsConflict"
@@ -84,7 +84,7 @@ public class GameStatsService
         var filter = CreateIdFilter(userId, guildId);
         try
         {
-            return await _gameStatsCollection.Find(filter).FirstOrDefaultAsync();
+            return await _gameStatsCollection.Find(filter).FirstOrDefaultAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -99,7 +99,7 @@ public class GameStatsService
     /// </summary>
     private async Task<SingleGameStats> GetSingleGameStatAsync(ulong userId, ulong guildId, string gameName)
     {
-        var statsDoc = await GetUserGuildStatsAsync(userId, guildId);
+        var statsDoc = await GetUserGuildStatsAsync(userId, guildId).ConfigureAwait(false);
         return statsDoc?.Games.GetValueOrDefault(gameName) ?? new SingleGameStats();
     }
 
@@ -126,7 +126,7 @@ public class GameStatsService
                 .Sort(sort)
                 .Limit(limit)
                 .Project<GameStatsModel>(projection)
-                .ToListAsync();
+                .ToListAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -152,7 +152,7 @@ public class GameStatsService
         var upsertUserDocUpdate = Builders<GameStatsModel>.Update
             .SetOnInsert(g => g.Id, compositeId)
             .SetOnInsert(g => g.Games, new Dictionary<string, SingleGameStats>());
-        await _gameStatsCollection.UpdateOneAsync(filter, upsertUserDocUpdate, new UpdateOptions { IsUpsert = true });
+        await _gameStatsCollection.UpdateOneAsync(filter, upsertUserDocUpdate, new UpdateOptions { IsUpsert = true }).ConfigureAwait(false);
 
         // 2. Ensure the specific game stats subdocument exists within the 'games' dictionary.
         var gameExistsFilter = Builders<GameStatsModel>.Filter.And(
@@ -160,7 +160,7 @@ public class GameStatsService
             Builders<GameStatsModel>.Filter.Exists(gameFieldPath, false)
         );
         var setGameStatsUpdate = Builders<GameStatsModel>.Update.Set(gameFieldPath, new SingleGameStats());
-        var updateResult = await _gameStatsCollection.UpdateOneAsync(gameExistsFilter, setGameStatsUpdate);
+        var updateResult = await _gameStatsCollection.UpdateOneAsync(gameExistsFilter, setGameStatsUpdate).ConfigureAwait(false);
 
         switch (updateResult.IsAcknowledged)
         {
@@ -176,7 +176,7 @@ public class GameStatsService
         }
 
         // 3. Fetch and return the potentially newly created or existing stats
-        return await GetSingleGameStatAsync(userId, guildId, gameName);
+        return await GetSingleGameStatAsync(userId, guildId, gameName).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -187,8 +187,8 @@ public class GameStatsService
     {
         try
         {
-            var player1Stats = await EnsurePlayerGameStatsAsync(player1Id, guildId, gameName);
-            var player2Stats = await EnsurePlayerGameStatsAsync(player2Id, guildId, gameName);
+            var player1Stats = await EnsurePlayerGameStatsAsync(player1Id, guildId, gameName).ConfigureAwait(false);
+            var player2Stats = await EnsurePlayerGameStatsAsync(player2Id, guildId, gameName).ConfigureAwait(false);
 
             var player1Elo = player1Stats.Elo;
             var player2Elo = player2Stats.Elo;
@@ -204,12 +204,12 @@ public class GameStatsService
             // Update Player 1 Elo using the compound ID filter
             var filter1 = CreateIdFilter(player1Id, guildId);
             var update1 = Builders<GameStatsModel>.Update.Set($"games.{gameName}.elo", newPlayer1Elo);
-            await _gameStatsCollection.UpdateOneAsync(filter1, update1);
+            await _gameStatsCollection.UpdateOneAsync(filter1, update1).ConfigureAwait(false);
 
             // Update Player 2 Elo using the compound ID filter
             var filter2 = CreateIdFilter(player2Id, guildId);
             var update2 = Builders<GameStatsModel>.Update.Set($"games.{gameName}.elo", newPlayer2Elo);
-            await _gameStatsCollection.UpdateOneAsync(filter2, update2);
+            await _gameStatsCollection.UpdateOneAsync(filter2, update2).ConfigureAwait(false);
 
             _logger.LogInformation(
                 "Elo Updated ({GameName}, Guild {GuildId}): P1={P1Id} ({P1OldElo:F1} -> {P1NewElo:F1}), P2={P2Id} ({P2OldElo:F1} -> {P2NewElo:F1}), P1_Score={P1Score}",
@@ -241,8 +241,8 @@ public class GameStatsService
         {
             // Ensure stats structures exist. No need to store the result here,
             // as the atomic updates below handle the increments.
-            await EnsurePlayerGameStatsAsync(winnerId, guildId, gameName);
-            await EnsurePlayerGameStatsAsync(loserId, guildId, gameName);
+            await EnsurePlayerGameStatsAsync(winnerId, guildId, gameName).ConfigureAwait(false);
+            await EnsurePlayerGameStatsAsync(loserId, guildId, gameName).ConfigureAwait(false);
 
             // Use compound ID filters for updates
             var winnerFilter = CreateIdFilter(winnerId, guildId);
@@ -254,27 +254,27 @@ public class GameStatsService
                 var tieUpdate = Builders<GameStatsModel>.Update
                     .Inc($"{gamePath}.ties", 1)
                     .Inc($"{gamePath}.matches_played", 1);
-                await _gameStatsCollection.UpdateOneAsync(winnerFilter, tieUpdate);
-                await _gameStatsCollection.UpdateOneAsync(loserFilter, tieUpdate);
+                await _gameStatsCollection.UpdateOneAsync(winnerFilter, tieUpdate).ConfigureAwait(false);
+                await _gameStatsCollection.UpdateOneAsync(loserFilter, tieUpdate).ConfigureAwait(false);
                 _logger.LogInformation("Recorded Tie ({GameName}, Guild {GuildId}): P1={Player1Id}, P2={Player2Id}",
                     gameName, guildId, winnerId, loserId);
-                await UpdateEloAsync(winnerId, loserId, guildId, gameName, 0.5);
+                await UpdateEloAsync(winnerId, loserId, guildId, gameName, 0.5).ConfigureAwait(false);
             }
             else
             {
                 var winnerUpdate = Builders<GameStatsModel>.Update
                     .Inc($"{gamePath}.wins", 1)
                     .Inc($"{gamePath}.matches_played", 1);
-                await _gameStatsCollection.UpdateOneAsync(winnerFilter, winnerUpdate);
+                await _gameStatsCollection.UpdateOneAsync(winnerFilter, winnerUpdate).ConfigureAwait(false);
 
                 var loserUpdate = Builders<GameStatsModel>.Update
                     .Inc($"{gamePath}.losses", 1)
                     .Inc($"{gamePath}.matches_played", 1);
-                await _gameStatsCollection.UpdateOneAsync(loserFilter, loserUpdate);
+                await _gameStatsCollection.UpdateOneAsync(loserFilter, loserUpdate).ConfigureAwait(false);
                 _logger.LogInformation(
                     "Recorded Win/Loss ({GameName}, Guild {GuildId}): Winner={WinnerId}, Loser={LoserId}", gameName,
                     guildId, winnerId, loserId);
-                await UpdateEloAsync(winnerId, loserId, guildId, gameName, 1.0);
+                await UpdateEloAsync(winnerId, loserId, guildId, gameName, 1.0).ConfigureAwait(false);
             }
         }
         catch (Exception ex)

@@ -59,7 +59,7 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
     {
         if (user.Id == Context.User.Id)
         {
-            await RespondAsync("Stop, Get some Help.", ephemeral: true);
+            await RespondAsync("Stop, Get some Help.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -70,7 +70,7 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
                 ? "You cannot attack my kind."
                 : GetDeathMessage(user, Context.User));
 
-        await RespondAsync(embed: embed.Build());
+        await RespondAsync(embed: embed.Build()).ConfigureAwait(false);
     }
 
     private string GetDeathMessage(SocketUser target, SocketUser killer)
@@ -94,7 +94,7 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
 
         if (user is null)
         {
-            await RespondAsync("Could not determine the user.", ephemeral: true);
+            await RespondAsync("Could not determine the user.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -109,7 +109,7 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
                 : $"8{new string('=', _random.Next(0, 10))}D";
 
         embed.Description = description;
-        await RespondAsync(embed: embed.Build());
+        await RespondAsync(embed: embed.Build()).ConfigureAwait(false);
     }
 
     [SlashCommand("flames", "Check your relationship with someone")]
@@ -125,7 +125,7 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
 
         if (name1 == name2)
         {
-            await RespondAsync("Stop, Get some Help.", ephemeral: true);
+            await RespondAsync("Stop, Get some Help.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -144,7 +144,7 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
 
         if (count == 0)
         {
-            await RespondAsync("Cannot determine relationship with these names.", ephemeral: true);
+            await RespondAsync("Cannot determine relationship with these names.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -155,6 +155,6 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
             .WithTitle($"{user1} and {user2 ?? Context.User.GlobalName}")
             .WithDescription($"are **{result}**");
 
-        await RespondAsync(embed: embed.Build());
+        await RespondAsync(embed: embed.Build()).ConfigureAwait(false);
     }
 }

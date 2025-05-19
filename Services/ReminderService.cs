@@ -67,7 +67,7 @@ public class ReminderService : IHostedService, IDisposable
             await _reminderCollection.Indexes.CreateOneAsync(
                 new CreateIndexModel<ReminderModel>(dueReminderIndex,
                     new CreateIndexOptions { Name = "ActiveTriggerTime" })
-            );
+            ).ConfigureAwait(false);
 
             var userReminderIndex = Builders<ReminderModel>.IndexKeys
                 .Ascending(r => r.Id.UserId)
@@ -76,7 +76,7 @@ public class ReminderService : IHostedService, IDisposable
             await _reminderCollection.Indexes.CreateOneAsync(
                 new CreateIndexModel<ReminderModel>(userReminderIndex,
                     new CreateIndexOptions { Name = "UserIdActiveTriggerTime" })
-            );
+            ).ConfigureAwait(false);
 
             _logger.LogInformation("Ensured indexes on reminders collection.");
         }
@@ -115,7 +115,7 @@ public class ReminderService : IHostedService, IDisposable
         try
         {
             dueReminders = await _reminderCollection.AsQueryable().Where(r => r.TriggerTime <= now && r.IsActive)
-                .ToListAsync();
+                .ToListAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -134,12 +134,12 @@ public class ReminderService : IHostedService, IDisposable
 
                 if (reminder.IsDm)
                 {
-                    var user = await _client.GetUserAsync(targetId);
+                    var user = await _client.GetUserAsync(targetId).ConfigureAwait(false);
                     if (user != null)
                     {
                         try
                         {
-                            await user.SendMessageAsync(embed: embed);
+                            await user.SendMessageAsync(embed: embed).ConfigureAwait(false);
                             _logger.LogInformation("Sent DM reminder (ID: {UserId}/{Seq}) to User {TargetUserId}",
                                 reminder.Id.UserId, reminder.Id.SequenceNumber, targetId);
                         }
@@ -149,7 +149,7 @@ public class ReminderService : IHostedService, IDisposable
                                 "Cannot send DM reminder to User {TargetUserId} (User {UserId}/{Seq}). Sending to original channel.",
                                 targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
                             await SendToChannelFallback(reminder, embed,
-                                $"Hey <@{reminder.Id.UserId}>, I couldn't DM you! Here's your reminder:");
+                                $"Hey <@{reminder.Id.UserId}>, I couldn't DM you! Here's your reminder:").ConfigureAwait(false);
                         }
                     }
                     else
@@ -157,12 +157,12 @@ public class ReminderService : IHostedService, IDisposable
                         _logger.LogWarning("Could not find user {TargetUserId} for DM reminder (ID: {UserId}/{Seq}).",
                             targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
                         await SendToChannelFallback(reminder, embed,
-                            $"Hey <@{reminder.Id.UserId}>, couldn't find the target user {targetId}! Here's your reminder:");
+                            $"Hey <@{reminder.Id.UserId}>, couldn't find the target user {targetId}! Here's your reminder:").ConfigureAwait(false);
                     }
                 }
                 else
                 {
-                    await SendToChannel(reminder, embed, $"<@{targetId}>");
+                    await SendToChannel(reminder, embed, $"<@{targetId}>").ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -172,7 +172,7 @@ public class ReminderService : IHostedService, IDisposable
             }
             finally
             {
-                await HandleReminderCompletion(reminder, now);
+                await HandleReminderCompletion(reminder, now).ConfigureAwait(false);
             }
 
         _logger.LogTrace("Finished checking reminders.");
@@ -198,7 +198,7 @@ public class ReminderService : IHostedService, IDisposable
         if (_client.GetChannel(reminder.ChannelId) is ITextChannel channel)
             try
             {
-                await channel.SendMessageAsync(mention, embed: embed, allowedMentions: AllowedMentions.All);
+                await channel.SendMessageAsync(mention, embed: embed, allowedMentions: AllowedMentions.All).ConfigureAwait(false);
                 _logger.LogInformation(
                     "Sent channel reminder (ID: {UserId}/{Seq}) to Channel {ChannelId} for User {TargetUserId}",
                     reminder.Id.UserId, reminder.Id.SequenceNumber, reminder.ChannelId,
@@ -220,7 +220,7 @@ public class ReminderService : IHostedService, IDisposable
             try
             {
                 await channel.SendMessageAsync($"{prefixMessage}\n> {reminder.Message}", embed: embed,
-                    allowedMentions: AllowedMentions.All);
+                    allowedMentions: AllowedMentions.All).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -242,7 +242,7 @@ public class ReminderService : IHostedService, IDisposable
         {
             try
             {
-                await _reminderCollection.DeleteOneAsync(r => r.Id == reminder.Id);
+                await _reminderCollection.DeleteOneAsync(r => r.Id == reminder.Id).ConfigureAwait(false);
                 _logger.LogInformation("Deleted one-time reminder (ID: {UserId}/{Seq}).", reminder.Id.UserId,
                     reminder.Id.SequenceNumber);
             }
@@ -263,7 +263,7 @@ public class ReminderService : IHostedService, IDisposable
                     .Set(r => r.TriggerTime, nextTrigger.Value);
                 try
                 {
-                    await _reminderCollection.UpdateOneAsync(updateFilter, update);
+                    await _reminderCollection.UpdateOneAsync(updateFilter, update).ConfigureAwait(false);
                     _logger.LogInformation(
                         "Updated recurring reminder (ID: {UserId}/{Seq}). Next trigger: {NextTrigger}",
                         reminder.Id.UserId, reminder.Id.SequenceNumber, nextTrigger.Value);
@@ -283,7 +283,7 @@ public class ReminderService : IHostedService, IDisposable
                 var update = Builders<ReminderModel>.Update
                     .Set(r => r.LastTriggered, triggerTime)
                     .Set(r => r.IsActive, false); // Deactivate
-                await _reminderCollection.UpdateOneAsync(updateFilter, update);
+                await _reminderCollection.UpdateOneAsync(updateFilter, update).ConfigureAwait(false);
             }
         }
     }
@@ -346,7 +346,7 @@ public class ReminderService : IHostedService, IDisposable
 
         try
         {
-            var result = await _countersCollection.FindOneAndUpdateAsync(filter, update, options);
+            var result = await _countersCollection.FindOneAndUpdateAsync(filter, update, options).ConfigureAwait(false);
             return result.SequenceValue;
         }
         catch (Exception ex)
@@ -371,7 +371,7 @@ public class ReminderService : IHostedService, IDisposable
     {
         try
         {
-            var sequenceNumber = await GetNextSequenceNumberAsync(creatorUserId);
+            var sequenceNumber = await GetNextSequenceNumberAsync(creatorUserId).ConfigureAwait(false);
             var reminder = new ReminderModel
             {
                 Id = new ReminderIdKey { UserId = creatorUserId, SequenceNumber = sequenceNumber },
@@ -388,7 +388,7 @@ public class ReminderService : IHostedService, IDisposable
                 LastTriggered = null
             };
 
-            await _reminderCollection.InsertOneAsync(reminder);
+            await _reminderCollection.InsertOneAsync(reminder).ConfigureAwait(false);
             _logger.LogInformation("Created reminder (ID: {UserId}/{Seq}) for User {TargetUserId}.", creatorUserId,
                 sequenceNumber, reminder.TargetUserId);
             return reminder;
@@ -411,7 +411,7 @@ public class ReminderService : IHostedService, IDisposable
             );
             var sort = Builders<ReminderModel>.Sort.Ascending(r => r.TriggerTime);
 
-            return await _reminderCollection.Find(filter).Sort(sort).ToListAsync();
+            return await _reminderCollection.Find(filter).Sort(sort).ToListAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -430,7 +430,7 @@ public class ReminderService : IHostedService, IDisposable
         {
             if (deletePermanently)
             {
-                var result = await _reminderCollection.DeleteOneAsync(filter);
+                var result = await _reminderCollection.DeleteOneAsync(filter).ConfigureAwait(false);
                 if (result.DeletedCount > 0)
                 {
                     _logger.LogInformation("Permanently deleted reminder (ID: {UserId}/{Seq}).", userId,
@@ -444,7 +444,7 @@ public class ReminderService : IHostedService, IDisposable
             else
             {
                 var update = Builders<ReminderModel>.Update.Set(r => r.IsActive, false);
-                var result = await _reminderCollection.UpdateOneAsync(filter, update);
+                var result = await _reminderCollection.UpdateOneAsync(filter, update).ConfigureAwait(false);
                 if (result.MatchedCount > 0)
                 {
                     if (result.ModifiedCount > 0)
@@ -487,7 +487,7 @@ public class ReminderService : IHostedService, IDisposable
         ReminderModel? existingReminder;
         try
         {
-            existingReminder = await _reminderCollection.Find(filter).FirstOrDefaultAsync();
+            existingReminder = await _reminderCollection.Find(filter).FirstOrDefaultAsync().ConfigureAwait(false);
             if (existingReminder == null || !existingReminder.IsActive)
             {
                 _logger.LogWarning("Attempted to edit non-existent or inactive reminder (ID: {UserId}/{Seq}).", userId,
@@ -557,7 +557,7 @@ public class ReminderService : IHostedService, IDisposable
             {
                 ReturnDocument = ReturnDocument.After
             };
-            var updatedDoc = await _reminderCollection.FindOneAndUpdateAsync(filter, updateDefinition, options);
+            var updatedDoc = await _reminderCollection.FindOneAndUpdateAsync(filter, updateDefinition, options).ConfigureAwait(false);
 
             if (updatedDoc != null)
             {

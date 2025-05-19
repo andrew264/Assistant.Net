@@ -24,14 +24,14 @@ public class GameModule(
             var guildUser = Context.Guild.GetUser(player2.Id);
             if (guildUser == null)
             {
-                await ReplyAsync($"Could not find the specified opponent {player2.Mention} in this server.");
+                await ReplyAsync($"Could not find the specified opponent {player2.Mention} in this server.").ConfigureAwait(false);
                 return;
             }
 
             player2 = guildUser;
         }
 
-        var responseMessage = await ReplyAsync("Starting Rock Paper Scissors...");
+        var responseMessage = await ReplyAsync("Starting Rock Paper Scissors...").ConfigureAwait(false);
         var messageId = responseMessage.Id;
 
         var creationResult = gameSessionService.StartRpsGame(player1, player2, messageId, Context.Guild?.Id ?? 0);
@@ -39,7 +39,7 @@ public class GameModule(
         if (creationResult.Status != GameCreationStatus.Success)
         {
             await responseMessage.ModifyAsync(props =>
-                props.Content = creationResult.ErrorMessage ?? "Failed to start RPS game.");
+                props.Content = creationResult.ErrorMessage ?? "Failed to start RPS game.").ConfigureAwait(false);
             return;
         }
 
@@ -49,13 +49,13 @@ public class GameModule(
             {
                 props.Content = creationResult.InitialMessageContent;
                 props.Components = creationResult.Components;
-            });
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "[Prefix RPS] Failed to modify initial message {MessageId} to add components.",
                 messageId);
-            await responseMessage.ModifyAsync(props => props.Content = "Failed to set up game buttons.");
+            await responseMessage.ModifyAsync(props => props.Content = "Failed to set up game buttons.").ConfigureAwait(false);
             return;
         }
 
@@ -63,14 +63,14 @@ public class GameModule(
         if (game is { BothPlayersChosen: true })
         {
             var updateResult = await gameSessionService.ProcessRpsChoiceAsync(messageId.ToString(), player1,
-                game.GetChoice(player1), Context.Guild?.Id ?? 0);
+                game.GetChoice(player1), Context.Guild?.Id ?? 0).ConfigureAwait(false);
             if (updateResult.Status == GameUpdateStatus.GameOver)
                 await responseMessage.ModifyAsync(props =>
                 {
                     props.Content = updateResult.MessageContent;
                     props.Embed = updateResult.Embed;
                     props.Components = updateResult.Components;
-                });
+                }).ConfigureAwait(false);
         }
     }
 
@@ -87,7 +87,7 @@ public class GameModule(
             var guildUser = Context.Guild.GetUser(player2User.Id);
             if (guildUser == null)
             {
-                await ReplyAsync($"Could not find the specified opponent {player2User.Mention} in this server.");
+                await ReplyAsync($"Could not find the specified opponent {player2User.Mention} in this server.").ConfigureAwait(false);
                 return;
             }
 
@@ -98,12 +98,12 @@ public class GameModule(
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
-            await ReplyAsync(creationResult.ErrorMessage ?? "Failed to start Tic Tac Toe game.");
+            await ReplyAsync(creationResult.ErrorMessage ?? "Failed to start Tic Tac Toe game.").ConfigureAwait(false);
             return;
         }
 
         var responseMessage =
-            await ReplyAsync(creationResult.InitialMessageContent, components: creationResult.Components);
+            await ReplyAsync(creationResult.InitialMessageContent, components: creationResult.Components).ConfigureAwait(false);
 
         if (creationResult.GameKey != null)
         {
@@ -111,13 +111,13 @@ public class GameModule(
             if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
             {
                 var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
-                    game.CurrentPlayer, 1, 1, Context.Guild?.Id ?? 0); // TODO: make it random
+                    game.CurrentPlayer, 1, 1, Context.Guild?.Id ?? 0).ConfigureAwait(false); // TODO: make it random
                 if (updateResult.Status != GameUpdateStatus.Error && !string.IsNullOrEmpty(updateResult.MessageContent))
                     await responseMessage.ModifyAsync(props =>
                     {
                         props.Content = updateResult.MessageContent;
                         props.Components = updateResult.Components;
-                    });
+                    }).ConfigureAwait(false);
             }
         }
     }
@@ -135,7 +135,7 @@ public class GameModule(
         {
             if (player1Param.Id == Context.User.Id)
             {
-                await ReplyAsync("You need to specify an opponent!");
+                await ReplyAsync("You need to specify an opponent!").ConfigureAwait(false);
                 return;
             }
 
@@ -154,11 +154,11 @@ public class GameModule(
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
-            await ReplyAsync(creationResult.ErrorMessage ?? "Failed to start Hand Cricket game.");
+            await ReplyAsync(creationResult.ErrorMessage ?? "Failed to start Hand Cricket game.").ConfigureAwait(false);
             return;
         }
 
         await ReplyAsync(creationResult.InitialMessageContent, embed: creationResult.InitialEmbed,
-            components: creationResult.Components);
+            components: creationResult.Components).ConfigureAwait(false);
     }
 }

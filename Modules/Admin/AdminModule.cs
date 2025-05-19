@@ -32,7 +32,7 @@ public class AdminModule(
         [Summary("image", "The image file to use as the new avatar.")]
         IAttachment imageAttachment)
     {
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         if (imageAttachment.ContentType == null ||
             !(imageAttachment.ContentType.StartsWith("image/jpeg") ||
@@ -40,13 +40,13 @@ public class AdminModule(
               imageAttachment.ContentType.StartsWith("image/gif")))
         {
             await FollowupAsync("The attached file does not appear to be a supported image type (JPEG, PNG, GIF).",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         if (imageAttachment.Size > 10 * 1024 * 1024) // 10 MB limit
         {
-            await FollowupAsync("The image file is too large (max 10MB).", ephemeral: true);
+            await FollowupAsync("The image file is too large (max 10MB).", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -57,10 +57,10 @@ public class AdminModule(
         try
         {
             using var httpClient = httpClientFactory.CreateClient();
-            var response = await httpClient.GetAsync(imageAttachment.Url);
+            var response = await httpClient.GetAsync(imageAttachment.Url).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
-            imageStream = await response.Content.ReadAsStreamAsync();
+            imageStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             var image = new Image(imageStream);
 
             // Optional: Add RequestOptions for detailed logging
@@ -70,22 +70,22 @@ public class AdminModule(
                 AuditLogReason = $"Avatar updated by {Context.User} ({Context.User.Id})"
             };
 
-            await client.CurrentUser.ModifyAsync(props => props.Avatar = image, requestOptions);
+            await client.CurrentUser.ModifyAsync(props => props.Avatar = image, requestOptions).ConfigureAwait(false);
 
-            await FollowupAsync("Bot avatar updated successfully!", ephemeral: true);
+            await FollowupAsync("Bot avatar updated successfully!", ephemeral: true).ConfigureAwait(false);
             logger.LogInformation("Bot avatar successfully updated by {User}", Context.User);
         }
         catch (HttpRequestException ex)
         {
             logger.LogError(ex, "Failed to download the image from URL: {ImageUrl}", imageAttachment.Url);
             await FollowupAsync("Failed to download the image. Please ensure the link is valid and accessible.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.TooManyRequests)
         {
             logger.LogWarning(ex, "Rate limited while trying to update avatar.");
             await FollowupAsync("I'm being rate limited by Discord. Please wait a moment and try again.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.BadRequest)
         {
@@ -94,7 +94,7 @@ public class AdminModule(
                 imageAttachment.Filename);
             await FollowupAsync(
                 "Discord rejected the image. It might be corrupted, in an unsupported format, or exceed dimension limits.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
         catch (HttpException ex)
         {
@@ -102,17 +102,17 @@ public class AdminModule(
                 "Discord API error occurred while updating avatar. Code: {DiscordCode}, Reason: {Reason}",
                 ex.DiscordCode, ex.Reason);
             await FollowupAsync($"An error occurred while communicating with Discord: {ex.Reason ?? "Unknown error"}",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "An unexpected error occurred while updating the bot avatar.");
-            await FollowupAsync("An unexpected error occurred. Check the logs for details.", ephemeral: true);
+            await FollowupAsync("An unexpected error occurred. Check the logs for details.", ephemeral: true).ConfigureAwait(false);
         }
         finally
         {
             if (imageStream != null)
-                await imageStream.DisposeAsync();
+                await imageStream.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -125,7 +125,7 @@ public class AdminModule(
         [Summary("activity-text", "The text for the activity (e.g., 'with code'). Defaults to config value.")]
         string? activityText = null)
     {
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         var finalStatus = status ?? (Enum.TryParse<UserStatus>(config.Client.Status, true, out var cfgStatus)
             ? cfgStatus
@@ -148,31 +148,31 @@ public class AdminModule(
 
         try
         {
-            await Context.Client.SetStatusAsync(finalStatus);
+            await Context.Client.SetStatusAsync(finalStatus).ConfigureAwait(false);
             logger.LogDebug("Set bot status to {Status}", finalStatus);
 
             if (!string.IsNullOrWhiteSpace(finalActivityText))
             {
-                await Context.Client.SetActivityAsync(new Game(finalActivityText, finalActivityType));
+                await Context.Client.SetActivityAsync(new Game(finalActivityText, finalActivityType)).ConfigureAwait(false);
                 logger.LogDebug("Set bot activity to {ActivityType} {ActivityText}", finalActivityType,
                     finalActivityText);
             }
             else
             {
-                await Context.Client.SetActivityAsync(null);
+                await Context.Client.SetActivityAsync(null).ConfigureAwait(false);
                 logger.LogDebug("Cleared bot activity.");
             }
 
             await FollowupAsync(
                 $"Bot presence updated successfully: Status=`{finalStatus}`, Activity=`{finalActivityType} {finalActivityText ?? "None"}`",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
             logger.LogInformation("Bot presence successfully updated by {User}", Context.User);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to update bot presence.");
             await FollowupAsync("An error occurred while updating the bot's presence. Check logs for details.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
     }
 }

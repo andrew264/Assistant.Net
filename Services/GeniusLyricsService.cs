@@ -55,8 +55,8 @@ public class GeniusLyricsService(
 
         try
         {
-            var response = await httpClient.SendAsync(request);
-            var responseContent = await response.Content.ReadAsStringAsync();
+            var response = await httpClient.SendAsync(request).ConfigureAwait(false);
+            var responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -138,8 +138,8 @@ public class GeniusLyricsService(
 
         try
         {
-            var response = await httpClient.SendAsync(request);
-            var responseContent = await response.Content.ReadAsStringAsync();
+            var response = await httpClient.SendAsync(request).ConfigureAwait(false);
+            var responseContent = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -221,7 +221,7 @@ public class GeniusLyricsService(
         string htmlRaw;
         try
         {
-            htmlRaw = await httpClient.GetStringAsync(songUrl);
+            htmlRaw = await httpClient.GetStringAsync(songUrl).ConfigureAwait(false);
         }
         catch (HttpRequestException ex)
         {

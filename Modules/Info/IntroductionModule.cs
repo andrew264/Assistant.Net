@@ -31,7 +31,7 @@ public class IntroductionModule(UserService userService, ILogger<IntroductionMod
                 true)
             .Build();
 
-        await RespondWithModalAsync(modal);
+        await RespondWithModalAsync(modal).ConfigureAwait(false);
         logger.LogInformation("Presented introduction modal to User {UserId}", Context.User.Id);
     }
 
@@ -39,22 +39,22 @@ public class IntroductionModule(UserService userService, ILogger<IntroductionMod
     [ModalInteraction(IntroductionModuleConstants.IntroduceModalId)]
     public async Task HandleIntroductionModalSubmit(IntroductionModal modalData)
     {
-        await DeferAsync(true);
+        await DeferAsync(true).ConfigureAwait(false);
 
         var introduction = modalData.Introduction;
 
         try
         {
-            await userService.UpdateUserIntroductionAsync(Context.User.Id, introduction);
+            await userService.UpdateUserIntroductionAsync(Context.User.Id, introduction).ConfigureAwait(false);
             logger.LogInformation("[INTRO ADDED] {User}: {Intro}", Context.User.Username, introduction);
-            await FollowupAsync("Introduction added successfully!", ephemeral: true);
+            await FollowupAsync("Introduction added successfully!", ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error occurred while processing introduction modal for User {UserId}",
                 Context.User.Id);
             await FollowupAsync("An error occurred while saving your introduction. Please try again later.",
-                ephemeral: true);
+                ephemeral: true).ConfigureAwait(false);
         }
     }
 }

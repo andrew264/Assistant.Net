@@ -24,7 +24,7 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
             Context.Guild, Context.User, Context.Channel,
             PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame);
+            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
 
         if (player is null) return (null, MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus));
         if (player.CurrentTrack is null) return (null, "No music is currently playing to apply filters to.");
@@ -36,10 +36,10 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Enable/Disable the nightcore filter.")]
     public async Task NightcoreAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -52,8 +52,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         logger.LogInformation("[FILTERS CMD] User {User} {Action} nightcore in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
-        await player.Filters.CommitAsync();
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
+        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
     [Command("vaporwave")]
@@ -61,10 +61,10 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Enable/Disable the vaporwave filter.")]
     public async Task VaporwaveAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -85,18 +85,18 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         logger.LogInformation("[FILTERS CMD] User {User} {Action} vaporwave in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
-        await player.Filters.CommitAsync();
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
+        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
     [Command("8d")]
     [Summary("Enable/Disable the 8D audio filter.")]
     public async Task EightDAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -109,8 +109,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         logger.LogInformation("[FILTERS CMD] User {User} {Action} 8D audio in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
-        await player.Filters.CommitAsync();
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
+        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
     [Command("reset")]
@@ -118,10 +118,10 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Reset all audio filters to default.")]
     public async Task ResetFiltersAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -130,8 +130,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         logger.LogInformation("[FILTERS CMD] User {User} reset all filters in {GuildName}", Context.User.Username,
             Context.Guild.Name);
 
-        await player.Filters.CommitAsync();
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None);
+        await player.Filters.CommitAsync().ConfigureAwait(false);
+        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
     [Command("bassboost")]
@@ -139,28 +139,28 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Adjust the bass boost filter.")]
     public async Task BassBoostAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None);
+        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(3));
+            await Task.Delay(TimeSpan.FromMinutes(3)).ConfigureAwait(false);
             try
             {
-                await msg.DeleteAsync();
+                await msg.DeleteAsync().ConfigureAwait(false);
             }
             catch
             {
                 /* ignored */
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     [Command("trebleboost")]
@@ -168,28 +168,28 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Adjust the treble boost filter.")]
     public async Task TrebleBoostAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None);
+        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(3));
+            await Task.Delay(TimeSpan.FromMinutes(3)).ConfigureAwait(false);
             try
             {
-                await msg.DeleteAsync();
+                await msg.DeleteAsync().ConfigureAwait(false);
             }
             catch
             {
                 /* ignored */
             }
-        });
+        }).ConfigureAwait(false);
     }
 
     [Command("timescale")]
@@ -197,27 +197,27 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Adjust playback speed, pitch, and rate.")]
     public async Task TimescaleAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync();
+        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None);
+        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
-            await Task.Delay(TimeSpan.FromMinutes(3));
+            await Task.Delay(TimeSpan.FromMinutes(3)).ConfigureAwait(false);
             try
             {
-                await msg.DeleteAsync();
+                await msg.DeleteAsync().ConfigureAwait(false);
             }
             catch
             {
                 /* ignored */
             }
-        });
+        }).ConfigureAwait(false);
     }
 }

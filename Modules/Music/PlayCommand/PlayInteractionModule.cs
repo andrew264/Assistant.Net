@@ -25,11 +25,11 @@ public class PlayInteractionModule(
         AllowedMentions? allowedMentions = null)
     {
         if (Context.Interaction.HasResponded)
-            await FollowupAsync(text, ephemeral: ephemeral, embeds: embed != null ? new[] { embed } : null,
-                components: components, allowedMentions: allowedMentions ?? AllowedMentions.None);
+            await FollowupAsync(text, ephemeral: ephemeral, embeds: embed != null ? [embed] : null,
+                components: components, allowedMentions: allowedMentions ?? AllowedMentions.None).ConfigureAwait(false);
         else
             await RespondAsync(text, ephemeral: ephemeral, embed: embed, components: components,
-                allowedMentions: allowedMentions ?? AllowedMentions.None);
+                allowedMentions: allowedMentions ?? AllowedMentions.None).ConfigureAwait(false);
     }
 
     private async Task HandleSearchResultsUi(IReadOnlyList<LavalinkTrack> tracks, string originalQuery)
@@ -37,7 +37,7 @@ public class PlayInteractionModule(
         var topTracks = tracks.Take(5).ToList();
         if (topTracks.Count == 0)
         {
-            await RespondOrFollowupAsync("No search results found.", true);
+            await RespondOrFollowupAsync("No search results found.", true).ConfigureAwait(false);
             return;
         }
 
@@ -63,7 +63,7 @@ public class PlayInteractionModule(
                 embed.Fields[i].Value += "\n*(Cannot be selected via button due to URI length)*";
         }
 
-        await RespondOrFollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: true);
+        await RespondOrFollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: true).ConfigureAwait(false);
     }
 
     [SlashCommand("play", "Plays music.", runMode: RunMode.Async)]
@@ -71,17 +71,17 @@ public class PlayInteractionModule(
         [Summary(description: "Song name or URL to play.")] [Autocomplete(typeof(MusicQueryAutocompleteProvider))]
         string? query = null)
     {
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
         if (Context.User is not IGuildUser guildUser)
         {
-            await RespondOrFollowupAsync("You must be in a guild to use this command.", true);
+            await RespondOrFollowupAsync("You must be in a guild to use this command.", true).ConfigureAwait(false);
             return;
         }
 
         if (Context.Channel is not ITextChannel textChannel)
         {
-            await RespondOrFollowupAsync("This command must be used in a text channel.", true);
+            await RespondOrFollowupAsync("This command must be used in a text channel.", true).ConfigureAwait(false);
             return;
         }
 
@@ -92,63 +92,64 @@ public class PlayInteractionModule(
             textChannel,
             connectToVoice ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
             connectToVoice ? MemberVoiceStateBehavior.RequireSame : MemberVoiceStateBehavior.Ignore
-        );
+        ).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondOrFollowupAsync(errorMessage, true);
+            await RespondOrFollowupAsync(errorMessage, true).ConfigureAwait(false);
             return;
         }
 
         if (string.IsNullOrWhiteSpace(query)) // No query means pause/resume
         {
-            var (success, message) = await musicService.PauseOrResumeAsync(player, Context.User);
-            await RespondOrFollowupAsync(message, !success);
+            var (success, message) = await musicService.PauseOrResumeAsync(player, Context.User).ConfigureAwait(false);
+            await RespondOrFollowupAsync(message, !success).ConfigureAwait(false);
             return;
         }
 
-        var loadResult = await musicService.LoadAndQueueTrackAsync(player, query, Context.User);
+        var loadResult = await musicService.LoadAndQueueTrackAsync(player, query, Context.User).ConfigureAwait(false);
 
         switch (loadResult.Status)
         {
             case TrackLoadStatus.TrackLoaded:
                 await RespondOrFollowupAsync(
-                    $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}");
-                await musicService.StartPlaybackIfNeededAsync(player);
+                    $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}").ConfigureAwait(false);
+                await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.PlaylistLoaded:
                 await RespondOrFollowupAsync(
-                    $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.");
-                await musicService.StartPlaybackIfNeededAsync(player);
+                    $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.").ConfigureAwait(false);
+                await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.SearchResults:
-                await HandleSearchResultsUi(loadResult.Tracks, loadResult.OriginalQuery);
+                await HandleSearchResultsUi(loadResult.Tracks, loadResult.OriginalQuery).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.NoMatches:
-                await RespondOrFollowupAsync($"❌ No results found for: `{loadResult.OriginalQuery}`", true);
+                await RespondOrFollowupAsync($"❌ No results found for: `{loadResult.OriginalQuery}`", true).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.LoadFailed:
+            default:
                 await RespondOrFollowupAsync($"❌ Failed to load track(s): {loadResult.ErrorMessage ?? "Unknown error"}",
-                    true);
+                    true).ConfigureAwait(false);
                 break;
         }
     }
-
+    
     [ComponentInteraction("assistant:play_search:*:*", true)]
     public async Task HandleSearchResultSelection(ulong requesterId, string uri)
     {
         if (Context.User.Id != requesterId)
         {
-            await RespondAsync("Only the person who started the search can select a track.", ephemeral: true);
+            await RespondAsync("Only the person who started the search can select a track.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        await DeferAsync();
+        await DeferAsync().ConfigureAwait(false);
 
         if (Context.User is not IGuildUser guildUser || Context.Channel is not ITextChannel textChannel)
         {
-            await FollowupAsync("Error: Could not verify your context.", ephemeral: true);
+            await FollowupAsync("Error: Could not verify your context.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -158,27 +159,27 @@ public class PlayInteractionModule(
             textChannel,
             PlayerChannelBehavior.Join,
             MemberVoiceStateBehavior.RequireSame
-        );
+        ).ConfigureAwait(false);
 
         if (player is null)
         {
             var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await FollowupAsync(errorMessage, ephemeral: true);
+            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        var track = await musicService.GetTrackFromSearchSelectionAsync(uri);
+        var track = await musicService.GetTrackFromSearchSelectionAsync(uri).ConfigureAwait(false);
 
         if (track is not null)
         {
-            await player.Queue.AddAsync(new TrackQueueItem(track));
+            await player.Queue.AddAsync(new TrackQueueItem(track)).ConfigureAwait(false);
             await ModifyOriginalResponseAsync(props =>
             {
                 props.Content = $"Added to queue: {track.Title.AsMarkdownLink(track.Uri?.ToString())}";
                 props.Embed = null;
                 props.Components = new ComponentBuilder().Build();
-            });
-            await musicService.StartPlaybackIfNeededAsync(player);
+            }).ConfigureAwait(false);
+            await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
         }
         else
         {
@@ -187,7 +188,7 @@ public class PlayInteractionModule(
                 props.Content = "❌ Failed to load the selected track.";
                 props.Embed = null;
                 props.Components = new ComponentBuilder().Build();
-            });
+            }).ConfigureAwait(false);
         }
     }
 }

@@ -24,13 +24,13 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
         if (count <= 0)
         {
             await ReplyAsync("Please specify a positive number of messages to delete.",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
         if (Context.Channel is not SocketTextChannel textChannel)
         {
-            await ReplyAsync("This command can only be used in text channels.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync("This command can only be used in text channels.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -40,7 +40,7 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
         if (!botUser.GetPermissions(textChannel).ManageMessages)
         {
             await ReplyAsync("I don't have permission to delete messages in this channel.",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -54,7 +54,7 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
         {
             await ReplyAsync(
                 $"You can only delete up to {allowedLimit} messages with your current permissions.",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -69,7 +69,7 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
             while (messagesFetched < totalToDelete)
             {
                 var fetchLimit = Math.Min(MaxMessagesPerBulkDelete, totalToDelete - messagesFetched);
-                var batch = await Context.Channel.GetMessagesAsync(fetchLimit).FlattenAsync();
+                var batch = await Context.Channel.GetMessagesAsync(fetchLimit).FlattenAsync().ConfigureAwait(false);
                 var messageBatch = batch as IMessage[] ?? batch.ToArray();
                 var validBatch = messageBatch.Where(m => m.Timestamp > fourteenDaysAgo).ToList();
 
@@ -84,7 +84,7 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to fetch messages for clear command in {ChannelId}", Context.Channel.Id);
-            await ReplyAsync("Failed to fetch messages to delete.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync("Failed to fetch messages to delete.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -103,7 +103,7 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
             if (commandMessage != null)
                 try
                 {
-                    await Context.Message.DeleteAsync();
+                    await Context.Message.DeleteAsync().ConfigureAwait(false);
                 }
                 catch
                 {
@@ -111,7 +111,7 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
                 }
 
             await ReplyAsync("No recent messages found to delete (messages must be less than 14 days old).",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
 
@@ -122,16 +122,16 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
             foreach (var chunk in messagesToDelete.Chunk(MaxMessagesPerBulkDelete))
             {
                 if (chunk.Length == 0) continue;
-                await textChannel.DeleteMessagesAsync(chunk);
+                await textChannel.DeleteMessagesAsync(chunk).ConfigureAwait(false);
                 deletedCount += chunk.Length;
                 if (messagesToDelete.Count > MaxMessagesPerBulkDelete)
-                    await Task.Delay(1100);
+                    await Task.Delay(1100).ConfigureAwait(false);
             }
 
             if (commandMessage != null)
                 try
                 {
-                    await Context.Message.DeleteAsync();
+                    await Context.Message.DeleteAsync().ConfigureAwait(false);
                 }
                 catch
                 {
@@ -139,28 +139,28 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
                 }
 
             var message = await ReplyAsync($"🗑️ Successfully deleted {deletedCount} message(s).",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             logger.LogInformation(
                 "[MOD ACTION] clear: {User} deleted {Count} messages in #{Channel} ({Guild})",
                 Context.User, deletedCount, textChannel.Name, Context.Guild.Name);
-            _ = Task.Delay(5000).ContinueWith(_ => message.DeleteAsync());
+            _ = Task.Delay(5000).ContinueWith(_ => message.DeleteAsync().ConfigureAwait(false)).ConfigureAwait(false);
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
         {
             logger.LogError(ex, "Permission error during clear in {ChannelId}", textChannel.Id);
-            await ReplyAsync("I don't have permission to delete messages.", allowedMentions: AllowedMentions.None);
+            await ReplyAsync("I don't have permission to delete messages.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
         catch (ArgumentOutOfRangeException)
         {
             await ReplyAsync(
                 "Cannot delete messages - ensure they are less than 14 days old and there's at least one message to delete.",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error during clear execution in {ChannelId}", textChannel.Id);
             await ReplyAsync("An unexpected error occurred while deleting messages.",
-                allowedMentions: AllowedMentions.None);
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
     }
 }

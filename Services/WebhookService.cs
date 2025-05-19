@@ -78,7 +78,7 @@ public class WebhookService(
             RestWebhook? existingWebhook = null;
             try
             {
-                var webhooks = await textChannel.GetWebhooksAsync();
+                var webhooks = await textChannel.GetWebhooksAsync().ConfigureAwait(false);
                 // Try to find by name and creator (bot) to ensure it's one we manage
                 existingWebhook =
                     webhooks.FirstOrDefault(w => w.Name == webhookName && w.Creator.Id == client.CurrentUser.Id);
@@ -121,10 +121,10 @@ public class WebhookService(
                 if (!string.IsNullOrEmpty(avatarUrlToFetch))
                 {
                     using var httpClient = httpClientFactory.CreateClient("WebhookAvatar");
-                    var response = await httpClient.GetAsync(avatarUrlToFetch);
+                    var response = await httpClient.GetAsync(avatarUrlToFetch).ConfigureAwait(false);
                     if (response.IsSuccessStatusCode)
                     {
-                        avatarStream = await response.Content.ReadAsStreamAsync();
+                        avatarStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
                         avatarImage = new Image(avatarStream);
                     }
                     else
@@ -142,7 +142,7 @@ public class WebhookService(
 
             try
             {
-                var newWebhook = await textChannel.CreateWebhookAsync(webhookName, avatarImage?.Stream);
+                var newWebhook = await textChannel.CreateWebhookAsync(webhookName, avatarImage?.Stream).ConfigureAwait(false);
                 logger.LogInformation("Created webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
                     newWebhook.Name, newWebhook.Id, channelId);
                 var webhookClient = new DiscordWebhookClient(newWebhook);

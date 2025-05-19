@@ -34,7 +34,7 @@ public class UrbanDictionaryService(
         try
         {
             var httpClient = httpClientFactory.CreateClient("UrbanDictionary");
-            var response = await httpClient.GetAsync(apiUrl);
+            var response = await httpClient.GetAsync(apiUrl).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -43,7 +43,7 @@ public class UrbanDictionaryService(
                 return null;
             }
 
-            var jsonString = await response.Content.ReadAsStringAsync();
+            var jsonString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             var apiResponse = JsonConvert.DeserializeObject<UrbanDictionaryResponse>(jsonString);
 
             if (apiResponse?.List == null || apiResponse.List.Count == 0)

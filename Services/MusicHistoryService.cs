@@ -59,7 +59,7 @@ public class MusicHistoryService
         }
 
         _logger.LogTrace("Music history cache miss for Guild {GuildId}. Fetching from DB.", guildId);
-        var settings = await _settingsCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync();
+        var settings = await _settingsCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync().ConfigureAwait(false);
 
         if (settings == null)
         {
@@ -110,14 +110,14 @@ public class MusicHistoryService
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
 
             var options = new UpdateOptions { IsUpsert = true };
-            await _settingsCollection.UpdateOneAsync(filter, update, options);
+            await _settingsCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
 
             _logger.LogDebug("Added song '{SongTitle}' to history for Guild {GuildId}.", songEntry.Title, guildId);
 
             // Invalidate and refetch cache to ensure consistency
             var cacheKey = $"{CachePrefix}{guildId}";
             _memoryCache.Remove(cacheKey);
-            await GetOrAddSettingsAsync(guildId); // Re-cache
+            await GetOrAddSettingsAsync(guildId).ConfigureAwait(false); // Re-cache
         }
         catch (Exception ex)
         {
@@ -127,7 +127,7 @@ public class MusicHistoryService
 
     public async Task<IEnumerable<SongHistoryEntryInfo>> SearchSongHistoryAsync(ulong guildId, string searchTerm)
     {
-        var settings = await GetOrAddSettingsAsync(guildId);
+        var settings = await GetOrAddSettingsAsync(guildId).ConfigureAwait(false);
         if (settings.Songs.Count == 0) return [];
 
         var jaroWinkler = new JaroWinkler();
@@ -164,7 +164,7 @@ public class MusicHistoryService
 
     public async Task<float> GetGuildVolumeAsync(ulong guildId)
     {
-        var settings = await GetOrAddSettingsAsync(guildId);
+        var settings = await GetOrAddSettingsAsync(guildId).ConfigureAwait(false);
         return settings.Volume;
     }
 
@@ -183,13 +183,13 @@ public class MusicHistoryService
 
 
             var options = new UpdateOptions { IsUpsert = true };
-            await _settingsCollection.UpdateOneAsync(filter, update, options);
+            await _settingsCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
 
             _logger.LogInformation("Set volume for Guild {GuildId} to {Volume}%.", guildId, clampedVolume * 100);
 
             var cacheKey = $"{CachePrefix}{guildId}";
             _memoryCache.Remove(cacheKey);
-            await GetOrAddSettingsAsync(guildId);
+            await GetOrAddSettingsAsync(guildId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

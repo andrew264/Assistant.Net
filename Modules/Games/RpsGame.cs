@@ -104,13 +104,13 @@ public class RpsGame
         {
             if (winner == Player1)
                 await _gameStatsService.RecordGameResultAsync(Player1.Id, Player2.Id, guildId,
-                    GameStatsService.RpsGameName);
+                    GameStatsService.RpsGameName).ConfigureAwait(false);
             else if (winner == Player2)
                 await _gameStatsService.RecordGameResultAsync(Player2.Id, Player1.Id, guildId,
-                    GameStatsService.RpsGameName);
+                    GameStatsService.RpsGameName).ConfigureAwait(false);
             else
                 await _gameStatsService.RecordGameResultAsync(Player1.Id, Player2.Id, guildId,
-                    GameStatsService.RpsGameName, true);
+                    GameStatsService.RpsGameName, true).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
