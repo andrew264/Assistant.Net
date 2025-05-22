@@ -10,6 +10,7 @@ using Discord.WebSocket;
 using Lavalink4NET;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
+using ContextType = Discord.Interactions.ContextType;
 
 namespace Assistant.Net.Modules.Info;
 
@@ -168,5 +169,58 @@ public class InfoModule(
             .Build();
 
         await RespondAsync(embed: embed, ephemeral: true).ConfigureAwait(false);
+    }
+
+    [SlashCommand("guildinfo", "Displays information about the current server.")]
+    [Discord.Interactions.RequireContext(ContextType.Guild)]
+    public async Task GuildInfoAsync()
+    {
+        await DeferAsync().ConfigureAwait(false);
+        // TODO: Optimize the counting logic.
+
+        var guild = Context.Guild;
+        var owner = guild.Owner;
+
+        var embed = new EmbedBuilder()
+            .WithTitle(guild.Name)
+            .WithColor(new Color(0x5865F2));
+
+        if (!string.IsNullOrWhiteSpace(guild.Description)) embed.WithDescription(guild.Description);
+
+        if (!string.IsNullOrEmpty(guild.IconUrl)) embed.WithThumbnailUrl(guild.IconUrl);
+
+        embed.AddField("Owner", owner?.Mention ?? "None", true);
+        embed.AddField("Created on",
+            $"{TimestampTag.FromDateTimeOffset(guild.CreatedAt, TimestampTagStyles.LongDateTime)}\n" +
+            $"{TimestampTag.FromDateTimeOffset(guild.CreatedAt, TimestampTagStyles.Relative)}", true);
+
+        var humanMembers = guild.Users.Where(u => !u.IsBot).ToList();
+        var onlineHumanMembers = humanMembers.Count(u => u.Status != UserStatus.Offline);
+        var totalBots = guild.Users.Count(u => u.IsBot);
+
+        embed.AddField("Total Members", humanMembers.Count.ToString(), true);
+        embed.AddField("Online Members", onlineHumanMembers.ToString(), true);
+        embed.AddField("Total Bots", totalBots.ToString(), true);
+        embed.AddField("Text Channels", guild.TextChannels.Count.ToString(), true);
+        embed.AddField("Voice Channels", guild.VoiceChannels.Count.ToString(), true);
+        embed.AddField("Roles", guild.Roles.Count.ToString(), true);
+        embed.AddField("Emojis", guild.Emotes.Count.ToString(), true);
+
+        if (guild.PremiumSubscriptionCount > 0)
+        {
+            embed.AddField("Boosts", guild.PremiumSubscriptionCount.ToString(), true);
+            embed.AddField("Boost Tier", guild.PremiumTier.ToString(), true);
+        }
+
+        var adminCount = guild.Users.Count(u => u.GuildPermissions.Administrator);
+        embed.AddField("Admins", adminCount.ToString(), true);
+
+        var membersInVc = guild.Users.Count(u => u.VoiceChannel != null);
+        if (membersInVc > 0) embed.AddField("In Voice Chat", membersInVc.ToString(), true);
+
+        embed.WithFooter($"ID: {guild.Id}", Context.User.GetDisplayAvatarUrl());
+        embed.WithTimestamp(DateTimeOffset.UtcNow);
+
+        await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
     }
 }
