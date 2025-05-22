@@ -100,7 +100,7 @@ public class Program
                     {
                         options.BaseAddress = new Uri(config.Lavalink.Uri);
                         options.Passphrase = config.Lavalink.Password;
-                        options.ReadyTimeout = TimeSpan.FromSeconds(20);
+                        options.ReadyTimeout = TimeSpan.FromSeconds(600);
                         logger.LogInformation("Lavalink configured: Uri={Uri}", options.BaseAddress);
                     }
                     else
@@ -113,7 +113,7 @@ public class Program
                 services.ConfigureInactivityTracking(options =>
                 {
                     options.InactivityBehavior = PlayerInactivityBehavior.None;
-                    options.DefaultPollInterval = TimeSpan.FromSeconds(20);
+                    options.DefaultPollInterval = TimeSpan.FromSeconds(600);
                 });
                 services.Configure<UsersInactivityTrackerOptions>(options =>
                 {
