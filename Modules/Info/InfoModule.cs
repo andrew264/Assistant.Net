@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Assistant.Net.Configuration;
+using Assistant.Net.Services;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;
@@ -20,6 +21,7 @@ public class InfoModule(
     CommandService commandService,
     Config config,
     IAudioService audioService,
+    UserService userService,
     IHttpClientFactory httpClientFactory,
     ILogger<InfoModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
@@ -222,5 +224,44 @@ public class InfoModule(
         embed.WithTimestamp(DateTimeOffset.UtcNow);
 
         await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+    }
+
+    [SlashCommand("userinfo", "Get information about a user.")]
+    public async Task UserInfoSlashCommand(
+        [Discord.Interactions.Summary("user", "The user to get information about (defaults to you).")]
+        IUser? user = null)
+    {
+        await DeferAsync().ConfigureAwait(false);
+
+        var targetUser = user ?? Context.User;
+
+        var showSensitiveInfo = false;
+        if (Context.User is SocketGuildUser requestingGuildUser)
+            showSensitiveInfo = requestingGuildUser.GuildPermissions.Administrator;
+
+        var embed = await UserUtils.GenerateUserInfoEmbedAsync(targetUser, showSensitiveInfo, userService, client)
+            .ConfigureAwait(false);
+
+        var view = new ComponentBuilder()
+            .WithButton("View Avatar", style: ButtonStyle.Link,
+                url: targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl())
+            .Build();
+
+        await FollowupAsync(embed: embed, components: view).ConfigureAwait(false);
+    }
+
+    [UserCommand("User Info")]
+    public async Task GetUserInfoContextMenu(IUser user)
+    {
+        await DeferAsync(true).ConfigureAwait(false);
+
+        var embed = await UserUtils.GenerateUserInfoEmbedAsync(user, false, userService, client).ConfigureAwait(false);
+
+        var view = new ComponentBuilder()
+            .WithButton("View Avatar", style: ButtonStyle.Link,
+                url: user.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? user.GetDefaultAvatarUrl())
+            .Build();
+
+        await FollowupAsync(embed: embed, components: view, ephemeral: true).ConfigureAwait(false);
     }
 }

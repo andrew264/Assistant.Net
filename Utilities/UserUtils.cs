@@ -1,3 +1,4 @@
+using Assistant.Net.Services;
 using Discord;
 using Discord.WebSocket;
 
@@ -52,5 +53,111 @@ public static class UserUtils
             RichGame { LargeAsset: not null } richGame => richGame.LargeAsset.GetImageUrl(),
             _ => current
         });
+    }
+
+    public static async Task<Embed> GenerateUserInfoEmbedAsync(IUser targetUser, bool showSensitiveInfo,
+        UserService userService, DiscordSocketClient client)
+    {
+        var embedBuilder = new EmbedBuilder();
+
+        SocketGuildUser? guildUser = null;
+        switch (targetUser)
+        {
+            case SocketGuildUser sgu:
+                guildUser = sgu;
+                embedBuilder.WithColor(GetTopRoleColor(guildUser));
+                break;
+            case not null when client.Guilds.Any(g => g.GetUser(targetUser.Id) != null):
+            {
+                var mutualGuild = client.Guilds.FirstOrDefault(g => g.GetUser(targetUser.Id) != null);
+                if (mutualGuild != null)
+                {
+                    guildUser = mutualGuild.GetUser(targetUser.Id);
+                    if (guildUser != null) embedBuilder.WithColor(GetTopRoleColor(guildUser));
+                }
+
+                break;
+            }
+        }
+
+        if (embedBuilder.Color == null) embedBuilder.WithColor(Color.Default);
+
+
+        if (targetUser != null)
+        {
+            var userModel = await userService.GetUserAsync(targetUser.Id).ConfigureAwait(false);
+            var about = userModel?.About;
+            var lastSeenTimestamp = userModel?.LastSeen;
+
+            embedBuilder.Description = !string.IsNullOrWhiteSpace(about)
+                ? $"{targetUser.Mention}: {about}"
+                : targetUser.Mention;
+
+            embedBuilder.WithAuthor(targetUser.GlobalName ?? targetUser.Username,
+                targetUser.GetDisplayAvatarUrl() ?? targetUser.GetDefaultAvatarUrl());
+            embedBuilder.WithThumbnailUrl(
+                GetUserThumbnailUrl(targetUser as SocketUser ?? client.GetUser(targetUser.Id)));
+
+            if (guildUser != null)
+            {
+                var joinedAt = guildUser.JoinedAt;
+                if (joinedAt.HasValue)
+                {
+                    var isOwner = guildUser.Id == guildUser.Guild.OwnerId;
+                    var joinFieldName =
+                        isOwner ? $"Created {guildUser.Guild.Name} on" : $"Joined {guildUser.Guild.Name} on";
+                    embedBuilder.AddField(joinFieldName,
+                        $"{TimestampTag.FromDateTimeOffset(joinedAt.Value, TimestampTagStyles.LongDateTime)}\n{TimestampTag.FromDateTimeOffset(joinedAt.Value, TimestampTagStyles.Relative)}", true);
+                }
+
+                embedBuilder.AddField("Account created on",
+                    $"{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.LongDateTime)}\n{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.Relative)}", true);
+
+                if (!string.IsNullOrWhiteSpace(guildUser.Nickname))
+                    embedBuilder.AddField("Nickname", guildUser.Nickname, true);
+
+                if (guildUser.Status != UserStatus.Offline)
+                    embedBuilder.AddField("Available Clients", GetAvailableClients(guildUser), true);
+
+                if (showSensitiveInfo && lastSeenTimestamp.HasValue)
+                {
+                    var statusFieldName = guildUser.Status == UserStatus.Offline ? "Last Seen" : "Online for";
+                    embedBuilder.AddField(statusFieldName,
+                        TimestampTag.FromDateTime(lastSeenTimestamp.Value, TimestampTagStyles.Relative), true);
+                }
+
+                // Activities
+                var activities = ActivityUtils.GetAllUserActivities(guildUser.Activities, true, true, true);
+                foreach (var (actType, actName) in activities)
+                    if (!string.IsNullOrWhiteSpace(actName))
+                        embedBuilder.AddField(actType, actName.Truncate(1024), true);
+
+                var roles = guildUser.Roles.Where(r => !r.IsEveryone).OrderByDescending(r => r.Position).ToList();
+                if (roles.Count > 0)
+                {
+                    var roleString = string.Join(" ", roles.Select(r => r.Mention));
+                    embedBuilder.AddField($"Roles [{roles.Count}]", roleString.Truncate(1024));
+                }
+            }
+            else
+            {
+                embedBuilder.AddField("Account created on",
+                    $"{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.LongDateTime)}\n{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.Relative)}");
+                if (targetUser is SocketUser socketTargetUser)
+                {
+                    if (socketTargetUser.Status != UserStatus.Offline)
+                        embedBuilder.AddField("Status", socketTargetUser.Status.ToString(), true);
+                    var activities = ActivityUtils.GetAllUserActivities(socketTargetUser.Activities, true, true, true);
+                    foreach (var (actType, actName) in activities)
+                        if (!string.IsNullOrWhiteSpace(actName))
+                            embedBuilder.AddField(actType, actName.Truncate(1024), true);
+                }
+            }
+        }
+
+        if (targetUser != null) embedBuilder.WithFooter($"ID: {targetUser.Id}");
+        embedBuilder.WithTimestamp(DateTimeOffset.UtcNow);
+
+        return embedBuilder.Build();
     }
 }

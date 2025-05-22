@@ -1,3 +1,4 @@
+using Assistant.Net.Services;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;
@@ -6,7 +7,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Info;
 
-public class InfoPrefixModule(IHttpClientFactory httpClientFactory, ILogger<InfoPrefixModule> logger)
+public class InfoPrefixModule(
+    DiscordSocketClient client,
+    UserService userService,
+    IHttpClientFactory httpClientFactory,
+    ILogger<InfoPrefixModule> logger)
     : ModuleBase<SocketCommandContext>
 {
     [Command("avatar")]
@@ -65,5 +70,27 @@ public class InfoPrefixModule(IHttpClientFactory httpClientFactory, ILogger<Info
         {
             fileAttachment?.Dispose();
         }
+    }
+
+    [Command("userinfo")]
+    [Alias("user", "whois", "info")]
+    [Summary("Get information about a user.")]
+    public async Task UserInfoPrefixCommand([Summary("The user to get information about.")] IUser? user = null)
+    {
+        var targetUser = user ?? Context.User;
+
+        var showSensitiveInfo = false;
+        if (Context.User is SocketGuildUser requestingGuildUser)
+            showSensitiveInfo = requestingGuildUser.GuildPermissions.Administrator;
+
+        var embed = await UserUtils.GenerateUserInfoEmbedAsync(targetUser, showSensitiveInfo, userService, client)
+            .ConfigureAwait(false);
+
+        var view = new ComponentBuilder()
+            .WithButton("View Avatar", style: ButtonStyle.Link,
+                url: targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl())
+            .Build();
+
+        await ReplyAsync(embed: embed, components: view, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 }
