@@ -1,5 +1,6 @@
 using System.Globalization;
 using Assistant.Net.Models.Reminder;
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
@@ -149,7 +150,8 @@ public class ReminderService : IHostedService, IDisposable
                                 "Cannot send DM reminder to User {TargetUserId} (User {UserId}/{Seq}). Sending to original channel.",
                                 targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
                             await SendToChannelFallback(reminder, embed,
-                                $"Hey <@{reminder.Id.UserId}>, I couldn't DM you! Here's your reminder:").ConfigureAwait(false);
+                                    $"Hey <@{reminder.Id.UserId}>, I couldn't DM you! Here's your reminder:")
+                                .ConfigureAwait(false);
                         }
                     }
                     else
@@ -157,7 +159,8 @@ public class ReminderService : IHostedService, IDisposable
                         _logger.LogWarning("Could not find user {TargetUserId} for DM reminder (ID: {UserId}/{Seq}).",
                             targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
                         await SendToChannelFallback(reminder, embed,
-                            $"Hey <@{reminder.Id.UserId}>, couldn't find the target user {targetId}! Here's your reminder:").ConfigureAwait(false);
+                                $"Hey <@{reminder.Id.UserId}>, couldn't find the target user {targetId}! Here's your reminder:")
+                            .ConfigureAwait(false);
                     }
                 }
                 else
@@ -184,8 +187,7 @@ public class ReminderService : IHostedService, IDisposable
             .WithTitle(reminder.Title ?? "Reminder")
             .WithDescription(reminder.Message)
             .WithColor(Color.Blue)
-            .AddField("Reminder Set At",
-                TimestampTag.FromDateTime(reminder.CreationTime, TimestampTagStyles.LongDateTime))
+            .AddField("Reminder Set At", reminder.CreationTime.GetLongDateTime())
             .WithTimestamp(reminder.TriggerTime);
 
         if (reminder.Recurrence != null) embed.WithFooter($"Repeats {reminder.Recurrence}");
@@ -198,7 +200,8 @@ public class ReminderService : IHostedService, IDisposable
         if (_client.GetChannel(reminder.ChannelId) is ITextChannel channel)
             try
             {
-                await channel.SendMessageAsync(mention, embed: embed, allowedMentions: AllowedMentions.All).ConfigureAwait(false);
+                await channel.SendMessageAsync(mention, embed: embed, allowedMentions: AllowedMentions.All)
+                    .ConfigureAwait(false);
                 _logger.LogInformation(
                     "Sent channel reminder (ID: {UserId}/{Seq}) to Channel {ChannelId} for User {TargetUserId}",
                     reminder.Id.UserId, reminder.Id.SequenceNumber, reminder.ChannelId,
@@ -557,7 +560,8 @@ public class ReminderService : IHostedService, IDisposable
             {
                 ReturnDocument = ReturnDocument.After
             };
-            var updatedDoc = await _reminderCollection.FindOneAndUpdateAsync(filter, updateDefinition, options).ConfigureAwait(false);
+            var updatedDoc = await _reminderCollection.FindOneAndUpdateAsync(filter, updateDefinition, options)
+                .ConfigureAwait(false);
 
             if (updatedDoc != null)
             {

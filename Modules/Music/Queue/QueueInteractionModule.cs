@@ -230,7 +230,8 @@ public class QueueInteractionModule(
         }
 
         await DeferAsync().ConfigureAwait(false);
-        var (success, _, message) = await musicService.MoveInQueueAsync(player, fromIndex, toIndex).ConfigureAwait(false);
+        var (success, _, message) =
+            await musicService.MoveInQueueAsync(player, fromIndex, toIndex).ConfigureAwait(false);
         await FollowupAsync(message, ephemeral: !success).ConfigureAwait(false);
     }
 

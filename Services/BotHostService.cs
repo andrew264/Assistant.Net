@@ -82,7 +82,8 @@ public class BotHostService(
         try
         {
             // Discover and register modules
-            await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider).ConfigureAwait(false);
+            await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider)
+                .ConfigureAwait(false);
             logger.LogInformation("Interaction modules loaded.");
 
             await commandService.AddModulesAsync(Assembly.GetEntryAssembly(), serviceProvider).ConfigureAwait(false);
@@ -179,9 +180,11 @@ public class BotHostService(
                 try
                 {
                     if (interaction.HasResponded)
-                        await interaction.FollowupAsync($"Error: {result.ErrorReason}", ephemeral: true).ConfigureAwait(false);
+                        await interaction.FollowupAsync($"Error: {result.ErrorReason}", ephemeral: true)
+                            .ConfigureAwait(false);
                     else
-                        await interaction.RespondAsync($"Error: {result.ErrorReason}", ephemeral: true).ConfigureAwait(false);
+                        await interaction.RespondAsync($"Error: {result.ErrorReason}", ephemeral: true)
+                            .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {

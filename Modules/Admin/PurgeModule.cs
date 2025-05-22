@@ -35,7 +35,8 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
         if (string.IsNullOrWhiteSpace(rawArgs))
         {
             await ReplyAsync(
-                $"Usage: `{config.Client.Prefix}purgeuser [userId] [comma,separated,keywords]` or `{config.Client.Prefix}purgeuser [comma,separated,keywords]`").ConfigureAwait(false);
+                    $"Usage: `{config.Client.Prefix}purgeuser [userId] [comma,separated,keywords]` or `{config.Client.Prefix}purgeuser [comma,separated,keywords]`")
+                .ConfigureAwait(false);
             return;
         }
 
@@ -58,7 +59,8 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
 
         if (!userId.HasValue && keywords.Count == 0)
         {
-            await ReplyAsync("Please provide a UserID or comma-separated keywords to search for.").ConfigureAwait(false);
+            await ReplyAsync("Please provide a UserID or comma-separated keywords to search for.")
+                .ConfigureAwait(false);
             return;
         }
 
@@ -128,12 +130,14 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
                             deletedCount++;
                             break;
                         case > 1:
-                            await textChannel.DeleteMessagesAsync(chunk.Where(m => m.Id != Context.Message.Id)).ConfigureAwait(false);
+                            await textChannel.DeleteMessagesAsync(chunk.Where(m => m.Id != Context.Message.Id))
+                                .ConfigureAwait(false);
                             deletedCount += chunk.Length;
                             break;
                     }
 
-                    if (newerMessagesToDelete.Count > 100 && chunk.Length > 1) await Task.Delay(1100).ConfigureAwait(false);
+                    if (newerMessagesToDelete.Count > 100 && chunk.Length > 1)
+                        await Task.Delay(1100).ConfigureAwait(false);
                 }
             }
 

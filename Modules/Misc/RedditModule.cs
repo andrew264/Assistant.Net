@@ -112,7 +112,8 @@ public class RedditModule(
             throw new InvalidOperationException("Reddit client is not configured in config.yaml.");
 
         var postsData =
-            await redditService.GetTopPostsAsync(subreddit, 100, timeFilter, allowNsfw).ConfigureAwait(false); // Fetch more to sample from
+            await redditService.GetTopPostsAsync(subreddit, 100, timeFilter, allowNsfw)
+                .ConfigureAwait(false); // Fetch more to sample from
 
         if (postsData == null) throw new Exception($"Failed to fetch posts from r/{subreddit}.");
         if (postsData.Count == 0) return [];
@@ -167,7 +168,8 @@ public class RedditModule(
                 return;
             }
 
-            await FollowupAsync($"Found {posts.Count} meme(s) from r/{subreddit}. Sending now...", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync($"Found {posts.Count} meme(s) from r/{subreddit}. Sending now...", ephemeral: true)
+                .ConfigureAwait(false);
 
             foreach (var post in posts)
             {
@@ -183,7 +185,8 @@ public class RedditModule(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error executing meme command for r/{Subreddit}", subreddit);
-            await FollowupAsync("❌ Failed to fetch memes. Please try again later.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("❌ Failed to fetch memes. Please try again later.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 
@@ -235,7 +238,8 @@ public class RedditModule(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error executing NSFW command for r/{Subreddit}", subreddit);
-            await FollowupAsync("❌ Failed to fetch NSFW content. Please try again later.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("❌ Failed to fetch NSFW content. Please try again later.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 }

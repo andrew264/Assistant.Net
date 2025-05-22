@@ -63,7 +63,8 @@ public class PlayInteractionModule(
                 embed.Fields[i].Value += "\n*(Cannot be selected via button due to URI length)*";
         }
 
-        await RespondOrFollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: true).ConfigureAwait(false);
+        await RespondOrFollowupAsync(embed: embed.Build(), components: components.Build(), ephemeral: true)
+            .ConfigureAwait(false);
     }
 
     [SlashCommand("play", "Plays music.", runMode: RunMode.Async)]
@@ -114,19 +115,22 @@ public class PlayInteractionModule(
         {
             case TrackLoadStatus.TrackLoaded:
                 await RespondOrFollowupAsync(
-                    $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}").ConfigureAwait(false);
+                        $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}")
+                    .ConfigureAwait(false);
                 await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.PlaylistLoaded:
                 await RespondOrFollowupAsync(
-                    $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.").ConfigureAwait(false);
+                        $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.")
+                    .ConfigureAwait(false);
                 await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.SearchResults:
                 await HandleSearchResultsUi(loadResult.Tracks, loadResult.OriginalQuery).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.NoMatches:
-                await RespondOrFollowupAsync($"❌ No results found for: `{loadResult.OriginalQuery}`", true).ConfigureAwait(false);
+                await RespondOrFollowupAsync($"❌ No results found for: `{loadResult.OriginalQuery}`", true)
+                    .ConfigureAwait(false);
                 break;
             case TrackLoadStatus.LoadFailed:
             default:
@@ -135,13 +139,14 @@ public class PlayInteractionModule(
                 break;
         }
     }
-    
+
     [ComponentInteraction("assistant:play_search:*:*", true)]
     public async Task HandleSearchResultSelection(ulong requesterId, string uri)
     {
         if (Context.User.Id != requesterId)
         {
-            await RespondAsync("Only the person who started the search can select a track.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("Only the person who started the search can select a track.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 

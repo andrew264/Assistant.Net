@@ -24,7 +24,8 @@ public class GameModule(
             var guildUser = Context.Guild.GetUser(player2.Id);
             if (guildUser == null)
             {
-                await ReplyAsync($"Could not find the specified opponent {player2.Mention} in this server.").ConfigureAwait(false);
+                await ReplyAsync($"Could not find the specified opponent {player2.Mention} in this server.")
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -55,7 +56,8 @@ public class GameModule(
         {
             logger.LogError(ex, "[Prefix RPS] Failed to modify initial message {MessageId} to add components.",
                 messageId);
-            await responseMessage.ModifyAsync(props => props.Content = "Failed to set up game buttons.").ConfigureAwait(false);
+            await responseMessage.ModifyAsync(props => props.Content = "Failed to set up game buttons.")
+                .ConfigureAwait(false);
             return;
         }
 
@@ -87,7 +89,8 @@ public class GameModule(
             var guildUser = Context.Guild.GetUser(player2User.Id);
             if (guildUser == null)
             {
-                await ReplyAsync($"Could not find the specified opponent {player2User.Mention} in this server.").ConfigureAwait(false);
+                await ReplyAsync($"Could not find the specified opponent {player2User.Mention} in this server.")
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -103,7 +106,8 @@ public class GameModule(
         }
 
         var responseMessage =
-            await ReplyAsync(creationResult.InitialMessageContent, components: creationResult.Components).ConfigureAwait(false);
+            await ReplyAsync(creationResult.InitialMessageContent, components: creationResult.Components)
+                .ConfigureAwait(false);
 
         if (creationResult.GameKey != null)
         {

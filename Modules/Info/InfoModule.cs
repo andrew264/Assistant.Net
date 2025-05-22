@@ -193,8 +193,8 @@ public class InfoModule(
 
         embed.AddField("Owner", owner?.Mention ?? "None", true);
         embed.AddField("Created on",
-            $"{TimestampTag.FromDateTimeOffset(guild.CreatedAt, TimestampTagStyles.LongDateTime)}\n" +
-            $"{TimestampTag.FromDateTimeOffset(guild.CreatedAt, TimestampTagStyles.Relative)}", true);
+            $"{guild.CreatedAt.GetLongDateTime()}\n" +
+            $"{guild.CreatedAt.GetRelativeTime()}", true);
 
         var humanMembers = guild.Users.Where(u => !u.IsBot).ToList();
         var onlineHumanMembers = humanMembers.Count(u => u.Status != UserStatus.Offline);

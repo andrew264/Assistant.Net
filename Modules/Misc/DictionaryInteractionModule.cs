@@ -25,7 +25,8 @@ public class DictionaryInteractionModule(
 
         if (results == null)
         {
-            await FollowupAsync("Sorry, I couldn't fetch the definition due to an error.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Sorry, I couldn't fetch the definition due to an error.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -63,7 +64,7 @@ public class DictionaryInteractionModule(
         {
             logger.LogInformation(
                 "Definition exceeds {MaxLength} characters, attempting to split and send (interaction).", maxLen);
-            var parts = MessageUtils.SplitMessage(markdown, maxLen); // TODO: SmartSplit?
+            var parts = markdown.SmartChunkSplitList();
 
             await interaction.ModifyOriginalResponseAsync(p =>
             {

@@ -39,7 +39,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -64,7 +65,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -96,7 +98,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -121,7 +124,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -142,12 +146,14 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None)
+            .ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -171,12 +177,14 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None)
+            .ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -200,12 +208,14 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
         if (player is null)
         {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
         var (embed, components) = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None)
+            .ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {

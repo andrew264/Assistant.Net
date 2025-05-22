@@ -152,7 +152,8 @@ public class GameStatsService
         var upsertUserDocUpdate = Builders<GameStatsModel>.Update
             .SetOnInsert(g => g.Id, compositeId)
             .SetOnInsert(g => g.Games, new Dictionary<string, SingleGameStats>());
-        await _gameStatsCollection.UpdateOneAsync(filter, upsertUserDocUpdate, new UpdateOptions { IsUpsert = true }).ConfigureAwait(false);
+        await _gameStatsCollection.UpdateOneAsync(filter, upsertUserDocUpdate, new UpdateOptions { IsUpsert = true })
+            .ConfigureAwait(false);
 
         // 2. Ensure the specific game stats subdocument exists within the 'games' dictionary.
         var gameExistsFilter = Builders<GameStatsModel>.Filter.And(
@@ -160,7 +161,8 @@ public class GameStatsService
             Builders<GameStatsModel>.Filter.Exists(gameFieldPath, false)
         );
         var setGameStatsUpdate = Builders<GameStatsModel>.Update.Set(gameFieldPath, new SingleGameStats());
-        var updateResult = await _gameStatsCollection.UpdateOneAsync(gameExistsFilter, setGameStatsUpdate).ConfigureAwait(false);
+        var updateResult = await _gameStatsCollection.UpdateOneAsync(gameExistsFilter, setGameStatsUpdate)
+            .ConfigureAwait(false);
 
         switch (updateResult.IsAcknowledged)
         {

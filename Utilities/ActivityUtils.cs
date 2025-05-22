@@ -85,7 +85,7 @@ public static class ActivityUtils
         string FormatClients(HashSet<string> clients) => string.Join(", ", clients);
     }
 
-    public static string FormatCustomActivity(CustomStatusGame activity, bool withTime, bool withUrl)
+    private static string FormatCustomActivity(CustomStatusGame activity, bool withTime, bool withUrl)
     {
         var value = "";
         if (activity.Emote != null)
@@ -95,7 +95,7 @@ public static class ActivityUtils
                 value += activity.Emote.Name;
 
         if (activity.State != null) value += activity.State;
-        if (withTime) value += $"\n**{TimeUtils.GetRelativeTime(activity.CreatedAt)}**";
+        if (withTime) value += $"\n**{activity.CreatedAt.GetRelativeTime()}**";
         return value;
     }
 
@@ -126,7 +126,7 @@ public static class ActivityUtils
                     break;
                 case RichGame richGame when withTime && richGame.Timestamps.Start != null:
                     resultDictionary["Playing"] =
-                        $"{richGame.Name}\n**{TimeUtils.GetRelativeTime(richGame.Timestamps.Start.Value)}**";
+                        $"{richGame.Name}\n**{richGame.Timestamps.Start.Value.GetRelativeTime()}**";
                     break;
                 case RichGame richGame:
                     resultDictionary["Playing"] = $"{richGame.Name}";

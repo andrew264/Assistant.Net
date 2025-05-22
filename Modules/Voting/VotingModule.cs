@@ -27,7 +27,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
     {
         if (Context.Channel is not SocketGuildChannel guildChannel)
         {
-            await RespondAsync("This command can only be used in server channels.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("This command can only be used in server channels.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -73,7 +74,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             else
             {
                 // Should not happen
-                await RespondAsync("Failed to create poll due to a conflict. Please try again.", ephemeral: true).ConfigureAwait(false);
+                await RespondAsync("Failed to create poll due to a conflict. Please try again.", ephemeral: true)
+                    .ConfigureAwait(false);
                 logger.LogWarning("Failed to add poll for Channel {ChannelId} due to race condition.",
                     guildChannel.Id);
             }
@@ -85,7 +87,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         catch (Exception ex)
         {
             logger.LogError(ex, "Error creating poll '{Title}' in Channel {ChannelId}", title, guildChannel.Id);
-            await RespondAsync("An unexpected error occurred while creating the poll.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("An unexpected error occurred while creating the poll.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 
@@ -95,7 +98,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
     {
         if (Context.Channel is not SocketGuildChannel guildChannel)
         {
-            await RespondAsync("This command can only be used in server channels.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("This command can only be used in server channels.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -107,7 +111,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
 
         if (eloSystem.HasVotedBefore(Context.User.Id))
         {
-            await RespondAsync("You have already cast your votes for this poll!", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("You have already cast your votes for this poll!", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -151,7 +156,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
     {
         if (Context.Channel is not SocketGuildChannel guildChannel)
         {
-            await RespondAsync("This command can only be used in server channels.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("This command can only be used in server channels.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -182,7 +188,7 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
 
             var summary = eloSystem.GenerateSummary();
 
-            var messageParts = MessageUtils.SplitMessage(summary, DiscordConfig.MaxMessageSize);
+            var messageParts = summary.SmartChunkSplitList();
             await RespondAsync(messageParts[0]).ConfigureAwait(false);
             for (var i = 1; i < messageParts.Count; i++)
                 await FollowupAsync(messageParts[i]).ConfigureAwait(false);
@@ -192,7 +198,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         }
         else
         {
-            await RespondAsync("Failed to remove the poll. It might have been ended already.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("Failed to remove the poll. It might have been ended already.", ephemeral: true)
+                .ConfigureAwait(false);
             logger.LogWarning("Failed to remove poll for Channel {ChannelId} during results command.",
                 guildChannel.Id);
         }
@@ -240,7 +247,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         if (!UserVotingStates.TryGetValue(Context.User.Id, out var userState))
         {
             await component.RespondAsync(
-                "Your voting session seems to have expired or is invalid. Try `/poll vote` again.", ephemeral: true).ConfigureAwait(false);
+                    "Your voting session seems to have expired or is invalid. Try `/poll vote` again.", ephemeral: true)
+                .ConfigureAwait(false);
             await TryRemoveComponents(component).ConfigureAwait(false);
             return;
         }
@@ -287,7 +295,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         if (!UserVotingStates.TryGetValue(Context.User.Id, out var userState))
         {
             await component.RespondAsync(
-                "Your voting session seems to have expired or is invalid. Try `/poll vote` again.", ephemeral: true).ConfigureAwait(false);
+                    "Your voting session seems to have expired or is invalid. Try `/poll vote` again.", ephemeral: true)
+                .ConfigureAwait(false);
             await TryRemoveComponents(component).ConfigureAwait(false);
             return;
         }
@@ -371,7 +380,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
     {
         try
         {
-            await interaction.ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+            await interaction.ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build())
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {

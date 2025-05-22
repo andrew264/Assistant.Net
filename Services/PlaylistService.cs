@@ -323,7 +323,8 @@ public class PlaylistService
             Builders<PlaylistModel>.Filter.Eq(p => p.Id.UserId, recipientId),
             Builders<PlaylistModel>.Filter.Eq(p => p.Id.GuildId, guildId)
         );
-        var recipientPlaylistCount = await _playlistCollection.CountDocumentsAsync(recipientFilter).ConfigureAwait(false);
+        var recipientPlaylistCount =
+            await _playlistCollection.CountDocumentsAsync(recipientFilter).ConfigureAwait(false);
 
         if (recipientPlaylistCount >= MaxPlaylistsPerUser)
             return new PlaylistOperationResult(false,
@@ -333,7 +334,8 @@ public class PlaylistService
             recipientFilter,
             Builders<PlaylistModel>.Filter.Eq(p => p.Name, playlistName)
         );
-        var existingRecipientPlaylist = await _playlistCollection.Find(recipientNameFilter).FirstOrDefaultAsync().ConfigureAwait(false);
+        var existingRecipientPlaylist =
+            await _playlistCollection.Find(recipientNameFilter).FirstOrDefaultAsync().ConfigureAwait(false);
         if (existingRecipientPlaylist != null)
             return new PlaylistOperationResult(false,
                 $"Recipient already has a playlist named '{playlistName}'.");

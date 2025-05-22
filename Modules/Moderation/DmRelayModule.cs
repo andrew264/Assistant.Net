@@ -23,7 +23,8 @@ public class DmRelayModule(
     {
         if (string.IsNullOrWhiteSpace(msg) && Context.Message.Attachments.Count == 0)
         {
-            await ReplyAsync("Please provide a message or attachment to send.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync("Please provide a message or attachment to send.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -36,7 +37,8 @@ public class DmRelayModule(
 
             // Send the DM
             var dmChannel = await user.CreateDMChannelAsync().ConfigureAwait(false);
-            var sentMessage = await dmChannel.SendFilesAsync(files, msg, embeds: Context.Message.Embeds.ToArray()).ConfigureAwait(false);
+            var sentMessage = await dmChannel.SendFilesAsync(files, msg, embeds: Context.Message.Embeds.ToArray())
+                .ConfigureAwait(false);
 
             await LogSentDmViaWebhookAsync(user, sentMessage).ConfigureAwait(false);
 
@@ -93,8 +95,10 @@ public class DmRelayModule(
 
             sb.AppendLine("----------");
             var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(Context.Channel.Id,
-                WebhookService.DefaultWebhookName,
-                Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl()).ConfigureAwait(false);
+                    WebhookService.DefaultWebhookName,
+                    Context.Client.CurrentUser.GetDisplayAvatarUrl() ??
+                    Context.Client.CurrentUser.GetDefaultAvatarUrl())
+                .ConfigureAwait(false);
             if (webhookClient == null)
             {
                 logger.LogWarning("Could not get webhook to log !dm command for user {UserId}", recipientUser.Id);
@@ -102,8 +106,9 @@ public class DmRelayModule(
             }
 
             await webhookClient.SendFilesAsync(logFiles, sb.ToString(),
-                username: Context.User.Username,
-                avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl()).ConfigureAwait(false);
+                    username: Context.User.Username,
+                    avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl())
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {

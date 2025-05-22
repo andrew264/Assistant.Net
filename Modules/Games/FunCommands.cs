@@ -144,7 +144,8 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
 
         if (count == 0)
         {
-            await RespondAsync("Cannot determine relationship with these names.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("Cannot determine relationship with these names.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 

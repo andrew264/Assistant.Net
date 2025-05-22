@@ -57,7 +57,7 @@ public class DictionaryModule(
         {
             logger.LogInformation(
                 "Definition exceeds {MaxLength} characters, attempting to split and send (prefix command).", maxLen);
-            var parts = MessageUtils.SplitMessage(markdown, maxLen); // TODO: SmartSplit
+            var parts = markdown.SmartChunkSplitList();
 
             // Send first part via reply
             var lastMessage = await context.Message.ReplyAsync(parts[0], allowedMentions: AllowedMentions.None,

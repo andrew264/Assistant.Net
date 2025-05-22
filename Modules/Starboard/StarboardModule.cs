@@ -22,7 +22,8 @@ public class StarboardModule(
 
         if (config.StarboardChannelId == null)
         {
-            await FollowupAsync("Please set a starboard channel first using `/starboard channel`.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Please set a starboard channel first using `/starboard channel`.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -83,7 +84,8 @@ public class StarboardModule(
             config.StarboardChannelId = null;
             config.IsEnabled = false;
             await configService.UpdateConfigAsync(config).ConfigureAwait(false);
-            await FollowupAsync("Starboard channel removed. Starboard is now disabled.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Starboard channel removed. Starboard is now disabled.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 

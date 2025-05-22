@@ -142,7 +142,8 @@ public class WebhookService(
 
             try
             {
-                var newWebhook = await textChannel.CreateWebhookAsync(webhookName, avatarImage?.Stream).ConfigureAwait(false);
+                var newWebhook = await textChannel.CreateWebhookAsync(webhookName, avatarImage?.Stream)
+                    .ConfigureAwait(false);
                 logger.LogInformation("Created webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
                     newWebhook.Name, newWebhook.Id, channelId);
                 var webhookClient = new DiscordWebhookClient(newWebhook);

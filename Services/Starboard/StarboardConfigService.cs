@@ -39,7 +39,8 @@ public class StarboardConfigService
         }
 
         _logger.LogTrace("Starboard config cache miss for Guild {GuildId}", guildId);
-        var config = await _configCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync().ConfigureAwait(false);
+        var config = await _configCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync()
+            .ConfigureAwait(false);
 
         config ??= new StarboardConfigModel { GuildId = guildId };
 

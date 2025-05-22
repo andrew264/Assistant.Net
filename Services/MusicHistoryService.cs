@@ -59,7 +59,8 @@ public class MusicHistoryService
         }
 
         _logger.LogTrace("Music history cache miss for Guild {GuildId}. Fetching from DB.", guildId);
-        var settings = await _settingsCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync().ConfigureAwait(false);
+        var settings = await _settingsCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync()
+            .ConfigureAwait(false);
 
         if (settings == null)
         {

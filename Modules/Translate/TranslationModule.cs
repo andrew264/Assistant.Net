@@ -51,7 +51,8 @@ public class TranslationModule(
 
         if (string.IsNullOrWhiteSpace(message.Content))
         {
-            await FollowupAsync("The selected message has no text content to translate.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("The selected message has no text content to translate.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -98,8 +99,9 @@ public class TranslationModule(
         }
 
         var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(Context.Channel.Id,
-            WebhookService.DefaultWebhookName,
-            Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl()).ConfigureAwait(false);
+                WebhookService.DefaultWebhookName,
+                Context.Client.CurrentUser.GetDisplayAvatarUrl() ?? Context.Client.CurrentUser.GetDefaultAvatarUrl())
+            .ConfigureAwait(false);
 
         if (webhookClient != null)
         {

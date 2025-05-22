@@ -83,14 +83,16 @@ public class NowPlayingService : IDisposable
         SocketInteractionContext interactionContext)
     {
         if (interactionContext.Channel is ITextChannel textChannel)
-            return await CreateOrReplaceNowPlayingMessageInternalAsync(player, textChannel, interactionContext.User).ConfigureAwait(false);
+            return await CreateOrReplaceNowPlayingMessageInternalAsync(player, textChannel, interactionContext.User)
+                .ConfigureAwait(false);
         _logger.LogWarning("Interaction context channel is not ITextChannel for NP message. Guild: {GuildId}",
             interactionContext.Guild.Id);
         return null;
     }
 
     public async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageAsync(CustomPlayer player, ITextChannel channel,
-        IUser requester) => await CreateOrReplaceNowPlayingMessageInternalAsync(player, channel, requester).ConfigureAwait(false);
+        IUser requester) => await CreateOrReplaceNowPlayingMessageInternalAsync(player, channel, requester)
+        .ConfigureAwait(false);
 
     private async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageInternalAsync(CustomPlayer player,
         ITextChannel channel, IUser requester)
@@ -212,7 +214,8 @@ public class NowPlayingService : IDisposable
                 {
                     try
                     {
-                        if (await textChannel.GetMessageAsync(npInfo.MessageId).ConfigureAwait(false) is IUserMessage fetchedMsg)
+                        if (await textChannel.GetMessageAsync(npInfo.MessageId).ConfigureAwait(false) is IUserMessage
+                            fetchedMsg)
                         {
                             _activeNowPlayingMessages.TryUpdate(guildId,
                                 npInfo with { MessageInstance = fetchedMsg },
@@ -239,7 +242,8 @@ public class NowPlayingService : IDisposable
                 }
                 else
                 {
-                    await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false); // Channel no longer accessible
+                    await RemoveNowPlayingMessageAsync(guildId, false)
+                        .ConfigureAwait(false); // Channel no longer accessible
                     return;
                 }
             }
@@ -260,7 +264,8 @@ public class NowPlayingService : IDisposable
 
         if (player == null || player.CurrentTrack == null || player.State == PlayerState.Destroyed)
         {
-            await RemoveNowPlayingMessageAsync(guildId, player == null || player.CurrentTrack == null).ConfigureAwait(false);
+            await RemoveNowPlayingMessageAsync(guildId, player == null || player.CurrentTrack == null)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -326,8 +331,8 @@ public class NowPlayingService : IDisposable
             {
                 var position = player.Position.Value.Position;
                 var progressBar = MusicUtils.CreateProgressBar(position, currentTrack.Duration);
-                var currentTime = TimeUtils.FormatPlayerTime(position);
-                var totalTime = TimeUtils.FormatPlayerTime(currentTrack.Duration);
+                var currentTime = position.FormatPlayerTime();
+                var totalTime = currentTrack.Duration.FormatPlayerTime();
                 embedBuilder.AddField($"{currentTime} {progressBar} {totalTime}", "\u200B");
             }
         }

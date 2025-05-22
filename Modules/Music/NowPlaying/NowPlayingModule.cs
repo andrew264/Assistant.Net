@@ -25,18 +25,21 @@ public class NowPlayingModule(
 
         if (player == null || player.CurrentTrack == null)
         {
-            await ReplyAsync("I am not playing anything right now.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync("I am not playing anything right now.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
         if (Context.Channel is not ITextChannel textChannel)
         {
-            await ReplyAsync("This command can only be used in a text channel.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync("This command can only be used in a text channel.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
         var npMessage =
-            await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, textChannel, Context.User).ConfigureAwait(false);
+            await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, textChannel, Context.User)
+                .ConfigureAwait(false);
 
         if (npMessage != null)
         {

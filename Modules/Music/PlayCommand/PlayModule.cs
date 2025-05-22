@@ -47,7 +47,8 @@ public class PlayModule(
         }
 
         // Prefix commands typically don't use ephemeral messages for search results easily
-        await Context.Channel.SendMessageAsync(embed: embed.Build(), components: components.Build()).ConfigureAwait(false);
+        await Context.Channel.SendMessageAsync(embed: embed.Build(), components: components.Build())
+            .ConfigureAwait(false);
     }
 
     [Command("play", RunMode = RunMode.Async)]
@@ -96,12 +97,14 @@ public class PlayModule(
         {
             case TrackLoadStatus.TrackLoaded:
                 await ReplyAsync(
-                    $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}").ConfigureAwait(false);
+                        $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}")
+                    .ConfigureAwait(false);
                 await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.PlaylistLoaded:
                 await ReplyAsync(
-                    $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.").ConfigureAwait(false);
+                        $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.")
+                    .ConfigureAwait(false);
                 await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.SearchResults:
@@ -111,7 +114,8 @@ public class PlayModule(
                 await ReplyAsync($"❌ No results found for: `{loadResult.OriginalQuery}`").ConfigureAwait(false);
                 break;
             case TrackLoadStatus.LoadFailed:
-                await ReplyAsync($"❌ Failed to load track(s): {loadResult.ErrorMessage ?? "Unknown error"}").ConfigureAwait(false);
+                await ReplyAsync($"❌ Failed to load track(s): {loadResult.ErrorMessage ?? "Unknown error"}")
+                    .ConfigureAwait(false);
                 break;
         }
     }

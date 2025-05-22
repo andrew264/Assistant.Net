@@ -46,7 +46,8 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
     {
         if (Context.Guild.Id != config.Client.HomeGuildId)
         {
-            await RespondAsync("This command can only be used in the home server.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("This command can only be used in the home server.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -169,7 +170,8 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
                 await user.RemoveRoleAsync(roleToAdd).ConfigureAwait(false);
                 logger.LogInformation("Removed role {RoleName} ({RoleId}) from User {UserId} (toggle off).",
                     roleToAdd.Name, roleToAdd.Id, user.Id);
-                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' removed.", ephemeral: true).ConfigureAwait(false);
+                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' removed.", ephemeral: true)
+                    .ConfigureAwait(false);
             }
             else
             {
@@ -177,7 +179,8 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
                 await user.AddRoleAsync(roleToAdd).ConfigureAwait(false);
                 logger.LogInformation("Added role {RoleName} ({RoleId}) to User {UserId}.", roleToAdd.Name,
                     roleToAdd.Id, user.Id);
-                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' added.", ephemeral: true).ConfigureAwait(false);
+                await interaction.FollowupAsync($"Role '{roleToAdd.Name}' added.", ephemeral: true)
+                    .ConfigureAwait(false);
             }
         }
         catch (HttpException httpEx) when (httpEx.HttpCode == HttpStatusCode.Forbidden)

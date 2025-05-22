@@ -107,7 +107,8 @@ public class AdminModule(
         catch (Exception ex)
         {
             logger.LogError(ex, "An unexpected error occurred while updating the bot avatar.");
-            await FollowupAsync("An unexpected error occurred. Check the logs for details.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("An unexpected error occurred. Check the logs for details.", ephemeral: true)
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -153,7 +154,8 @@ public class AdminModule(
 
             if (!string.IsNullOrWhiteSpace(finalActivityText))
             {
-                await Context.Client.SetActivityAsync(new Game(finalActivityText, finalActivityType)).ConfigureAwait(false);
+                await Context.Client.SetActivityAsync(new Game(finalActivityText, finalActivityType))
+                    .ConfigureAwait(false);
                 logger.LogDebug("Set bot activity to {ActivityType} {ActivityText}", finalActivityType,
                     finalActivityText);
             }

@@ -30,7 +30,8 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
 
         if (Context.Channel is not SocketTextChannel textChannel)
         {
-            await ReplyAsync("This command can only be used in text channels.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync("This command can only be used in text channels.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -84,7 +85,8 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to fetch messages for clear command in {ChannelId}", Context.Channel.Id);
-            await ReplyAsync("Failed to fetch messages to delete.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync("Failed to fetch messages to delete.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -148,7 +150,8 @@ public class ModerationModule(ILogger<ModerationModule> logger) : ModuleBase<Soc
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
         {
             logger.LogError(ex, "Permission error during clear in {ChannelId}", textChannel.Id);
-            await ReplyAsync("I don't have permission to delete messages.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync("I don't have permission to delete messages.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
         }
         catch (ArgumentOutOfRangeException)
         {

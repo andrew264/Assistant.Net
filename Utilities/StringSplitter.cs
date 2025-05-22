@@ -1,8 +1,10 @@
+using Discord;
+
 namespace Assistant.Net.Utilities;
 
 public class StringSplitter
 {
-    private const int MaxChunkSize = 2048;
+    private const int MaxChunkSize = DiscordConfig.MaxMessageSize;
 
     public static List<string> SplitString(string input)
     {

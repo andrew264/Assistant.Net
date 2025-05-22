@@ -19,7 +19,8 @@ public class PlaylistNameAutocompleteProvider : AutocompleteHandler
         var playlistService = services.GetRequiredService<PlaylistService>();
         var currentInput = autocompleteInteraction.Data.Current.Value as string ?? "";
 
-        var playlists = await playlistService.GetUserPlaylistsAsync(context.User.Id, context.Guild.Id).ConfigureAwait(false);
+        var playlists = await playlistService.GetUserPlaylistsAsync(context.User.Id, context.Guild.Id)
+            .ConfigureAwait(false);
 
         var choices = playlists
             .Where(p => p.Name.Contains(currentInput, StringComparison.OrdinalIgnoreCase))

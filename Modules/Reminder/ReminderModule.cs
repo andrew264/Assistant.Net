@@ -39,7 +39,8 @@ public class ReminderModule(ReminderService reminderService)
 
         if (message.Length > 1000)
         {
-            await FollowupAsync("Reminder message is too long (max 1000 characters).", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Reminder message is too long (max 1000 characters).", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -75,7 +76,8 @@ public class ReminderModule(ReminderService reminderService)
         }
         else
         {
-            await FollowupAsync("Failed to create the reminder due to an internal error.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Failed to create the reminder due to an internal error.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 
@@ -205,12 +207,14 @@ public class ReminderModule(ReminderService reminderService)
     {
         await DeferAsync(true).ConfigureAwait(false);
 
-        var (success, found) = await reminderService.CancelReminderAsync(Context.User.Id, id, delete).ConfigureAwait(false);
+        var (success, found) =
+            await reminderService.CancelReminderAsync(Context.User.Id, id, delete).ConfigureAwait(false);
 
         if (found)
         {
             if (success)
-                await FollowupAsync($"Reminder ID `{id}` {(delete ? "deleted" : "deactivated")}.", ephemeral: true).ConfigureAwait(false);
+                await FollowupAsync($"Reminder ID `{id}` {(delete ? "deleted" : "deactivated")}.", ephemeral: true)
+                    .ConfigureAwait(false);
             else
                 await FollowupAsync(
                     $"Failed to {(delete ? "delete" : "deactivate")} reminder ID `{id}`. An internal error occurred.",
@@ -218,7 +222,8 @@ public class ReminderModule(ReminderService reminderService)
         }
         else
         {
-            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 
@@ -265,7 +270,8 @@ public class ReminderModule(ReminderService reminderService)
 
         if (message?.Length > 1000)
         {
-            await FollowupAsync("New reminder message is too long (max 1000 characters).", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("New reminder message is too long (max 1000 characters).", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -305,7 +311,7 @@ public class ReminderModule(ReminderService reminderService)
                         : $" (in <#{updatedReminder.ChannelId}>)";
 
                     embed.AddField("New Trigger Time",
-                        $"{TimestampTag.FromDateTime(updatedReminder.TriggerTime, TimestampTagStyles.LongDateTime)} ({TimestampTag.FromDateTime(updatedReminder.TriggerTime, TimestampTagStyles.Relative)}){recurrenceStr}");
+                        $"{updatedReminder.TriggerTime.GetLongDateTime()} ({updatedReminder.TriggerTime.GetRelativeTime()}){recurrenceStr}");
                     embed.AddField("Message", updatedReminder.Message);
                     if (!string.IsNullOrWhiteSpace(updatedReminder.Title))
                         embed.AddField("Title", updatedReminder.Title);
@@ -317,7 +323,8 @@ public class ReminderModule(ReminderService reminderService)
                 else
                 {
                     // Should not happen if success is true, but fallback
-                    await FollowupAsync($"Reminder ID `{id}` updated successfully.", ephemeral: true).ConfigureAwait(false);
+                    await FollowupAsync($"Reminder ID `{id}` updated successfully.", ephemeral: true)
+                        .ConfigureAwait(false);
                 }
             }
             else
@@ -329,7 +336,8 @@ public class ReminderModule(ReminderService reminderService)
         }
         else
         {
-            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 

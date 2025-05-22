@@ -74,7 +74,8 @@ public class LyricsInteractionModule(
 
         if (geniusSongs == null || geniusSongs.Count == 0)
         {
-            await FollowupAsync($"Sorry, I couldn't find lyrics for '{searchTitle}'.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync($"Sorry, I couldn't find lyrics for '{searchTitle}'.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -84,14 +85,16 @@ public class LyricsInteractionModule(
 
         if (bestMatch == null)
         {
-            await FollowupAsync("Could not retrieve full song details from Genius.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Could not retrieve full song details from Genius.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
         logger.LogInformation(
             "Genius song found for query '{Query}': {FullTitle} by {ArtistNames}, Path: {Path}, ID: {Id}",
             query ?? "(current song)", bestMatch.FullTitle, bestMatch.ArtistNames, bestMatch.Path, bestMatch.Id);
-        var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(bestMatch.Id, bestMatch.Path).ConfigureAwait(false);
+        var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(bestMatch.Id, bestMatch.Path)
+            .ConfigureAwait(false);
         if (lyrics == null)
             return;
 
@@ -109,7 +112,8 @@ public class LyricsInteractionModule(
         await FollowupAsync(embed: embed, components: components, ephemeral: false).ConfigureAwait(false);
     }
 
-    private static (Embed Embed, MessageComponent? Components) BuildLyricsPage(GeniusSong song, List<string> lyricsChunks,
+    private static (Embed Embed, MessageComponent? Components) BuildLyricsPage(GeniusSong song,
+        List<string> lyricsChunks,
         int currentPage, Color embedColor)
     {
         var totalPages = lyricsChunks.Count;
@@ -151,7 +155,8 @@ public class LyricsInteractionModule(
                 ephemeral: true).ConfigureAwait(false);
             try
             {
-                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build())
+                    .ConfigureAwait(false);
             }
             catch
             {
@@ -168,7 +173,8 @@ public class LyricsInteractionModule(
                 ephemeral: true).ConfigureAwait(false);
             try
             {
-                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+                await ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build())
+                    .ConfigureAwait(false);
             }
             catch
             {

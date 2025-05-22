@@ -31,15 +31,6 @@ public static class UserUtils
             : status;
     }
 
-    // Get user activities
-    public static string GetUserActivities(SocketUser user)
-    {
-        var activities = user.Activities.Select(activity => activity.ToString()).ToList();
-        return activities.Count > 0
-            ? string.Join(", ", activities)
-            : "No activities";
-    }
-
     // Get user thumbnail url
     public static string GetUserThumbnailUrl(SocketUser user)
     {
@@ -107,11 +98,11 @@ public static class UserUtils
                     var joinFieldName =
                         isOwner ? $"Created {guildUser.Guild.Name} on" : $"Joined {guildUser.Guild.Name} on";
                     embedBuilder.AddField(joinFieldName,
-                        $"{TimestampTag.FromDateTimeOffset(joinedAt.Value, TimestampTagStyles.LongDateTime)}\n{TimestampTag.FromDateTimeOffset(joinedAt.Value, TimestampTagStyles.Relative)}", true);
+                        $"{joinedAt.Value.GetLongDateTime()}\n{joinedAt.Value.GetRelativeTime()}", true);
                 }
 
                 embedBuilder.AddField("Account created on",
-                    $"{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.LongDateTime)}\n{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.Relative)}", true);
+                    $"{targetUser.CreatedAt.GetLongDateTime()}\n{targetUser.CreatedAt.GetRelativeTime()}", true);
 
                 if (!string.IsNullOrWhiteSpace(guildUser.Nickname))
                     embedBuilder.AddField("Nickname", guildUser.Nickname, true);
@@ -142,7 +133,7 @@ public static class UserUtils
             else
             {
                 embedBuilder.AddField("Account created on",
-                    $"{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.LongDateTime)}\n{TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.Relative)}");
+                    $"{targetUser.CreatedAt.GetLongDateTime()}\n{targetUser.CreatedAt.GetRelativeTime()}");
                 if (targetUser is SocketUser socketTargetUser)
                 {
                     if (socketTargetUser.Status != UserStatus.Offline)

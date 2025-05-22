@@ -36,11 +36,13 @@ public class NowPlayingInteractionModule(
             return;
         }
 
-        var npMessage = await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, Context).ConfigureAwait(false);
+        var npMessage = await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, Context)
+            .ConfigureAwait(false);
         if (npMessage != null)
             await FollowupAsync("Now Playing message created/updated!", ephemeral: true).ConfigureAwait(false);
         else
-            await FollowupAsync("Failed to create or update the Now Playing message.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Failed to create or update the Now Playing message.", ephemeral: true)
+                .ConfigureAwait(false);
     }
 
     [ComponentInteraction(NowPlayingService.NpCustomIdPrefix + ":*:*", true)]
@@ -48,7 +50,8 @@ public class NowPlayingInteractionModule(
     {
         if (Context.Guild == null || Context.Guild.Id != guildIdParam)
         {
-            await RespondAsync("Button interaction guild mismatch. This shouldn't happen.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("Button interaction guild mismatch. This shouldn't happen.", ephemeral: true)
+                .ConfigureAwait(false);
             logger.LogWarning(
                 "NP Interaction guild mismatch. Context Guild: {ContextGuildId}, Param Guild: {ParamGuildId}, Action: {Action}, User: {UserId}",
                 Context.Guild?.Id, guildIdParam, action, Context.User.Id);
@@ -63,7 +66,8 @@ public class NowPlayingInteractionModule(
 
         if (player == null)
         {
-            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true)
+                .ConfigureAwait(false);
             await nowPlayingService.RemoveNowPlayingMessageAsync(guildIdParam).ConfigureAwait(false);
             return;
         }
@@ -99,7 +103,8 @@ public class NowPlayingInteractionModule(
                 if (player.CurrentTrack != null && player.Position != null)
                 {
                     if (player.Position.Value.Position < player.CurrentTrack.Duration - TimeSpan.FromSeconds(10))
-                        await player.SeekAsync(player.Position.Value.Position + TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+                        await player.SeekAsync(player.Position.Value.Position + TimeSpan.FromSeconds(10))
+                            .ConfigureAwait(false);
                     else
                         await musicService.SkipTrackAsync(player, Context.User).ConfigureAwait(false);
                     logger.LogInformation("[NP Button] User {User} forwarded track in Guild {GuildId}",

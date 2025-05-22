@@ -4,11 +4,17 @@ namespace Assistant.Net.Utilities;
 
 public static class TimeUtils
 {
-    public static string GetLongDateTime(DateTimeOffset time) =>
-        $"{new TimestampTag(time, TimestampTagStyles.LongDateTime)}";
+    public static string GetLongDateTime(this DateTimeOffset time) =>
+        TimestampTag.FormatFromDateTimeOffset(time, TimestampTagStyles.LongDateTime);
 
-    public static string GetRelativeTime(DateTimeOffset time) =>
-        $"{new TimestampTag(time, TimestampTagStyles.Relative)}";
+    public static string GetRelativeTime(this DateTimeOffset time) =>
+        TimestampTag.FormatFromDateTimeOffset(time, TimestampTagStyles.Relative);
+
+    public static string GetLongDateTime(this DateTime time) =>
+        TimestampTag.FormatFromDateTime(time, TimestampTagStyles.LongDateTime);
+
+    public static string GetRelativeTime(this DateTime time) =>
+        TimestampTag.FormatFromDateTime(time, TimestampTagStyles.Relative);
 
     public static TimeSpan ParseTimestamp(string timestamp)
     {
@@ -43,7 +49,7 @@ public static class TimeUtils
         return new TimeSpan(hours, minutes, seconds);
     }
 
-    public static string FormatPlayerTime(TimeSpan duration) => duration.TotalHours >= 1
+    public static string FormatPlayerTime(this TimeSpan duration) => duration.TotalHours >= 1
         ? $"{(int)duration.TotalHours}:{duration.Minutes:D2}:{duration.Seconds:D2}"
         : $"{duration.Minutes:D2}:{duration.Seconds:D2}";
 }

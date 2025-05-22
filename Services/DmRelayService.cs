@@ -73,13 +73,15 @@ public class DmRelayService
         var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
 
         var messageContent = BuildEditedMessageContent(before, after);
-        var files = await AttachmentUtils.DownloadAttachmentsAsync(after.Attachments, _httpClientFactory, _logger).ConfigureAwait(false);
+        var files = await AttachmentUtils.DownloadAttachmentsAsync(after.Attachments, _httpClientFactory, _logger)
+            .ConfigureAwait(false);
 
         try
         {
             await webhookClient.SendFilesAsync(files, messageContent,
-                username: after.Author.Username,
-                avatarUrl: after.Author.GetDisplayAvatarUrl() ?? after.Author.GetDefaultAvatarUrl()).ConfigureAwait(false);
+                    username: after.Author.Username,
+                    avatarUrl: after.Author.GetDisplayAvatarUrl() ?? after.Author.GetDefaultAvatarUrl())
+                .ConfigureAwait(false);
             await after.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -97,7 +99,9 @@ public class DmRelayService
         Cacheable<IMessageChannel, ulong> channelCache)
     {
         // Ensure the channel is a DM channel before proceeding
-        var channel = channelCache.HasValue ? channelCache.Value : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
+        var channel = channelCache.HasValue
+            ? channelCache.Value
+            : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (channel is not IDMChannel) return;
 
         var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
@@ -115,8 +119,9 @@ public class DmRelayService
         try
         {
             await webhookClient.SendMessageAsync(messageContent,
-                username: message.Author.Username,
-                avatarUrl: message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl()).ConfigureAwait(false);
+                    username: message.Author.Username,
+                    avatarUrl: message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl())
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -131,21 +136,25 @@ public class DmRelayService
         _logger.LogInformation("[NEW DM] from {User} ({UserId}): {Content}", message.Author, message.Author.Id,
             message.Content);
 
-        var webhookClient = await GetOrCreateUserRelayWebhookAsync(message.Author).ConfigureAwait(false); // Changed to use helper
+        var webhookClient =
+            await GetOrCreateUserRelayWebhookAsync(message.Author).ConfigureAwait(false); // Changed to use helper
         if (webhookClient == null)
         {
-            await message.Channel.SendMessageAsync("Sorry, I encountered an error setting up the DM relay.").ConfigureAwait(false);
+            await message.Channel.SendMessageAsync("Sorry, I encountered an error setting up the DM relay.")
+                .ConfigureAwait(false);
             return;
         }
 
         var messageContent = await BuildNewMessageContentAsync(message).ConfigureAwait(false);
-        var files = await AttachmentUtils.DownloadAttachmentsAsync(message.Attachments, _httpClientFactory, _logger).ConfigureAwait(false);
+        var files = await AttachmentUtils.DownloadAttachmentsAsync(message.Attachments, _httpClientFactory, _logger)
+            .ConfigureAwait(false);
 
         try
         {
             await webhookClient.SendFilesAsync(files, messageContent,
-                username: message.Author.Username,
-                avatarUrl: message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl()).ConfigureAwait(false);
+                    username: message.Author.Username,
+                    avatarUrl: message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl())
+                .ConfigureAwait(false);
             await message.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -200,7 +209,8 @@ public class DmRelayService
 
         // Check for reply reference
         var replyMessageReference = await GetReplyReferenceAsync(message, textChannel, dmChannel).ConfigureAwait(false);
-        var files = await AttachmentUtils.DownloadAttachmentsAsync(message.Attachments, _httpClientFactory, _logger).ConfigureAwait(false);
+        var files = await AttachmentUtils.DownloadAttachmentsAsync(message.Attachments, _httpClientFactory, _logger)
+            .ConfigureAwait(false);
 
         try
         {
@@ -262,7 +272,8 @@ public class DmRelayService
 
         if (targetChannel == null)
         {
-            targetChannel = await CreateRelayChannelAsync(user, categoryChannel, guild, botGuildUser, userTopic).ConfigureAwait(false);
+            targetChannel = await CreateRelayChannelAsync(user, categoryChannel, guild, botGuildUser, userTopic)
+                .ConfigureAwait(false);
             if (targetChannel == null) return null; // Failed to create channel
         }
 
@@ -388,7 +399,8 @@ public class DmRelayService
         sb.AppendLine($"{MessageIdPrefix}{message.Id}");
         sb.AppendLine();
 
-        if (message.Reference is { MessageId.IsSpecified: true }) await AppendReferencedMessageInfoAsync(sb, message).ConfigureAwait(false);
+        if (message.Reference is { MessageId.IsSpecified: true })
+            await AppendReferencedMessageInfoAsync(sb, message).ConfigureAwait(false);
 
         if (!string.IsNullOrWhiteSpace(message.Content))
         {
@@ -409,7 +421,8 @@ public class DmRelayService
         try
         {
             // Try fetching from the DM channel context
-            referencedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value).ConfigureAwait(false);
+            referencedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -436,7 +449,8 @@ public class DmRelayService
     {
         if (message.Reference?.MessageId.IsSpecified != true) return null;
 
-        var referencedWebhookMsg = await textChannel.GetMessageAsync(message.Reference.MessageId.Value).ConfigureAwait(false);
+        var referencedWebhookMsg =
+            await textChannel.GetMessageAsync(message.Reference.MessageId.Value).ConfigureAwait(false);
         if (referencedWebhookMsg == null || !referencedWebhookMsg.Author.IsWebhook) return null;
 
         var originalDmId = ExtractMessageIdFromWebhookContent(referencedWebhookMsg.Content);

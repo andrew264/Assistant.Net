@@ -311,7 +311,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
 
         if (!float.TryParse(stepString, NumberStyles.Any, CultureInfo.InvariantCulture, out var buttonStepValue))
         {
-            await RespondAsync("Invalid step parameter in button ID. Please try the command again.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync("Invalid step parameter in button ID. Please try the command again.", ephemeral: true)
+                .ConfigureAwait(false);
             logger.LogError(
                 "Failed to parse step '{StepString}' from timescale button ID for user {User}. Button CustomID was likely {FullCustomID}",
                 stepString, Context.User.Id,
@@ -373,7 +374,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
                 return;
             default:
                 logger.LogWarning("Unknown timescale action: {Action} by {User}", action, Context.User.Username);
-                await ModifyOriginalResponseAsync(props => props.Content = "Unknown timescale action.").ConfigureAwait(false);
+                await ModifyOriginalResponseAsync(props => props.Content = "Unknown timescale action.")
+                    .ConfigureAwait(false);
                 return;
         }
 

@@ -17,7 +17,8 @@ public class MiscModule(ILogger<MiscModule> logger, IHttpClientFactory httpClien
         var fileAttachments = new List<FileAttachment>();
         if (Context.Message.Attachments.Count > 0)
             fileAttachments =
-                await AttachmentUtils.DownloadAttachmentsAsync(Context.Message.Attachments, httpClientFactory, logger).ConfigureAwait(false);
+                await AttachmentUtils.DownloadAttachmentsAsync(Context.Message.Attachments, httpClientFactory, logger)
+                    .ConfigureAwait(false);
 
         var embeds = Context.Message.Embeds.Count > 0 ? Context.Message.Embeds.ToArray() : [];
 
@@ -45,7 +46,8 @@ public class MiscModule(ILogger<MiscModule> logger, IHttpClientFactory httpClien
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to send echo message.");
-            await ReplyAsync("Sorry, I couldn't send the echo message.", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+            await ReplyAsync("Sorry, I couldn't send the echo message.", allowedMentions: AllowedMentions.None)
+                .ConfigureAwait(false);
         }
         finally
         {

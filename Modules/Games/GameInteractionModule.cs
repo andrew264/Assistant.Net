@@ -44,7 +44,8 @@ public class GameInteractionModule(
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
-            await FollowupAsync(creationResult.ErrorMessage ?? "Failed to start RPS game.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync(creationResult.ErrorMessage ?? "Failed to start RPS game.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -102,7 +103,8 @@ public class GameInteractionModule(
                 try
                 {
                     var msg = await Context.Interaction.GetOriginalResponseAsync().ConfigureAwait(false);
-                    if (msg != null) await msg.ModifyAsync(p => p.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+                    if (msg != null)
+                        await msg.ModifyAsync(p => p.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -156,11 +158,13 @@ public class GameInteractionModule(
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
-            await RespondAsync(creationResult.ErrorMessage ?? "Failed to start Tic Tac Toe game.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync(creationResult.ErrorMessage ?? "Failed to start Tic Tac Toe game.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
-        await RespondAsync(creationResult.InitialMessageContent, components: creationResult.Components).ConfigureAwait(false);
+        await RespondAsync(creationResult.InitialMessageContent, components: creationResult.Components)
+            .ConfigureAwait(false);
 
         if (creationResult.GameKey != null)
         {
@@ -168,7 +172,8 @@ public class GameInteractionModule(
             if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
             {
                 var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
-                    game.CurrentPlayer, 1, 1, Context.Guild?.Id ?? 0).ConfigureAwait(false); // TODO: make the first choice random
+                    game.CurrentPlayer, 1, 1,
+                    Context.Guild?.Id ?? 0).ConfigureAwait(false); // TODO: make the first choice random
 
                 if (updateResult.Status != GameUpdateStatus.Error && !string.IsNullOrEmpty(updateResult.MessageContent))
                 {
@@ -198,7 +203,8 @@ public class GameInteractionModule(
 
         var (row, col) = TicTacToeGame.IndexToCoords(position);
         var updateResult =
-            await gameSessionService.ProcessTicTacToeMoveAsync(gameId, Context.User, row, col, Context.Guild?.Id ?? 0).ConfigureAwait(false);
+            await gameSessionService.ProcessTicTacToeMoveAsync(gameId, Context.User, row, col, Context.Guild?.Id ?? 0)
+                .ConfigureAwait(false);
 
         if (!string.IsNullOrEmpty(updateResult.ErrorMessage))
         {
@@ -206,7 +212,8 @@ public class GameInteractionModule(
             if (updateResult.Status != GameUpdateStatus.GameNotFound) return;
             try
             {
-                await ModifyOriginalResponseAsync(p => p.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+                await ModifyOriginalResponseAsync(p => p.Components = new ComponentBuilder().Build())
+                    .ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -239,7 +246,8 @@ public class GameInteractionModule(
         {
             if (player1Param.Id == Context.User.Id)
             {
-                await RespondAsync("You need to specify an opponent if you are player 1!", ephemeral: true).ConfigureAwait(false);
+                await RespondAsync("You need to specify an opponent if you are player 1!", ephemeral: true)
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -258,7 +266,8 @@ public class GameInteractionModule(
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
-            await RespondAsync(creationResult.ErrorMessage ?? "Failed to start Hand Cricket game.", ephemeral: true).ConfigureAwait(false);
+            await RespondAsync(creationResult.ErrorMessage ?? "Failed to start Hand Cricket game.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -281,7 +290,8 @@ public class GameInteractionModule(
             if (updateResult.Status != GameUpdateStatus.GameNotFound) return;
             try
             {
-                await ModifyOriginalResponseAsync(p => p.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+                await ModifyOriginalResponseAsync(p => p.Components = new ComponentBuilder().Build())
+                    .ConfigureAwait(false);
             }
             catch (Exception ex)
             {

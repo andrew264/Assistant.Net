@@ -26,14 +26,16 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
 
         if (Context.Channel is not SocketTextChannel textChannel)
         {
-            await FollowupAsync("This command can only be used in text channels.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("This command can only be used in text channels.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
         var botUser = Context.Guild.CurrentUser;
         if (!botUser.GetPermissions(textChannel).ManageMessages)
         {
-            await FollowupAsync("I don't have permission to delete messages in this channel.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("I don't have permission to delete messages in this channel.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -64,7 +66,8 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
         try
         {
             await textChannel.DeleteMessagesAsync(messagesList).ConfigureAwait(false);
-            await FollowupAsync($"🗑️ Successfully deleted {messagesList.Count} message(s).", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync($"🗑️ Successfully deleted {messagesList.Count} message(s).", ephemeral: true)
+                .ConfigureAwait(false);
             logger.LogInformation(
                 "[MOD ACTION] /clear: {User} deleted {Count} messages in #{Channel} ({Guild})",
                 Context.User, messagesList.Count, textChannel.Name, Context.Guild.Name);
@@ -83,7 +86,8 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
         catch (Exception ex)
         {
             logger.LogError(ex, "Error during /clear execution in {ChannelId}", textChannel.Id);
-            await FollowupAsync("An unexpected error occurred while deleting messages.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("An unexpected error occurred while deleting messages.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 
@@ -98,14 +102,16 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
 
         if (Context.Channel is not SocketTextChannel textChannel)
         {
-            await FollowupAsync("This command can only be used in text channels.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("This command can only be used in text channels.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
         var botUser = Context.Guild.CurrentUser;
         if (!botUser.GetPermissions(textChannel).ManageMessages)
         {
-            await FollowupAsync("I don't have permission to delete messages in this channel.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("I don't have permission to delete messages in this channel.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -114,7 +120,8 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
 
         if (targetMessage.Timestamp < fourteenDaysAgo)
         {
-            await FollowupAsync("The selected message is too old (>14 days) to start deleting from.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("The selected message is too old (>14 days) to start deleting from.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -171,7 +178,8 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
         catch (Exception ex)
         {
             logger.LogError(ex, "Error during 'Delete till here' execution in {ChannelId}", textChannel.Id);
-            await FollowupAsync("An unexpected error occurred while deleting messages.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("An unexpected error occurred while deleting messages.", ephemeral: true)
+                .ConfigureAwait(false);
         }
     }
 }

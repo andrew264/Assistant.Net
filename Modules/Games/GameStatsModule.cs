@@ -36,11 +36,13 @@ public class GameStatsModule(
 
         try
         {
-            var leaderboardData = await gameStatsService.GetLeaderboardAsync(guildId, gameName, ResultsPerPage).ConfigureAwait(false);
+            var leaderboardData = await gameStatsService.GetLeaderboardAsync(guildId, gameName, ResultsPerPage)
+                .ConfigureAwait(false);
 
             if (leaderboardData.Count == 0)
             {
-                await FollowupAsync($"No stats found for {gameName.CapitalizeFirstLetter()} in this server yet.").ConfigureAwait(false);
+                await FollowupAsync($"No stats found for {gameName.CapitalizeFirstLetter()} in this server yet.")
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -82,7 +84,8 @@ public class GameStatsModule(
         {
             logger.LogError(ex, "MongoDB error fetching leaderboard for {GameName} in Guild {GuildId}", gameName,
                 guildId);
-            await FollowupAsync($"A database error occurred while fetching the leaderboard: {ex.Message}").ConfigureAwait(false);
+            await FollowupAsync($"A database error occurred while fetching the leaderboard: {ex.Message}")
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -114,11 +117,13 @@ public class GameStatsModule(
 
         try
         {
-            var userStatsData = await gameStatsService.GetUserGuildStatsAsync(targetUser.Id, guildId).ConfigureAwait(false);
+            var userStatsData =
+                await gameStatsService.GetUserGuildStatsAsync(targetUser.Id, guildId).ConfigureAwait(false);
 
             if (userStatsData == null || userStatsData.Games.Count == 0)
             {
-                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.").ConfigureAwait(false);
+                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.")
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -151,7 +156,8 @@ public class GameStatsModule(
                 else
                 {
                     await FollowupAsync(
-                        $"{targetUser.Mention} hasn't played {gameName.CapitalizeFirstLetter()} in this server yet.").ConfigureAwait(false);
+                            $"{targetUser.Mention} hasn't played {gameName.CapitalizeFirstLetter()} in this server yet.")
+                        .ConfigureAwait(false);
                     return;
                 }
             }
@@ -163,7 +169,8 @@ public class GameStatsModule(
 
                 if (gamesPlayed.Count == 0)
                 {
-                    await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.").ConfigureAwait(false);
+                    await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.")
+                        .ConfigureAwait(false);
                     return;
                 }
 
@@ -186,7 +193,8 @@ public class GameStatsModule(
 
             if (embed.Fields.Count == 0)
             {
-                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.").ConfigureAwait(false);
+                await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.")
+                    .ConfigureAwait(false);
                 return;
             }
 

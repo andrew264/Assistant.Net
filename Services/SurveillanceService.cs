@@ -64,7 +64,8 @@ public class SurveillanceService
         var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (before == null || before.Content == after.Content) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var author = after.Author;
@@ -100,7 +101,9 @@ public class SurveillanceService
     public async Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> messageCache,
         Cacheable<IMessageChannel, ulong> channelCache)
     {
-        var channel = channelCache.HasValue ? channelCache.Value : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
+        var channel = channelCache.HasValue
+            ? channelCache.Value
+            : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (channel is not SocketGuildChannel guildChannel) return;
 
         var loggingChannelId = GetLoggingChannelId(guildChannel.Guild.Id);
@@ -110,7 +113,8 @@ public class SurveillanceService
         if (message == null || message.Author.IsBot ||
             (_config.Client.OwnerId.HasValue && message.Author.Id == _config.Client.OwnerId.Value)) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var author = message.Author;
@@ -156,7 +160,8 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(after.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -202,7 +207,8 @@ public class SurveillanceService
             var member = guild.GetUser(after.Id);
             if (member == null) continue;
 
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+                .ConfigureAwait(false);
             if (webhookClient == null) continue;
 
             var embed = new EmbedBuilder()
@@ -261,7 +267,8 @@ public class SurveillanceService
             before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
 
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var statusSummary = ActivityUtils.SummarizeStatusChange(bClients, bStatus, aClients, aStatus);
@@ -288,15 +295,25 @@ public class SurveillanceService
             var changeDescription = "";
             if (key == "Custom Status")
             {
-                if (!string.IsNullOrEmpty(bValue) && !string.IsNullOrEmpty(aValue))
-                    changeDescription = $"Custom Status: `{bValue}` → `{aValue}`";
-                else if (!string.IsNullOrEmpty(bValue)) changeDescription = $"Removed Custom Status: `{bValue}`";
-                else if (!string.IsNullOrEmpty(aValue)) changeDescription = $"Set Custom Status: `{aValue}`";
+                switch (string.IsNullOrEmpty(bValue))
+                {
+                    case false when !string.IsNullOrEmpty(aValue):
+                        changeDescription = $"Custom Status: `{bValue}` → `{aValue}`";
+                        break;
+                    case false:
+                        changeDescription = $"Removed Custom Status: `{bValue}`";
+                        break;
+                    default:
+                    {
+                        if (!string.IsNullOrEmpty(aValue)) changeDescription = $"Set Custom Status: `{aValue}`";
+                        break;
+                    }
+                }
             }
             else
             {
-                if (string.IsNullOrEmpty(bValue)) changeDescription = $"Started {key}: `{aValue}`";
-                else if (string.IsNullOrEmpty(aValue)) changeDescription = $"Stopped {key}: `{bValue}`";
+                if (string.IsNullOrEmpty(bValue)) changeDescription = $"Started {key}: {aValue}";
+                else if (string.IsNullOrEmpty(aValue)) changeDescription = $"Stopped {key}: {bValue}";
                 else changeDescription = $"{key}: `{bValue}` → `{aValue}`";
             }
 
@@ -344,7 +361,8 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -425,7 +443,8 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -459,7 +478,8 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
@@ -468,8 +488,7 @@ public class SurveillanceService
             .WithDescription($"{member.Mention} has joined the server.")
             .WithColor(Color.Green)
             .AddField("Account Created",
-                TimestampTag.FromDateTime(member.CreatedAt.DateTime, TimestampTagStyles.LongDateTime) + " (" +
-                TimestampTag.FromDateTime(member.CreatedAt.DateTime, TimestampTagStyles.Relative) + ")")
+                member.CreatedAt.DateTime.GetLongDateTime() + " (" + member.CreatedAt.DateTime.GetRelativeTime() + ")")
             .WithFooter($"User ID: {member.Id}")
             .WithTimestamp(member.JoinedAt ?? DateTimeOffset.UtcNow);
 
@@ -497,7 +516,8 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var banReason = "Not specified";
@@ -545,7 +565,8 @@ public class SurveillanceService
         var loggingChannelId = GetLoggingChannelId(guild.Id);
         if (loggingChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value).ConfigureAwait(false);
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()

@@ -458,7 +458,8 @@ public class GameSessionService(
                                 var (_, gameOver) = game.ResolveTurn();
                                 if (gameOver)
                                 {
-                                    var finalResultMessage = await game.GetResultStringAndRecordStats(guildId).ConfigureAwait(false);
+                                    var finalResultMessage = await game.GetResultStringAndRecordStats(guildId)
+                                        .ConfigureAwait(false);
                                     _activeHandCricketGames.TryRemove(game.GameId, out _);
                                     CancelTimeoutTask(game.GameId);
                                     logger.LogInformation("[HC] Game {GameId} finished.", game.GameId);
