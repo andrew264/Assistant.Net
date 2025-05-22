@@ -8,6 +8,7 @@ using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Lavalink4NET;
+using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
 namespace Assistant.Net.Modules.Info;
@@ -17,7 +18,9 @@ public class InfoModule(
     InteractionService interactionService,
     CommandService commandService,
     Config config,
-    IAudioService audioService)
+    IAudioService audioService,
+    IHttpClientFactory httpClientFactory,
+    ILogger<InfoModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
     private static readonly DateTimeOffset ProcessStartTimeOffset = new(Process.GetCurrentProcess().StartTime);
@@ -81,5 +84,89 @@ public class InfoModule(
             .WithTimestamp(DateTimeOffset.UtcNow);
 
         await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+    }
+
+
+    [SlashCommand("avatar", "Shows the avatar of a user or yourself.")]
+    public async Task AvatarSlashCommandAsync(
+        [Discord.Interactions.Summary("user", "The user to get the avatar from (defaults to you).")]
+        IUser? user = null)
+    {
+        await DeferAsync().ConfigureAwait(false);
+
+        var targetUser = user ?? Context.User;
+        var avatarUrl = targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl();
+
+        if (string.IsNullOrEmpty(avatarUrl))
+        {
+            await FollowupAsync("Could not retrieve avatar URL for this user.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var displayUserName =
+            (targetUser as SocketGuildUser)?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
+
+        FileAttachment? fileAttachment = null;
+        try
+        {
+            fileAttachment = await AttachmentUtils
+                .DownloadFileAsAttachmentAsync(avatarUrl, "avatar.png", httpClientFactory, logger)
+                .ConfigureAwait(false);
+
+            if (fileAttachment == null)
+            {
+                await FollowupAsync($"Could not download avatar for {displayUserName}.", ephemeral: true)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            await FollowupWithFileAsync(
+                text: $"# {displayUserName}'s Avatar",
+                attachment: fileAttachment.Value
+            ).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            logger.LogError(ex, "Failed to download avatar for {User} (URL: {AvatarUrl}) in slash command",
+                targetUser.Username, avatarUrl);
+            await FollowupAsync($"Failed to download the avatar for {displayUserName}.", ephemeral: true)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error sending avatar for {User} in slash command", targetUser.Username);
+            await FollowupAsync($"An error occurred while fetching the avatar for {displayUserName}.", ephemeral: true)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            fileAttachment?.Dispose();
+        }
+    }
+
+    [UserCommand("View Avatar")]
+    public async Task ViewAvatarUserCommand(IUser user)
+    {
+        var targetSocketUser = user as SocketUser ?? client.GetUser(user.Id);
+        var avatarUrl = targetSocketUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ??
+                        targetSocketUser.GetDefaultAvatarUrl();
+
+        if (string.IsNullOrEmpty(avatarUrl))
+        {
+            await RespondAsync("This user does not seem to have an avatar set or it's inaccessible.", ephemeral: true)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var displayUserName = (targetSocketUser as IGuildUser)?.DisplayName ??
+                              targetSocketUser.GlobalName ?? targetSocketUser.Username;
+
+        var embed = new EmbedBuilder()
+            .WithTitle($"{displayUserName}'s Avatar")
+            .WithImageUrl(avatarUrl)
+            .WithColor(UserUtils.GetTopRoleColor(targetSocketUser))
+            .Build();
+
+        await RespondAsync(embed: embed, ephemeral: true).ConfigureAwait(false);
     }
 }
