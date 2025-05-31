@@ -1,6 +1,6 @@
 using Assistant.Net.Configuration;
 using Assistant.Net.Modules.Music.Helpers;
-using Assistant.Net.Services;
+using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;

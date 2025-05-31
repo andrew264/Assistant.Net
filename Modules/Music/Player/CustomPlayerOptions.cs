@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Assistant.Net.Modules.Music.Player;
 
-public sealed record class CustomPlayerOptions : QueuedLavalinkPlayerOptions, IOptions<CustomPlayerOptions>
+public sealed record CustomPlayerOptions : QueuedLavalinkPlayerOptions, IOptions<CustomPlayerOptions>
 {
     public ITextChannel? TextChannel { get; init; }
     public required DiscordSocketClient SocketClient { get; init; }

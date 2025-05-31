@@ -2,7 +2,7 @@ using Assistant.Net.Models.Games;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.Games;
 
 public class GameStatsService
 {

@@ -1,5 +1,6 @@
 using System.Text;
 using Assistant.Net.Configuration;
+using Assistant.Net.Services.Core;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
@@ -7,7 +8,7 @@ using Discord.Webhook;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.User;
 
 public class DmRelayService
 {
@@ -242,11 +243,7 @@ public class DmRelayService
         }
     }
 
-    // --- Webhook Management (Specific to DM Relay Channel Creation) ---
-    /// <summary>
-    ///     Gets or creates the specific relay channel for a user and then gets/creates the webhook for that channel.
-    /// </summary>
-    public async Task<DiscordWebhookClient?> GetOrCreateUserRelayWebhookAsync(IUser user)
+    private async Task<DiscordWebhookClient?> GetOrCreateUserRelayWebhookAsync(IUser user)
     {
         var categoryId = _config.Client.DmRecipientsCategory;
 

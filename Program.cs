@@ -1,7 +1,12 @@
 ﻿using System.Security.Authentication;
 using Assistant.Net.Configuration;
-using Assistant.Net.Services;
-using Assistant.Net.Services.Starboard;
+using Assistant.Net.Services.Core;
+using Assistant.Net.Services.ExternalApis;
+using Assistant.Net.Services.Games;
+using Assistant.Net.Services.GuildFeatures;
+using Assistant.Net.Services.GuildFeatures.Starboard;
+using Assistant.Net.Services.Music;
+using Assistant.Net.Services.User;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;

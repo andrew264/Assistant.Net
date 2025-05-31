@@ -2,7 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Assistant.Net.Configuration;
-using Assistant.Net.Services;
+using Assistant.Net.Services.User;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;

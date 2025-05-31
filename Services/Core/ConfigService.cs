@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.Core;
 
 public class ConfigService
 {

@@ -11,7 +11,7 @@ using Microsoft.Recognizers.Text.DateTime;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.GuildFeatures;
 
 public class ReminderService : IHostedService, IDisposable
 {

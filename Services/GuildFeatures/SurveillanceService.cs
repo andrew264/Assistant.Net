@@ -1,14 +1,16 @@
 using System.Text;
 using Assistant.Net.Configuration;
+using Assistant.Net.Services.Core;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.GuildFeatures;
 
 public class SurveillanceService
 {
+    private const int DeleteDelay = 24 * 60 * 60 * 1000; // one day
     private readonly DiscordSocketClient _client;
     private readonly Config _config;
     private readonly ILogger<SurveillanceService> _logger;
@@ -42,16 +44,12 @@ public class SurveillanceService
 
     private ulong? GetLoggingChannelId(ulong guildId)
     {
-        if (_config.LoggingGuilds == null) return null;
-
-        return _config.LoggingGuilds
-            .FirstOrDefault(kvp => kvp.Value.GuildId == guildId)
-            .Value?.ChannelId;
+        return _config.LoggingGuilds?.FirstOrDefault(kvp => kvp.Value.GuildId == guildId).Value?.ChannelId;
     }
 
     // --- Event Handlers ---
 
-    public async Task HandleMessageUpdatedAsync(Cacheable<IMessage, ulong> beforeCache, SocketMessage after,
+    private async Task HandleMessageUpdatedAsync(Cacheable<IMessage, ulong> beforeCache, SocketMessage after,
         ISocketMessageChannel channel)
     {
         if (after.Author.IsBot ||
@@ -83,12 +81,14 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed],
                 username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
                 avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[MESSAGE EDIT] @{User} in #{Channel}", author.Username, guildChannel.Name);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -98,7 +98,7 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> messageCache,
+    private async Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> messageCache,
         Cacheable<IMessageChannel, ulong> channelCache)
     {
         var channel = channelCache.HasValue
@@ -133,13 +133,15 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embedBuilder.Build()],
                 username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
                 avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[MESSAGE DELETE] @{User} in #{Channel}\n\tMessage: {Content}", author.Username,
                 guildChannel.Name, message.Content);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -149,7 +151,7 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandleGuildMemberUpdatedAsync(Cacheable<SocketGuildUser, ulong> beforeCache,
+    private async Task HandleGuildMemberUpdatedAsync(Cacheable<SocketGuildUser, ulong> beforeCache,
         SocketGuildUser after)
     {
         if (after.IsBot || (_config.Client.OwnerId.HasValue && after.Id == _config.Client.OwnerId.Value)) return;
@@ -177,13 +179,15 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed],
                 username: "Member Update Logger",
                 avatarUrl: after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Nickname {GuildName}: @{OldName} -> @{NewName}", after.Guild.Name,
                 before.DisplayName, after.DisplayName);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -192,7 +196,7 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandleUserUpdatedAsync(SocketUser before, SocketUser after)
+    private async Task HandleUserUpdatedAsync(SocketUser before, SocketUser after)
     {
         if (after.IsBot || (_config.Client.OwnerId.HasValue && after.Id == _config.Client.OwnerId.Value)) return;
         if (before.Username == after.Username &&
@@ -232,13 +236,15 @@ public class SurveillanceService
 
             try
             {
-                await webhookClient.SendMessageAsync(
+                var msgId = await webhookClient.SendMessageAsync(
                     embeds: [embed.Build()],
                     username: "User Profile Logger",
                     avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
                 ).ConfigureAwait(false);
                 _logger.LogInformation("[UPDATE] User Profile {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
                     before, after);
+                _ = Task.Delay(DeleteDelay)
+                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
             }
             catch (Exception ex)
             {
@@ -250,7 +256,7 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandlePresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
+    private async Task HandlePresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
     {
         if (user.IsBot || user is not SocketGuildUser guildUser) return;
 
@@ -327,13 +333,15 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 messageContent.Truncate(DiscordConfig.MaxMessageSize),
                 username: guildUser.DisplayName,
                 avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None,
                 flags: MessageFlags.SuppressEmbeds
             ).ConfigureAwait(false);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -342,7 +350,7 @@ public class SurveillanceService
     }
 
 
-    public async Task HandleVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
+    private async Task HandleVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
         if (user.IsBot || (_config.Client.OwnerId.HasValue && user.Id == _config.Client.OwnerId.Value) ||
             user is not SocketGuildUser member) return;
@@ -406,7 +414,7 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
                 username: "Voice State Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
@@ -414,6 +422,8 @@ public class SurveillanceService
             ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {Action}", member.Guild.Name,
                 member.Username, actionDescription.ToString().Replace("\n", " "));
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -421,7 +431,7 @@ public class SurveillanceService
         }
     }
 
-    public Task HandleTypingAsync(Cacheable<IUser, ulong> userCache,
+    private Task HandleTypingAsync(Cacheable<IUser, ulong> userCache,
         Cacheable<IMessageChannel, ulong> channelCache) =>
         // Typing logs can be very noisy.
         /*
@@ -436,7 +446,7 @@ public class SurveillanceService
         */
         Task.CompletedTask;
 
-    public async Task HandleUserLeftAsync(SocketGuild guild, SocketUser user)
+    private async Task HandleUserLeftAsync(SocketGuild guild, SocketUser user)
     {
         if (user.IsBot) return;
 
@@ -457,12 +467,14 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
                 username: "Join/Leave Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Leave @{User}: {GuildName}", user.Username, guild.Name);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -471,7 +483,7 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandleUserJoinedAsync(SocketGuildUser member)
+    private async Task HandleUserJoinedAsync(SocketGuildUser member)
     {
         if (member.IsBot) return;
 
@@ -495,12 +507,14 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
                 username: "Join/Leave Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Join @{User}: {GuildName}", member.Username, member.Guild.Name);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -509,7 +523,7 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandleUserBannedAsync(SocketUser user, SocketGuild guild)
+    private async Task HandleUserBannedAsync(SocketUser user, SocketGuild guild)
     {
         if (user.IsBot) return;
 
@@ -543,13 +557,15 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
                 username: "Moderation Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Ban @{User}: {GuildName}. Reason: {Reason}", user.Username, guild.Name,
                 banReason);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -558,7 +574,7 @@ public class SurveillanceService
         }
     }
 
-    public async Task HandleUserUnbannedAsync(SocketUser user, SocketGuild guild)
+    private async Task HandleUserUnbannedAsync(SocketUser user, SocketGuild guild)
     {
         if (user.IsBot) return;
 
@@ -579,12 +595,14 @@ public class SurveillanceService
 
         try
         {
-            await webhookClient.SendMessageAsync(
+            var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
                 username: "Moderation Logger",
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Unban @{User}: {GuildName}", user.Username, guild.Name);
+            _ = Task.Delay(DeleteDelay)
+                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {

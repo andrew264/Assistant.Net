@@ -12,7 +12,7 @@ using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.Music;
 
 public class NowPlayingService : IDisposable
 {

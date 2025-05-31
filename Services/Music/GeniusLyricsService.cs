@@ -7,7 +7,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.Music;
 
 public class GeniusLyricsService(
     IHttpClientFactory httpClientFactory,

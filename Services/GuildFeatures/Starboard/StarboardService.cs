@@ -6,7 +6,7 @@ using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
-namespace Assistant.Net.Services.Starboard;
+namespace Assistant.Net.Services.GuildFeatures.Starboard;
 
 public class StarboardService
 {

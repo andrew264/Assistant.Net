@@ -1,5 +1,5 @@
 using Assistant.Net.Modules.Music.Helpers;
-using Assistant.Net.Services;
+using Assistant.Net.Services.Music;
 using Discord;
 using Discord.Commands;
 using Lavalink4NET.Clients;

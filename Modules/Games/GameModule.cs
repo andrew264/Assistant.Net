@@ -1,4 +1,4 @@
-using Assistant.Net.Services;
+using Assistant.Net.Services.Games;
 using Discord;
 using Discord.Commands;
 using Microsoft.Extensions.Logging;

@@ -1,10 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text;
-using Assistant.Net.Models;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Models.Playlist;
 using Assistant.Net.Modules.Music.Helpers;
-using Assistant.Net.Services;
+using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;

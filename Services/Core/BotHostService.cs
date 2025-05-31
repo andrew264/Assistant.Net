@@ -1,6 +1,8 @@
 using System.Reflection;
 using Assistant.Net.Configuration;
-using Assistant.Net.Services.Starboard;
+using Assistant.Net.Services.GuildFeatures;
+using Assistant.Net.Services.GuildFeatures.Starboard;
+using Assistant.Net.Services.User;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;
@@ -11,7 +13,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using IResult = Discord.Commands.IResult;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.Core;
 
 public class BotHostService(
     DiscordSocketClient client,

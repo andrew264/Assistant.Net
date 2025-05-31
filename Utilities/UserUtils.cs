@@ -1,4 +1,4 @@
-using Assistant.Net.Services;
+using Assistant.Net.Services.User;
 using Discord;
 using Discord.WebSocket;
 
@@ -21,7 +21,7 @@ public static class UserUtils
     }
 
     // Get available clients
-    public static string GetAvailableClients(SocketUser user)
+    private static string GetAvailableClients(SocketUser user)
     {
         var clients = user.ActiveClients.Select(client => client.ToString()).ToList();
         var status = user.Status.ToString();
@@ -32,7 +32,7 @@ public static class UserUtils
     }
 
     // Get user thumbnail url
-    public static string GetUserThumbnailUrl(SocketUser user)
+    private static string GetUserThumbnailUrl(SocketUser user)
     {
         var url = user.GetAvatarUrl();
 

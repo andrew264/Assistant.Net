@@ -1,7 +1,7 @@
 using Assistant.Net.Models.Music;
 using Assistant.Net.Modules.Music.Autocomplete;
 using Assistant.Net.Modules.Music.Helpers;
-using Assistant.Net.Services;
+using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;

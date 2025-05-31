@@ -2,7 +2,7 @@ using Assistant.Net.Models.User;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.User;
 
 public class UserService(IMongoDatabase database, ILogger<UserService> logger)
 {

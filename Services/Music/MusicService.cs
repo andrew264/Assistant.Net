@@ -13,7 +13,7 @@ using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.Music;
 
 public class MusicService(
     IAudioService audioService,

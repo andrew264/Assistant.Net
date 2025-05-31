@@ -2,7 +2,7 @@ using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.User;
 
 public class UserActivityTrackingService
 {

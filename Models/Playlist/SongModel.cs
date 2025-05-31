@@ -1,6 +1,6 @@
 using MongoDB.Bson.Serialization.Attributes;
 
-namespace Assistant.Net.Models;
+namespace Assistant.Net.Models.Playlist;
 
 public class SongModel
 {

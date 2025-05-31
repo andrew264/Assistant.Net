@@ -1,4 +1,4 @@
-using Assistant.Net.Services;
+using Assistant.Net.Services.Games;
 using MongoDB.Bson.Serialization.Attributes;
 
 namespace Assistant.Net.Models.Games;

@@ -1,6 +1,6 @@
 using System.Globalization;
 using Assistant.Net.Models.Lyrics;
-using Assistant.Net.Services;
+using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;

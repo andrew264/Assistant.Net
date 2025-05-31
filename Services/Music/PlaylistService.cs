@@ -1,9 +1,8 @@
-using Assistant.Net.Models;
 using Assistant.Net.Models.Playlist;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.Music;
 
 // --- Result Records for Playlist Operations ---
 public record PlaylistOperationResult(bool Success, string Message, PlaylistModel? Playlist = null);

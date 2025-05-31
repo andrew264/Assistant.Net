@@ -1,4 +1,4 @@
-using Assistant.Net.Services;
+using Assistant.Net.Services.User;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;

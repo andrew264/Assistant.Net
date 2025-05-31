@@ -5,7 +5,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 
-namespace Assistant.Net.Services.Starboard;
+namespace Assistant.Net.Services.GuildFeatures.Starboard;
 
 public class StarboardConfigService
 {

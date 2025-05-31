@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace Assistant.Net.Services;
+namespace Assistant.Net.Services.ExternalApis;
 
 public class RedditService(
     IHttpClientFactory httpClientFactory,
@@ -183,7 +183,6 @@ public class RedditService(
         var userAgent = $"Assistant.Net/1.0 by /u/{botUsername}";
 
         var apiUrl = $"{OauthUrl}/r/{subreddit}/top.json?limit={limit}&t={timeframe}";
-        HttpResponseMessage response;
 
         try
         {
@@ -193,7 +192,7 @@ public class RedditService(
             request.Headers.TryAddWithoutValidation("User-Agent", userAgent);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
-            response = await httpClient.SendAsync(request).ConfigureAwait(false);
+            var response = await httpClient.SendAsync(request).ConfigureAwait(false);
 
             switch (response.StatusCode)
             {
@@ -215,7 +214,7 @@ public class RedditService(
                     _accessToken = null;
                     _tokenExpiry = DateTimeOffset.MinValue;
                     return null;
-                case (HttpStatusCode)302:
+                case HttpStatusCode.Redirect:
                     logger.LogInformation(
                         "Received redirect (302) via OAuth for subreddit 'r/{Subreddit}', likely doesn't exist or is private.",
                         subreddit);
@@ -236,7 +235,7 @@ public class RedditService(
             var jsonString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
             var listingResponse = JsonConvert.DeserializeObject<RedditListingResponse>(jsonString);
 
-            if (listingResponse?.Data?.Children == null)
+            if (listingResponse?.Data.Children == null)
             {
                 logger.LogWarning(
                     "Failed to parse Reddit response or received unexpected structure (OAuth) for URL: {Url}", apiUrl);
