@@ -1,5 +1,5 @@
-using Assistant.Net.Modules.Music.Helpers;
-using Assistant.Net.Modules.Music.Player;
+using Assistant.Net.Modules.Music.Logic;
+using Assistant.Net.Modules.Music.Logic.Player;
 using Assistant.Net.Services.Music;
 using Discord;
 using Discord.Interactions;

@@ -1,7 +1,7 @@
 using System.Text;
 using Assistant.Net.Configuration;
 using Assistant.Net.Models.Music;
-using Assistant.Net.Modules.Music.Player;
+using Assistant.Net.Modules.Music.Logic.Player;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.WebSocket;

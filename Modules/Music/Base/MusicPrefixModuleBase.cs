@@ -1,5 +1,5 @@
-using Assistant.Net.Modules.Music.Helpers;
-using Assistant.Net.Modules.Music.Player;
+using Assistant.Net.Modules.Music.Logic;
+using Assistant.Net.Modules.Music.Logic.Player;
 using Assistant.Net.Services.Music;
 using Discord;
 using Discord.Commands;
@@ -9,16 +9,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Music.Base;
 
-public abstract class MusicPrefixModuleBase : ModuleBase<SocketCommandContext>
+public abstract class MusicPrefixModuleBase(MusicService musicService, ILogger logger)
+    : ModuleBase<SocketCommandContext>
 {
-    protected readonly ILogger Logger;
-    protected readonly MusicService MusicService;
-
-    protected MusicPrefixModuleBase(MusicService musicService, ILogger logger)
-    {
-        MusicService = musicService;
-        Logger = logger;
-    }
+    protected readonly ILogger Logger = logger;
+    protected readonly MusicService MusicService = musicService;
 
     protected async Task<(CustomPlayer? Player, bool IsError)> GetVerifiedPlayerAsync(
         PlayerChannelBehavior channelBehavior = PlayerChannelBehavior.None,

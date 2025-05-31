@@ -1,5 +1,5 @@
 using System.Globalization;
-using Assistant.Net.Modules.Music.Player;
+using Assistant.Net.Modules.Music.Logic.Player;
 using Discord;
 using Lavalink4NET.Filters;
 
