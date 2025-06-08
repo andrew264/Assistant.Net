@@ -290,7 +290,7 @@ public class SurveillanceService
         var allActivityKeys = bActivities.Keys.Union(aActivities.Keys).ToHashSet();
 
         var activityChanged = false;
-        foreach (var key in allActivityKeys)
+        foreach (var key in allActivityKeys.Where(key => key != "Spotify"))
         {
             bActivities.TryGetValue(key, out var bValue);
             aActivities.TryGetValue(key, out var aValue);

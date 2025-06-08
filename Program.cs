@@ -118,7 +118,7 @@ public class Program
                 services.ConfigureInactivityTracking(options =>
                 {
                     options.InactivityBehavior = PlayerInactivityBehavior.None;
-                    options.DefaultPollInterval = TimeSpan.FromSeconds(600);
+                    options.DefaultPollInterval = TimeSpan.FromSeconds(10);
                 });
                 services.Configure<UsersInactivityTrackerOptions>(options =>
                 {

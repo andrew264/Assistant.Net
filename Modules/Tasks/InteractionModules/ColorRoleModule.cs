@@ -12,7 +12,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
     // Base Custom ID prefix
-    private const string CustomIdPrefix = "assistant:color:";
+    private const string CustomIdPrefix = "assistant:role_color:";
 
     // --- Configuration ---
     private static readonly Dictionary<string, ulong> ColorRolesMap = new()
@@ -82,7 +82,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
     }
 
     // --- Button Interaction Handler ---
-    [ComponentInteraction("assistant:color:*", true)]
+    [ComponentInteraction("assistant:role_color:*", true)]
     public async Task HandleColorRoleButtonAsync()
     {
         if (Context.Interaction is not SocketMessageComponent interaction) return;

@@ -99,11 +99,12 @@ public static class ActivityUtils
         return value;
     }
 
-    public static Dictionary<string, string> GetAllUserActivities(IReadOnlyCollection<IActivity> activities,
+    public static Dictionary<string, string> GetAllUserActivities(IReadOnlyCollection<IActivity>? activities,
         bool withTime, bool withUrl,
         bool includeAllActivities)
     {
         var resultDictionary = new Dictionary<string, string>();
+        if (activities == null || activities.Count == 0) return resultDictionary;
         foreach (var activity in activities)
             switch (activity)
             {

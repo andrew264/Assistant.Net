@@ -96,7 +96,10 @@ public class LyricsInteractionModule(
         var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(bestMatch.Id, bestMatch.Path)
             .ConfigureAwait(false);
         if (lyrics == null)
+        {
+            await FollowupAsync($"Sorry, I couldn't fetch the lyrics.",ephemeral: true).ConfigureAwait(false);
             return;
+        }
 
         var lyricsChunks = lyrics.SmartChunkSplitList();
 
