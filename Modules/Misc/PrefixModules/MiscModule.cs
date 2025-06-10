@@ -1,3 +1,4 @@
+using Assistant.Net.Modules.Attributes;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;
@@ -10,7 +11,8 @@ public class MiscModule(ILogger<MiscModule> logger, IHttpClientFactory httpClien
 {
     [Command("echo", RunMode = RunMode.Async)]
     [Summary("Echos the provided message back.")]
-    [RequireOwner]
+    [RequireUserPermission(GuildPermission.Administrator, Group = "Permission")]
+    [RequireBotOwner(Group = "Permission")]
     [RequireContext(ContextType.Guild)]
     public async Task EchoAsync([Remainder] string message = "")
     {

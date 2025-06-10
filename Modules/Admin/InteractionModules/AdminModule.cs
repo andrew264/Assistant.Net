@@ -1,5 +1,6 @@
 using System.Net;
 using Assistant.Net.Configuration;
+using Assistant.Net.Modules.Attributes;
 using Discord;
 using Discord.Interactions;
 using Discord.Net;
@@ -9,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace Assistant.Net.Modules.Admin.InteractionModules;
 
 [Group("admin", "Admin-only commands for managing the bot.")]
-[RequireOwner]
+[RequireBotOwner]
 [DefaultMemberPermissions(GuildPermission.Administrator)]
 public class AdminModule(
     DiscordSocketClient client,

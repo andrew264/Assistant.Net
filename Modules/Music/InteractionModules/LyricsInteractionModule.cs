@@ -97,7 +97,7 @@ public class LyricsInteractionModule(
             .ConfigureAwait(false);
         if (lyrics == null)
         {
-            await FollowupAsync($"Sorry, I couldn't fetch the lyrics.",ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Sorry, I couldn't fetch the lyrics.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 

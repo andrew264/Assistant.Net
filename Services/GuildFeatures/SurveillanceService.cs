@@ -374,7 +374,6 @@ public class SurveillanceService
         if (webhookClient == null) return;
 
         var embed = new EmbedBuilder()
-            .WithAuthor(member.DisplayName, member.GetDisplayAvatarUrl() ?? member.GetDefaultAvatarUrl())
             .WithColor(Color.DarkGreen)
             .WithFooter($"User ID: {member.Id}")
             .WithTimestamp(DateTimeOffset.UtcNow);
@@ -416,8 +415,8 @@ public class SurveillanceService
         {
             var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
-                username: "Voice State Logger",
-                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
+                username: user.Username,
+                avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None
             ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {Action}", member.Guild.Name,

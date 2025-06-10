@@ -42,22 +42,10 @@ public class NowPlayingModule(
                 .ConfigureAwait(false);
 
         if (npMessage != null)
-        {
-            logger.LogInformation("Now Playing message created/updated via prefix command in Guild {GuildId} by {User}",
+            logger.LogDebug("Now Playing message created/updated via prefix command in Guild {GuildId} by {User}",
                 Context.Guild.Id, Context.User.Username);
-            try
-            {
-                await Context.Message.AddReactionAsync(new Emoji("✅")).ConfigureAwait(false);
-            }
-            catch
-            {
-                /* ignored */
-            }
-        }
         else
-        {
             await ReplyAsync("Failed to create or update the Now Playing message.",
                 allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-        }
     }
 }

@@ -73,6 +73,13 @@ public class DmRelayService
 
         var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
 
+        if (before?.Content == after.Content && before?.Attachments.Count == after.Attachments.Count)
+        {
+            _logger.LogDebug("Edited DM {MessageId} from {User} had no content or attachment changes. Skipping relay.",
+                after.Id, after.Author);
+            return;
+        }
+
         var messageContent = BuildEditedMessageContent(before, after);
         var files = await AttachmentUtils.DownloadAttachmentsAsync(after.Attachments, _httpClientFactory, _logger)
             .ConfigureAwait(false);
@@ -243,7 +250,7 @@ public class DmRelayService
         }
     }
 
-    private async Task<DiscordWebhookClient?> GetOrCreateUserRelayWebhookAsync(IUser user)
+    public async Task<DiscordWebhookClient?> GetOrCreateUserRelayWebhookAsync(IUser user)
     {
         var categoryId = _config.Client.DmRecipientsCategory;
 

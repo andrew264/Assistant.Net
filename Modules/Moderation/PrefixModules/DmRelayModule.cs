@@ -1,5 +1,5 @@
 using System.Text;
-using Assistant.Net.Services.Core;
+using Assistant.Net.Modules.Attributes;
 using Assistant.Net.Services.User;
 using Assistant.Net.Utilities;
 using Discord;
@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace Assistant.Net.Modules.Moderation.PrefixModules;
 
 public class DmRelayModule(
-    WebhookService webhookService,
+    DmRelayService dmRelayService,
     ILogger<DmRelayModule> logger,
     IHttpClientFactory httpClientFactory)
     : ModuleBase<SocketCommandContext>
@@ -19,7 +19,7 @@ public class DmRelayModule(
 
     [Command("dm", RunMode = RunMode.Async)]
     [Summary("Sends a direct message to a user.")]
-    [RequireOwner]
+    [RequireBotOwner]
     public async Task DmCommandAsync(IUser user, [Remainder] string? msg = null)
     {
         if (string.IsNullOrWhiteSpace(msg) && Context.Message.Attachments.Count == 0)
@@ -49,15 +49,14 @@ public class DmRelayModule(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Failed to delete owner !dm command message {MessageId}", Context.Message.Id);
+                logger.LogWarning(ex, "Failed to delete owner dm command message {MessageId}", Context.Message.Id);
             }
 
             logger.LogInformation("[DM SENT by Owner Command] to {User} ({UserId}): {Content}", user, user.Id, msg);
-            await Context.Message.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
         }
         catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
         {
-            logger.LogError(httpEx, "Failed to send !dm command to user {UserId} (User blocked bot or disabled DMs)",
+            logger.LogError(httpEx, "Failed to send dm command to user {UserId} (User blocked bot or disabled DMs)",
                 user.Id);
             await Context.Message.AddReactionAsync(Emoji.Parse("❌")).ConfigureAwait(false);
             await ReplyAsync($"Failed to send DM to {user.Mention}. User might have DMs disabled or blocked the bot.",
@@ -65,7 +64,7 @@ public class DmRelayModule(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send !dm command to user {UserId}", user.Id);
+            logger.LogError(ex, "Failed to send dm command to user {UserId}", user.Id);
             await Context.Message.AddReactionAsync(Emoji.Parse("❌")).ConfigureAwait(false);
         }
         finally
@@ -95,14 +94,11 @@ public class DmRelayModule(
             }
 
             sb.AppendLine("----------");
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(Context.Channel.Id,
-                    WebhookService.DefaultWebhookName,
-                    Context.Client.CurrentUser.GetDisplayAvatarUrl() ??
-                    Context.Client.CurrentUser.GetDefaultAvatarUrl())
+            var webhookClient = await dmRelayService.GetOrCreateUserRelayWebhookAsync(Context.User)
                 .ConfigureAwait(false);
             if (webhookClient == null)
             {
-                logger.LogWarning("Could not get webhook to log !dm command for user {UserId}", recipientUser.Id);
+                logger.LogWarning("Could not get webhook to log dm command for user {UserId}", recipientUser.Id);
                 return;
             }
 
@@ -113,7 +109,7 @@ public class DmRelayModule(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to log owner !dm command to relay channel for user {UserId}", recipientUser.Id);
+            logger.LogError(ex, "Failed to log owner dm command to relay channel for user {UserId}", recipientUser.Id);
         }
         finally
         {

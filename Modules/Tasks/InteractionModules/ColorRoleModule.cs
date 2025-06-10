@@ -1,5 +1,6 @@
 using System.Net;
 using Assistant.Net.Configuration;
+using Assistant.Net.Modules.Attributes;
 using Discord;
 using Discord.Interactions;
 using Discord.Net;
@@ -40,7 +41,7 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
 
     // --- Setup Command ---
     [SlashCommand("colorrolesetup", "Set up the color reaction roles message.")]
-    [RequireOwner]
+    [RequireBotOwner]
     [RequireContext(ContextType.Guild)]
     public async Task SetupColorRolesAsync()
     {

@@ -1,5 +1,6 @@
 using System.Net;
 using Assistant.Net.Configuration;
+using Assistant.Net.Modules.Attributes;
 using Discord;
 using Discord.Commands;
 using Discord.Net;
@@ -13,7 +14,8 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
     [Command("purgeuser", RunMode = RunMode.Async)]
     [Alias("yeet")]
     [Summary("Deletes messages based on user ID and/or content keywords. Owner only.")]
-    [RequireOwner]
+    [RequireUserPermission(GuildPermission.Administrator, Group = "Permission")]
+    [RequireBotOwner(Group = "Permission")]
     [RequireContext(ContextType.Guild)]
     public async Task PurgeUserAsync([Remainder] string? rawArgs = null)
     {
