@@ -181,7 +181,7 @@ public class SurveillanceService
         {
             var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed],
-                username: "Member Update Logger",
+                username: after.DisplayName,
                 avatarUrl: after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Nickname {GuildName}: @{OldName} -> @{NewName}", after.Guild.Name,
@@ -238,7 +238,7 @@ public class SurveillanceService
             {
                 var msgId = await webhookClient.SendMessageAsync(
                     embeds: [embed.Build()],
-                    username: "User Profile Logger",
+                    username: _client.CurrentUser.GlobalName,
                     avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
                 ).ConfigureAwait(false);
                 _logger.LogInformation("[UPDATE] User Profile {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
@@ -468,7 +468,7 @@ public class SurveillanceService
         {
             var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
-                username: "Join/Leave Logger",
+                username: _client.CurrentUser.GlobalName,
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Leave @{User}: {GuildName}", user.Username, guild.Name);
@@ -508,7 +508,7 @@ public class SurveillanceService
         {
             var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
-                username: "Join/Leave Logger",
+                username: _client.CurrentUser.GlobalName,
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Join @{User}: {GuildName}", member.Username, member.Guild.Name);
@@ -558,7 +558,7 @@ public class SurveillanceService
         {
             var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
-                username: "Moderation Logger",
+                username: _client.CurrentUser.GlobalName,
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Ban @{User}: {GuildName}. Reason: {Reason}", user.Username, guild.Name,
@@ -596,7 +596,7 @@ public class SurveillanceService
         {
             var msgId = await webhookClient.SendMessageAsync(
                 embeds: [embed.Build()],
-                username: "Moderation Logger",
+                username: _client.CurrentUser.GlobalName,
                 avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Unban @{User}: {GuildName}", user.Username, guild.Name);
