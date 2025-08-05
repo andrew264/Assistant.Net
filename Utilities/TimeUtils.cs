@@ -4,9 +4,6 @@ namespace Assistant.Net.Utilities;
 
 public static class TimeUtils
 {
-    public static string GetLongDateTime(this DateTimeOffset time) =>
-        TimestampTag.FormatFromDateTimeOffset(time, TimestampTagStyles.LongDateTime);
-
     public static string GetRelativeTime(this DateTimeOffset time) =>
         TimestampTag.FormatFromDateTimeOffset(time, TimestampTagStyles.Relative);
 

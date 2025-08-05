@@ -84,18 +84,6 @@ public class RpsGame
         return "It's a tie!";
     }
 
-    public Embed GetResultEmbed()
-    {
-        var winner = GetWinner();
-        var embed = new EmbedBuilder()
-            .WithTitle(winner != null ? $"{winner.Username} won!" : "It's a tie!")
-            .WithColor(winner != null ? Color.Green : Color.Blue)
-            .AddField(Player1.Username, GetChoice(Player1).ToString(), true)
-            .AddField(Player2.Username, GetChoice(Player2).ToString(), true);
-
-        return embed.Build();
-    }
-
     public async Task RecordStatsIfApplicable(ulong guildId)
     {
         if (!BothPlayersChosen || Player1.IsBot || Player2.IsBot || _gameStatsService == null) return;
@@ -120,16 +108,64 @@ public class RpsGame
         }
     }
 
-    public MessageComponent GetButtons(ulong messageId, bool disableAll = false)
+    private static string GetChoiceEmoji(RpsChoice choice) => choice switch
     {
-        var builder = new ComponentBuilder()
-            .WithButton("Rock", $"assistant:rps:{messageId}:{RpsChoice.Rock}", ButtonStyle.Secondary,
-                new Emoji("🪨"), disabled: disableAll)
-            .WithButton("Paper", $"assistant:rps:{messageId}:{RpsChoice.Paper}", ButtonStyle.Secondary,
-                new Emoji("📰"), disabled: disableAll)
-            .WithButton("Scissors", $"assistant:rps:{messageId}:{RpsChoice.Scissors}", ButtonStyle.Secondary,
-                new Emoji("✂️"), disabled: disableAll);
+        RpsChoice.Rock => "🪨",
+        RpsChoice.Paper => "📰",
+        RpsChoice.Scissors => "✂️",
+        _ => "❔"
+    };
 
+    public MessageComponent BuildGameComponent(ulong messageId)
+    {
+        var builder = new ComponentBuilderV2();
+        var container = new ContainerBuilder();
+
+        var buttons = new ActionRowBuilder()
+            .WithButton("Rock", $"assistant:rps:{messageId}:{RpsChoice.Rock}", ButtonStyle.Secondary,
+                new Emoji("🪨"), disabled: BothPlayersChosen)
+            .WithButton("Paper", $"assistant:rps:{messageId}:{RpsChoice.Paper}", ButtonStyle.Secondary,
+                new Emoji("📰"), disabled: BothPlayersChosen)
+            .WithButton("Scissors", $"assistant:rps:{messageId}:{RpsChoice.Scissors}", ButtonStyle.Secondary,
+                new Emoji("✂️"), disabled: BothPlayersChosen);
+
+        if (BothPlayersChosen)
+        {
+            var winner = GetWinner();
+            container.WithAccentColor(winner != null ? Color.Green : Color.DarkGrey);
+
+            container.WithTextDisplay(
+                new TextDisplayBuilder(winner != null ? $"# {winner.Username} won!" : "# It's a tie!"));
+            container.WithTextDisplay(new TextDisplayBuilder($"{Player1.Mention} vs {Player2.Mention}"));
+            container.WithSeparator();
+
+            var p1Choice = GetChoice(Player1);
+            var p2Choice = GetChoice(Player2);
+
+            container.WithTextDisplay(
+                new TextDisplayBuilder($"**{Player1.Username}:** {GetChoiceEmoji(p1Choice)} {p1Choice}"));
+            container.WithTextDisplay(
+                new TextDisplayBuilder($"**{Player2.Username}:** {GetChoiceEmoji(p2Choice)} {p2Choice}"));
+        }
+        else
+        {
+            container.WithTextDisplay(new TextDisplayBuilder("# Rock Paper Scissors"));
+            container.WithTextDisplay(new TextDisplayBuilder($"{Player1.Mention} vs {Player2.Mention}"));
+            container.WithSeparator();
+
+            string status;
+            if (HasChosen(Player1) && !HasChosen(Player2))
+                status = $"{Player1.Mention} has chosen! Waiting for {Player2.Mention}...";
+            else if (!HasChosen(Player1) && HasChosen(Player2))
+                status = $"{Player2.Mention} has chosen! Waiting for {Player1.Mention}...";
+            else
+                status = "Choose your weapon!";
+
+            container.WithTextDisplay(new TextDisplayBuilder(status));
+        }
+
+        container.WithActionRow(buttons);
+        builder.WithContainer(container);
         return builder.Build();
     }
 }

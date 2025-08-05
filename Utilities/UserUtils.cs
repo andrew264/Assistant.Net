@@ -1,3 +1,4 @@
+using System.Text;
 using Assistant.Net.Services.User;
 using Discord;
 using Discord.WebSocket;
@@ -20,135 +21,161 @@ public static class UserUtils
         return topRole?.Color ?? Color.Default;
     }
 
-    // Get available clients
-    private static string GetAvailableClients(SocketUser user)
-    {
-        var clients = user.ActiveClients.Select(client => client.ToString()).ToList();
-        var status = user.Status.ToString();
-
-        return clients.Count > 0
-            ? $"{status} on {string.Join(", ", clients)}"
-            : status;
-    }
-
-    // Get user thumbnail url
-    private static string GetUserThumbnailUrl(SocketUser user)
-    {
-        var url = user.GetAvatarUrl();
-
-        return user.Activities.Aggregate(url, (current, activity) => activity switch
-        {
-            CustomStatusGame { Emote: GuildEmote emote } => emote.Url,
-            SpotifyGame spotifyGames => spotifyGames.AlbumArtUrl,
-            StreamingGame streamingGame => streamingGame.Url,
-            RichGame { LargeAsset: not null } richGame => richGame.LargeAsset.GetImageUrl(),
-            _ => current
-        });
-    }
-
-    public static async Task<Embed> GenerateUserInfoEmbedAsync(IUser targetUser, bool showSensitiveInfo,
+    public static async Task<MessageComponent> GenerateUserInfoV2Async(IUser targetUser, bool showSensitiveInfo,
         UserService userService, DiscordSocketClient client)
     {
-        var embedBuilder = new EmbedBuilder();
+        var componentBuilder = new ComponentBuilderV2();
+        var mainContainer = new ContainerBuilder();
 
         SocketGuildUser? guildUser = null;
-        switch (targetUser)
+        if (targetUser is SocketGuildUser sgu)
         {
-            case SocketGuildUser sgu:
-                guildUser = sgu;
-                embedBuilder.WithColor(GetTopRoleColor(guildUser));
-                break;
-            case not null when client.Guilds.Any(g => g.GetUser(targetUser.Id) != null):
+            guildUser = sgu;
+            mainContainer.WithAccentColor(GetTopRoleColor(guildUser));
+        }
+        else
+        {
+            var mutualGuild = client.Guilds.FirstOrDefault(g => g.GetUser(targetUser.Id) != null);
+            if (mutualGuild != null)
             {
-                var mutualGuild = client.Guilds.FirstOrDefault(g => g.GetUser(targetUser.Id) != null);
-                if (mutualGuild != null)
-                {
-                    guildUser = mutualGuild.GetUser(targetUser.Id);
-                    if (guildUser != null) embedBuilder.WithColor(GetTopRoleColor(guildUser));
-                }
-
-                break;
+                guildUser = mutualGuild.GetUser(targetUser.Id);
+                if (guildUser != null)
+                    mainContainer.WithAccentColor(GetTopRoleColor(guildUser));
             }
         }
 
-        if (embedBuilder.Color == null) embedBuilder.WithColor(Color.Default);
+        if (mainContainer.AccentColor == null)
+            mainContainer.WithAccentColor(Color.Default);
 
+        var userModel = await userService.GetUserAsync(targetUser.Id).ConfigureAwait(false);
 
-        if (targetUser != null)
+        // --- Header Section ---
+        var headerSection = new SectionBuilder();
+        var displayName = guildUser?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
+        headerSection.AddComponent(new TextDisplayBuilder($"# {displayName}"));
+        headerSection.AddComponent(new TextDisplayBuilder($"@{targetUser.Username} | {targetUser.Mention}"));
+
+        if (!string.IsNullOrWhiteSpace(userModel?.About))
+            headerSection.AddComponent(new TextDisplayBuilder(userModel.About));
+
+        headerSection.WithAccessory(new ThumbnailBuilder
         {
-            var userModel = await userService.GetUserAsync(targetUser.Id).ConfigureAwait(false);
-            var about = userModel?.About;
-            var lastSeenTimestamp = userModel?.LastSeen;
+            Media = new UnfurledMediaItemProperties
+                { Url = targetUser.GetDisplayAvatarUrl() ?? targetUser.GetDefaultAvatarUrl() }
+        });
+        mainContainer.AddComponent(headerSection);
 
-            embedBuilder.Description = !string.IsNullOrWhiteSpace(about)
-                ? $"{targetUser.Mention}: {about}"
-                : targetUser.Mention;
+        // --- Timestamps Section ---
+        mainContainer.AddComponent(new SeparatorBuilder());
+        var timestampsContent = new StringBuilder();
+        timestampsContent.AppendLine(
+            $"**Account Created:** {TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.Relative)}");
 
-            embedBuilder.WithAuthor(targetUser.GlobalName ?? targetUser.Username,
-                targetUser.GetDisplayAvatarUrl() ?? targetUser.GetDefaultAvatarUrl());
-            embedBuilder.WithThumbnailUrl(
-                GetUserThumbnailUrl(targetUser as SocketUser ?? client.GetUser(targetUser.Id)));
+        if (guildUser?.JoinedAt is { } joinedAt)
+            timestampsContent.AppendLine(
+                $"**Joined Server:** {TimestampTag.FromDateTimeOffset(joinedAt, TimestampTagStyles.Relative)}");
 
-            if (guildUser != null)
+        if (showSensitiveInfo && userModel?.LastSeen is { } lastSeen)
+        {
+            var statusFieldName = guildUser?.Status == UserStatus.Offline ? "Last Seen:" : "Online for:";
+            timestampsContent.AppendLine(
+                $"**{statusFieldName}** {TimestampTag.FromDateTime(lastSeen, TimestampTagStyles.Relative)}");
+        }
+
+        mainContainer.AddComponent(new TextDisplayBuilder(timestampsContent.ToString()));
+
+        // --- Roles Section ---
+        var roles = guildUser?.Roles.Where(r => !r.IsEveryone).OrderByDescending(r => r.Position).ToList();
+        if (roles is { Count: > 0 })
+        {
+            mainContainer.AddComponent(new SeparatorBuilder());
+            mainContainer.AddComponent(new TextDisplayBuilder($"## Roles ({roles.Count})"));
+            var roleString = string.Join(" ", roles.Select(r => r.Mention));
+            mainContainer.AddComponent(new TextDisplayBuilder(roleString.Truncate(4000)));
+        }
+
+        // --- Activities Section ---
+        var activities = guildUser?.Activities ?? targetUser.Activities;
+        if (activities is { Count: > 0 })
+        {
+            mainContainer.AddComponent(new SeparatorBuilder());
+            mainContainer.AddComponent(new TextDisplayBuilder("## Activities"));
+
+            foreach (var activity in activities)
             {
-                var joinedAt = guildUser.JoinedAt;
-                if (joinedAt.HasValue)
+                var activitySection = new SectionBuilder();
+                switch (activity)
                 {
-                    var isOwner = guildUser.Id == guildUser.Guild.OwnerId;
-                    var joinFieldName =
-                        isOwner ? $"Created {guildUser.Guild.Name} on" : $"Joined {guildUser.Guild.Name} on";
-                    embedBuilder.AddField(joinFieldName,
-                        $"{joinedAt.Value.GetLongDateTime()}\n{joinedAt.Value.GetRelativeTime()}", true);
-                }
+                    case SpotifyGame spotify:
+                        activitySection.AddComponent(new TextDisplayBuilder(
+                            $"**Listening to Spotify**\n{spotify.TrackTitle.AsMarkdownLink(spotify.TrackUrl)}\nby {string.Join(", ", spotify.Artists)}"));
+                        activitySection.WithAccessory(new ThumbnailBuilder
+                            { Media = new UnfurledMediaItemProperties { Url = spotify.AlbumArtUrl } });
+                        mainContainer.AddComponent(activitySection);
+                        break;
+                    case RichGame richGame:
+                        var richGameText = new StringBuilder($"**Playing {richGame.Name}**");
+                        if (!string.IsNullOrWhiteSpace(richGame.Details))
+                            richGameText.AppendLine($"\n{richGame.Details}");
+                        if (!string.IsNullOrWhiteSpace(richGame.State))
+                            richGameText.AppendLine($"\n{richGame.State}");
+                        if (richGame.Timestamps?.Start is { } startTime)
+                            richGameText.AppendLine(
+                                $"\nElapsed: {TimestampTag.FromDateTimeOffset(startTime, TimestampTagStyles.Relative)}");
+                        activitySection.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
+                        if (richGame.LargeAsset?.GetImageUrl() is { } largeAssetUrl)
+                            activitySection.WithAccessory(new ThumbnailBuilder
+                                { Media = new UnfurledMediaItemProperties { Url = largeAssetUrl } });
+                        mainContainer.AddComponent(activitySection);
+                        break;
+                    case StreamingGame streamingGame:
+                        activitySection.AddComponent(
+                            new TextDisplayBuilder($"**Streaming on {streamingGame.Details}**\n{streamingGame.Name}"));
+                        activitySection.WithAccessory(new ButtonBuilder("Watch Stream", style: ButtonStyle.Link,
+                            url: streamingGame.Url));
+                        mainContainer.AddComponent(activitySection);
+                        break;
+                    case CustomStatusGame custom:
+                        var customStatusContent = new StringBuilder();
+                        if (custom.Emote is Emote customEmote)
+                            customStatusContent.Append($"{customEmote} ");
+                        if (!string.IsNullOrWhiteSpace(custom.State))
+                            customStatusContent.Append(custom.State);
 
-                embedBuilder.AddField("Account created on",
-                    $"{targetUser.CreatedAt.GetLongDateTime()}\n{targetUser.CreatedAt.GetRelativeTime()}", true);
-
-                if (!string.IsNullOrWhiteSpace(guildUser.Nickname))
-                    embedBuilder.AddField("Nickname", guildUser.Nickname, true);
-
-                if (guildUser.Status != UserStatus.Offline)
-                    embedBuilder.AddField("Available Clients", GetAvailableClients(guildUser), true);
-
-                if (showSensitiveInfo && lastSeenTimestamp.HasValue)
-                {
-                    var statusFieldName = guildUser.Status == UserStatus.Offline ? "Last Seen" : "Online for";
-                    embedBuilder.AddField(statusFieldName,
-                        TimestampTag.FromDateTime(lastSeenTimestamp.Value, TimestampTagStyles.Relative), true);
-                }
-
-                // Activities
-                var activities = ActivityUtils.GetAllUserActivities(guildUser.Activities, true, true, true);
-                foreach (var (actType, actName) in activities)
-                    if (!string.IsNullOrWhiteSpace(actName))
-                        embedBuilder.AddField(actType, actName.Truncate(1024), true);
-
-                var roles = guildUser.Roles.Where(r => !r.IsEveryone).OrderByDescending(r => r.Position).ToList();
-                if (roles.Count > 0)
-                {
-                    var roleString = string.Join(" ", roles.Select(r => r.Mention));
-                    embedBuilder.AddField($"Roles [{roles.Count}]", roleString.Truncate(1024));
-                }
-            }
-            else
-            {
-                embedBuilder.AddField("Account created on",
-                    $"{targetUser.CreatedAt.GetLongDateTime()}\n{targetUser.CreatedAt.GetRelativeTime()}");
-                if (targetUser is SocketUser socketTargetUser)
-                {
-                    if (socketTargetUser.Status != UserStatus.Offline)
-                        embedBuilder.AddField("Status", socketTargetUser.Status.ToString(), true);
-                    var activities = ActivityUtils.GetAllUserActivities(socketTargetUser.Activities, true, true, true);
-                    foreach (var (actType, actName) in activities)
-                        if (!string.IsNullOrWhiteSpace(actName))
-                            embedBuilder.AddField(actType, actName.Truncate(1024), true);
+                        if (customStatusContent.Length > 0)
+                            mainContainer.AddComponent(
+                                new TextDisplayBuilder($"**Custom Status:** {customStatusContent}"));
+                        break;
                 }
             }
         }
 
-        if (targetUser != null) embedBuilder.WithFooter($"ID: {targetUser.Id}");
-        embedBuilder.WithTimestamp(DateTimeOffset.UtcNow);
+        // --- Footer Links ---
+        var linksRow = new ActionRowBuilder();
+        var hasLinks = false;
 
-        return embedBuilder.Build();
+        var avatarUrl = targetUser.GetDisplayAvatarUrl(size: 2048) ?? targetUser.GetDefaultAvatarUrl();
+        if (!string.IsNullOrEmpty(avatarUrl))
+        {
+            linksRow.WithButton("View Avatar", style: ButtonStyle.Link, url: avatarUrl);
+            hasLinks = true;
+        }
+
+        // TODO: figure this out one day
+        // var bannerUrl = targetUser.GetBannerUrl();
+        // if (!string.IsNullOrEmpty(bannerUrl))
+        // {
+        //     linksRow.WithButton("View Banner", style: ButtonStyle.Link, url: bannerUrl);
+        //     hasLinks = true;
+        // }
+
+        if (hasLinks)
+        {
+            mainContainer.AddComponent(new SeparatorBuilder());
+            mainContainer.AddComponent(linksRow);
+        }
+
+        componentBuilder.AddComponent(mainContainer);
+        return componentBuilder.Build();
     }
 }

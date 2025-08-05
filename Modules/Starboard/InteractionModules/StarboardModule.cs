@@ -14,6 +14,8 @@ public class StarboardModule(
     ILogger<StarboardModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
+    private const string StarEmojiUrl = "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/2b50.png";
+
     [SlashCommand("enable", "Enable the starboard system for this server.")]
     public async Task EnableAsync()
     {
@@ -197,27 +199,45 @@ public class StarboardModule(
         }
         else
         {
-            var embed = new EmbedBuilder()
-                .WithTitle("⭐ Starboard Settings")
-                .WithColor(Color.Gold)
-                .WithTimestamp(config.UpdatedAt)
-                .WithFooter("Last updated");
-
             var starboardChMention =
                 config.StarboardChannelId.HasValue ? $"<#{config.StarboardChannelId.Value}>" : "Not Set";
-            var logChMention = config.LogChannelId.HasValue ? $"<#{config.LogChannelId.Value}>" : "Not Set";
 
-            embed.AddField("Status", config.IsEnabled ? "✅ Enabled" : "❌ Disabled", true);
-            embed.AddField("Channel", starboardChMention, true);
-            embed.AddField("Emoji", config.StarEmoji, true);
-            embed.AddField("Threshold", config.Threshold.ToString(), true);
-            embed.AddField("Allow Self Star", config.AllowSelfStar ? "✅ Yes" : "❌ No", true);
-            embed.AddField("Allow Bot Messages", config.AllowBotMessages ? "✅ Yes" : "❌ No", true);
-            embed.AddField("Ignore NSFW", config.IgnoreNsfwChannels ? "✅ Yes" : "❌ No", true);
-            embed.AddField("Delete if Unstarred", config.DeleteIfUnStarred ? "✅ Yes" : "❌ No", true);
-            embed.AddField("Log Channel", logChMention, true);
+            var coreSettings =
+                $"**Status:** {(config.IsEnabled ? "✅ Enabled" : "❌ Disabled")}\n" +
+                $"**Channel:** {starboardChMention}\n" +
+                $"**Emoji:** {config.StarEmoji}\n" +
+                $"**Threshold:** {config.Threshold} star{(config.Threshold == 1 ? "" : "s")}";
 
-            await FollowupAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
+            var toggles =
+                $"{(config.AllowSelfStar ? "✅" : "❌")} Allow Self Star\n" +
+                $"{(config.AllowBotMessages ? "✅" : "❌")} Allow Bot Messages\n" +
+                $"{(config.IgnoreNsfwChannels ? "✅" : "❌")} Ignore NSFW Channels\n" +
+                $"{(config.DeleteIfUnStarred ? "✅" : "❌")} Delete if Unstarred";
+
+            var container = new ContainerBuilder()
+                .WithAccentColor(Color.Gold)
+                .WithSection(section =>
+                {
+                    section.AddComponent(new TextDisplayBuilder("# ⭐ Starboard Settings"));
+                    section.AddComponent(
+                        new TextDisplayBuilder("Current configuration for the server's starboard."));
+                    section.WithAccessory(new ThumbnailBuilder
+                        { Media = new UnfurledMediaItemProperties { Url = StarEmojiUrl } });
+                })
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder(coreSettings))
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder("## Toggles"))
+                .WithTextDisplay(new TextDisplayBuilder(toggles))
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder(
+                    $"*Last Updated: {TimestampTag.FromDateTime(config.UpdatedAt, TimestampTagStyles.Relative)}*\n" +
+                    "*Use `/starboard settings <option>` to change a setting.*"));
+
+            var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+            await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+                .ConfigureAwait(false);
         }
     }
 }

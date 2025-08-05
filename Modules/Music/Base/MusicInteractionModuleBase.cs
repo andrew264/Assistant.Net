@@ -30,22 +30,21 @@ public abstract class MusicInteractionModuleBase(MusicService musicService, ILog
         return (null, true);
     }
 
-    protected async Task RespondOrFollowupAsync(string? text = null, bool ephemeral = false, Embed? embed = null,
+    protected async Task RespondOrFollowupAsync(string? text = null, bool ephemeral = false,
         MessageComponent? components = null, AllowedMentions? allowedMentions = null, bool isError = false)
     {
         var effectiveEphemeral = ephemeral || isError;
-        var embeds = embed != null ? new[] { embed } : null;
         var finalAllowedMentions = allowedMentions ?? AllowedMentions.None;
 
         if (Context.Interaction.HasResponded)
-            await FollowupAsync(text, ephemeral: effectiveEphemeral, embeds: embeds, components: components,
-                allowedMentions: finalAllowedMentions).ConfigureAwait(false);
+            await FollowupAsync(text, ephemeral: effectiveEphemeral, components: components,
+                allowedMentions: finalAllowedMentions, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
         else
-            await RespondAsync(text, ephemeral: effectiveEphemeral, embed: embed, components: components,
-                allowedMentions: finalAllowedMentions).ConfigureAwait(false);
+            await RespondAsync(text, ephemeral: effectiveEphemeral, components: components,
+                allowedMentions: finalAllowedMentions, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
-    protected async Task RespondOrFollowupErrorAsync(string errorMessage)
+    private async Task RespondOrFollowupErrorAsync(string errorMessage)
     {
         await RespondOrFollowupAsync(errorMessage, isError: true).ConfigureAwait(false);
     }

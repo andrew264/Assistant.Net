@@ -48,11 +48,11 @@ public class TicTacToeGame
     public IUser Player1 { get; }
     public IUser Player2 { get; }
     public IUser CurrentPlayer { get; private set; }
-    public PlayerMarker CurrentMarker => GetPlayerMarker(CurrentPlayer);
+    private PlayerMarker CurrentMarker => GetPlayerMarker(CurrentPlayer);
 
-    public PlayerMarker[,] Board { get; } = new PlayerMarker[BoardSize, BoardSize];
-    public int MovesMade { get; private set; }
-    public bool IsBoardFull => MovesMade >= BoardSize * BoardSize;
+    private PlayerMarker[,] Board { get; } = new PlayerMarker[BoardSize, BoardSize];
+    private int MovesMade { get; set; }
+    private bool IsBoardFull => MovesMade >= BoardSize * BoardSize;
     public bool IsGameOver { get; private set; }
     public GameResultState Result { get; private set; } = GameResultState.None;
 
@@ -63,7 +63,7 @@ public class TicTacToeGame
             Board[i, j] = PlayerMarker.None;
     }
 
-    public PlayerMarker GetPlayerMarker(IUser user)
+    private PlayerMarker GetPlayerMarker(IUser user)
     {
         return user.Id switch
         {
@@ -87,7 +87,7 @@ public class TicTacToeGame
 
     public bool IsPlayerInGame(IUser user) => user.Id == Player1.Id || user.Id == Player2.Id;
 
-    public IUser OtherPlayer(IUser user) => user.Id == Player1.Id ? Player2 : Player1;
+    private IUser OtherPlayer(IUser user) => user.Id == Player1.Id ? Player2 : Player1;
 
     public bool MakeMove(int row, int col)
     {
@@ -196,10 +196,7 @@ public class TicTacToeGame
                 playerToSimulate == PlayerMarker.O ? PlayerMarker.X : PlayerMarker.O);
             currentBoard[move.row, move.col] = PlayerMarker.None;
 
-            if (playerToSimulate == PlayerMarker.O)
-                bestScore = Math.Max(bestScore, score);
-            else
-                bestScore = Math.Min(bestScore, score);
+            bestScore = playerToSimulate == PlayerMarker.O ? Math.Max(bestScore, score) : Math.Min(bestScore, score);
         }
 
         return bestScore;
@@ -221,7 +218,7 @@ public class TicTacToeGame
 
     // --- Game Over Checks ---
 
-    public void CheckForGameOver()
+    private void CheckForGameOver()
     {
         if (IsGameOver)
             return;
@@ -244,7 +241,7 @@ public class TicTacToeGame
     private PlayerMarker CheckWinnerInternal() => CheckWinnerOnBoard(Board);
 
     // Checks winner on a board state
-    private PlayerMarker CheckWinnerOnBoard(PlayerMarker[,] boardState)
+    private static PlayerMarker CheckWinnerOnBoard(PlayerMarker[,] boardState)
     {
         // Check rows and columns
         for (var i = 0; i < BoardSize; i++)
@@ -299,38 +296,74 @@ public class TicTacToeGame
     }
 
     // --- Message Component Generation ---
-    public MessageComponent GetMessageComponent()
+    public MessageComponent BuildGameComponent()
     {
-        var builder = new ComponentBuilder();
-        var disableAll = IsGameOver;
+        var builder = new ComponentBuilderV2();
+        var container = new ContainerBuilder();
 
-        for (var row = 0; row < BoardSize; row++)
-        for (var col = 0; col < BoardSize; col++)
+        // --- Determine Colors and Status Message ---
+        string statusMessage;
+        switch (Result)
         {
-            var index = row * BoardSize + col + 1;
-            var marker = Board[row, col];
-
-            var label = marker switch
-            {
-                PlayerMarker.None => "\u200b",
-                PlayerMarker.X => "❌",
-                PlayerMarker.O => "⭕",
-                _ => "?"
-            };
-
-            var style = marker switch
-            {
-                PlayerMarker.X => ButtonStyle.Primary,
-                PlayerMarker.O => ButtonStyle.Success,
-                _ => ButtonStyle.Secondary
-            };
-
-            // Disable button if game over OR cell is already taken
-            var disabled = disableAll || marker != PlayerMarker.None;
-
-            builder.WithButton(label, $"assistant:tictactoe:{GameId}:{index}", style, row: row, disabled: disabled);
+            case GameResultState.XWins:
+                statusMessage = $"**{Player1.Mention} wins!**";
+                container.WithAccentColor(Color.Green);
+                break;
+            case GameResultState.OWins:
+                statusMessage = $"**{Player2.Mention} wins!**";
+                container.WithAccentColor(Color.Green);
+                break;
+            case GameResultState.Tie:
+                statusMessage = "**It's a tie!**";
+                container.WithAccentColor(Color.DarkGrey);
+                break;
+            case GameResultState.None:
+            default: // Game is ongoing
+                statusMessage = $"It's {CurrentPlayer.Mention}'s turn!";
+                break;
         }
 
+        // --- Build Text Content ---
+        container
+            .WithTextDisplay(new TextDisplayBuilder("# Tic Tac Toe"))
+            .WithTextDisplay(new TextDisplayBuilder($"{Player1.Mention} (❌) vs {Player2.Mention} (⭕)"))
+            .WithTextDisplay(new TextDisplayBuilder(statusMessage))
+            .WithSeparator();
+
+        // --- Build Button Grid ---
+        var disableAll = IsGameOver;
+        for (var row = 0; row < BoardSize; row++)
+        {
+            var actionRow = new ActionRowBuilder();
+            for (var col = 0; col < BoardSize; col++)
+            {
+                var index = row * BoardSize + col + 1;
+                var marker = Board[row, col];
+
+                var label = marker switch
+                {
+                    PlayerMarker.None => "\u200b",
+                    PlayerMarker.X => "❌",
+                    PlayerMarker.O => "⭕",
+                    _ => "?"
+                };
+
+                var style = marker switch
+                {
+                    PlayerMarker.X => ButtonStyle.Primary,
+                    PlayerMarker.O => ButtonStyle.Success,
+                    _ => ButtonStyle.Secondary
+                };
+
+                var disabled = disableAll || marker != PlayerMarker.None;
+
+                actionRow.WithButton(label, $"assistant:tictactoe:{GameId}:{index}", style, disabled: disabled);
+            }
+
+            container.WithActionRow(actionRow);
+        }
+
+        builder.WithContainer(container);
         return builder.Build();
     }
 }

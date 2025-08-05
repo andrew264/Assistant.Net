@@ -19,7 +19,7 @@ public class ReminderModule(ReminderService reminderService)
         string? recurrence = null,
         string? title = null)
     {
-        await DeferAsync(true).ConfigureAwait(false);
+        await DeferAsync().ConfigureAwait(false);
 
         var parsedTime = ReminderService.ParseTime(timeString);
 
@@ -68,11 +68,25 @@ public class ReminderModule(ReminderService reminderService)
         if (reminder != null)
         {
             var targetString =
-                isDm ? actualTargetUser.Id == Context.User.Id ? "you" : actualTargetUser.Mention : "here";
-            var timeUntil = ReminderService.GetRelativeTimeString(reminder.TriggerTime);
-            await FollowupAsync(
-                $"Okay {Context.User.Mention}, I'll remind {targetString} {timeUntil}: \"{reminder.Message}\" (ID: `{reminder.Id.SequenceNumber}`)",
-                ephemeral: false, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+                isDm ? actualTargetUser.Id == Context.User.Id ? "you" : actualTargetUser.Mention : "this channel";
+
+            var container = new ContainerBuilder()
+                .WithTextDisplay(new TextDisplayBuilder("# ✅ Reminder Set!"))
+                .WithTextDisplay(new TextDisplayBuilder(
+                    $"I will remind {targetString} {reminder.TriggerTime.GetRelativeTime()}."))
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder($"**Message:** \"{reminder.Message.Truncate(500)}\""))
+                .WithTextDisplay(new TextDisplayBuilder($"**ID:** `{reminder.Id.SequenceNumber}`"))
+                .WithTextDisplay(
+                    new TextDisplayBuilder($"**Time:** {reminder.TriggerTime.GetLongDateTime()}"));
+
+            if (reminder.Recurrence != null)
+                container.WithTextDisplay(new TextDisplayBuilder($"**Repeats:** {reminder.Recurrence}"));
+
+            var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+            await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2,
+                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
         else
         {
@@ -167,35 +181,50 @@ public class ReminderModule(ReminderService reminderService)
             return;
         }
 
-        var embed = new EmbedBuilder()
-            .WithTitle($"🗓️ Your Pending Reminders ({reminders.Count})")
-            .WithColor(Color.Green)
-            .WithTimestamp(DateTimeOffset.UtcNow);
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# 🗓️ Your Pending Reminders ({reminders.Count})"));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl() }
+                });
+            });
 
         var count = 0;
         foreach (var reminder in reminders.OrderBy(r => r.TriggerTime))
         {
             if (count >= 25)
             {
-                embed.WithFooter("Showing first 25 reminders.");
+                container.WithSeparator();
+                container.WithTextDisplay(new TextDisplayBuilder("*Showing first 25 reminders.*"));
                 break;
             }
 
-            var title = string.IsNullOrWhiteSpace(reminder.Title)
-                ? $"ID: {reminder.Id.SequenceNumber}"
-                : $"ID: {reminder.Id.SequenceNumber} - {reminder.Title}";
-            var recurrenceStr = reminder.Recurrence != null ? $" (Repeats {reminder.Recurrence})" : "";
-            var targetStr = reminder.IsDm
-                ? reminder.TargetUserId == reminder.Id.UserId ? " (DM to Self)" : $" (DM to <@{reminder.TargetUserId}>)"
-                : $" (in <#{reminder.ChannelId}>)";
+            container.WithSeparator();
+            var titleText = string.IsNullOrWhiteSpace(reminder.Title)
+                ? $"**ID: `{reminder.Id.SequenceNumber}`**"
+                : $"**ID: `{reminder.Id.SequenceNumber}`** - {reminder.Title.Truncate(100)}";
 
-            embed.AddField(
-                title.Truncate(256),
-                $"Time: {TimestampTag.FromDateTime(reminder.TriggerTime, TimestampTagStyles.Relative)}{recurrenceStr}{targetStr}\nMessage: {reminder.Message.Truncate(150)}");
+            var targetStr = reminder.IsDm
+                ? reminder.TargetUserId == reminder.Id.UserId ? "DM to Self" : $"DM to <@{reminder.TargetUserId}>"
+                : $"in <#{reminder.ChannelId}>";
+            var recurrenceStr = reminder.Recurrence != null ? $" (Repeats {reminder.Recurrence})" : "";
+
+            container.WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder(titleText));
+                section.AddComponent(new TextDisplayBuilder($"> {reminder.Message.Truncate(500)}"));
+                section.AddComponent(new TextDisplayBuilder(
+                    $"Triggers {reminder.TriggerTime.GetRelativeTime()} in {targetStr}{recurrenceStr}"));
+            });
             count++;
         }
 
-        await FollowupAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+        await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
     }
 
     [SlashCommand("cancel", "Cancels or deletes one of your reminders.")]
@@ -293,39 +322,33 @@ public class ReminderModule(ReminderService reminderService)
 
         if (found)
         {
-            if (success)
+            if (success && updatedReminder != null)
             {
-                if (updatedReminder != null)
-                {
-                    var embed = new EmbedBuilder()
-                        .WithTitle($"✅ Reminder ID `{id}` Updated")
-                        .WithColor(Color.Orange);
+                var container = new ContainerBuilder()
+                    .WithTextDisplay(new TextDisplayBuilder($"# ✅ Reminder ID `{id}` Updated"));
 
-                    var recurrenceStr = updatedReminder.Recurrence != null
-                        ? $" (Repeats {updatedReminder.Recurrence})"
-                        : "";
-                    var targetStr = updatedReminder.IsDm
-                        ? updatedReminder.TargetUserId == updatedReminder.Id.UserId
-                            ? " (DM to Self)"
-                            : $" (DM to <@{updatedReminder.TargetUserId}>)"
-                        : $" (in <#{updatedReminder.ChannelId}>)";
+                var recurrenceStr = updatedReminder.Recurrence != null
+                    ? $" (Repeats {updatedReminder.Recurrence})"
+                    : "";
+                var targetStr = updatedReminder.IsDm
+                    ? updatedReminder.TargetUserId == updatedReminder.Id.UserId
+                        ? "DM to Self"
+                        : $"DM to <@{updatedReminder.TargetUserId}>"
+                    : $"in <#{updatedReminder.ChannelId}>";
 
-                    embed.AddField("New Trigger Time",
-                        $"{updatedReminder.TriggerTime.GetLongDateTime()} ({updatedReminder.TriggerTime.GetRelativeTime()}){recurrenceStr}");
-                    embed.AddField("Message", updatedReminder.Message);
-                    if (!string.IsNullOrWhiteSpace(updatedReminder.Title))
-                        embed.AddField("Title", updatedReminder.Title);
-                    embed.AddField("Target", targetStr);
+                container.WithSeparator()
+                    .WithTextDisplay(new TextDisplayBuilder(
+                        $"**New Trigger Time:** {updatedReminder.TriggerTime.GetLongDateTime()} ({updatedReminder.TriggerTime.GetRelativeTime()}){recurrenceStr}"))
+                    .WithTextDisplay(new TextDisplayBuilder($"**Message:** {updatedReminder.Message}"))
+                    .WithTextDisplay(new TextDisplayBuilder($"**Target:** {targetStr}"));
+
+                if (!string.IsNullOrWhiteSpace(updatedReminder.Title))
+                    container.WithTextDisplay(new TextDisplayBuilder($"**Title:** {updatedReminder.Title}"));
 
 
-                    await FollowupAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
-                }
-                else
-                {
-                    // Should not happen if success is true, but fallback
-                    await FollowupAsync($"Reminder ID `{id}` updated successfully.", ephemeral: true)
-                        .ConfigureAwait(false);
-                }
+                var components = new ComponentBuilderV2().WithContainer(container).Build();
+                await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+                    .ConfigureAwait(false);
             }
             else
             {
@@ -344,25 +367,36 @@ public class ReminderModule(ReminderService reminderService)
     [SlashCommand("help", "Shows help information for reminder commands.")]
     public async Task RemindHelpAsync()
     {
-        var embed = new EmbedBuilder()
-            .WithTitle("⏰ Remind Help")
-            .WithDescription("`/remind` commands allow you to set reminders for yourself or others.")
-            .WithColor(Color.Blue)
-            .AddField("`/remind me <time> <message> [title] [repeat]`", "Sets a reminder sent via DM.")
-            .AddField("`/remind channel <time> <message> [title] [repeat]`",
-                "Sets a reminder posted in the current channel.")
-            .AddField("`/remind other <user> <time> <message> [title] [repeat]`",
-                "Sets a reminder for another user via DM (Requires `Manage Messages` permission).")
-            .AddField("`/remind list`", "Lists your upcoming reminders.")
-            .AddField("`/remind cancel <id> [delete]`",
-                "Deactivates (or permanently deletes if `delete:True`) a reminder by its ID number.")
-            .AddField("`/remind edit <id> [message] [time] [repeat] [title]`", "Edits an existing reminder.")
-            .AddField("Time Format Examples",
-                "`in 5 minutes`, `1 hour`, `tomorrow at 9am`, `next friday 5pm`, `25 dec 10:00`")
-            .AddField("Repeat Format Examples",
-                "`none`, `daily`, `weekly`, `monthly`, `yearly`, `hourly`, `minutely`, `every 2 days`, `every 3 weeks`");
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder("# ⏰ Remind Help"))
+            .WithTextDisplay(
+                new TextDisplayBuilder("`/remind` commands allow you to set reminders for yourself or others."))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder("### Commands"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "**`/remind me <time> <message> [title] [repeat]`**\nSets a reminder sent via DM."))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "**`/remind channel <time> <message> [title] [repeat]`**\nSets a reminder posted in the current channel."))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "**`/remind other <user> <time> <message> [title] [repeat]`**\nSets a reminder for another user via DM (Requires `Manage Messages` permission)."))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "**`/remind list`**\nLists your upcoming reminders."))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "**`/remind cancel <id> [delete]`**\nDeactivates (or permanently deletes if `delete:True`) a reminder by its ID number."))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "**`/remind edit <id> [message] [time] [repeat] [title]`**\nEdits an existing reminder."))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder("### Time Format Examples"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "`in 5 minutes`, `1 hour`, `tomorrow at 9am`, `next friday 5pm`, `25 dec 10:00`"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder("### Repeat Format Examples"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                "`none`, `daily`, `weekly`, `monthly`, `yearly`, `hourly`, `minutely`, `every 2 days`, `every 3 weeks`"));
 
-        await RespondAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+        await RespondAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
     }
 }
 

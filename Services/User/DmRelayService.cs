@@ -73,7 +73,7 @@ public class DmRelayService
 
         var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
 
-        if (before?.Content == after.Content && before?.Attachments.Count == after.Attachments.Count)
+        if (before?.Content == after.Content && before.Attachments.Count == after.Attachments.Count)
         {
             _logger.LogDebug("Edited DM {MessageId} from {User} had no content or attachment changes. Skipping relay.",
                 after.Id, after.Author);

@@ -33,7 +33,6 @@ public class SurveillanceService
         _client.UserUpdated += HandleUserUpdatedAsync;
         _client.PresenceUpdated += HandlePresenceUpdatedAsync;
         _client.UserVoiceStateUpdated += HandleVoiceStateUpdatedAsync;
-        _client.UserIsTyping += HandleTypingAsync;
         _client.UserJoined += HandleUserJoinedAsync;
         _client.UserLeft += HandleUserLeftAsync;
         _client.UserBanned += HandleUserBannedAsync;
@@ -42,10 +41,229 @@ public class SurveillanceService
         _logger.LogInformation("SurveillanceService initialized and events hooked.");
     }
 
-    private ulong? GetLoggingChannelId(ulong guildId)
+    private LoggingGuildConfig? GetLoggingGuildConfig(ulong guildId)
     {
-        return _config.LoggingGuilds?.FirstOrDefault(kvp => kvp.Value.GuildId == guildId).Value?.ChannelId;
+        return _config.LoggingGuilds?.FirstOrDefault(kvp => kvp.Value.GuildId == guildId).Value;
     }
+
+
+    // --- Component Builders ---
+
+    private static MessageComponent BuildMessageUpdatedComponent(IMessage before, IMessage after,
+        SocketGuildChannel guildChannel)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.Orange)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder("# Message Edit"));
+                section.AddComponent(new TextDisplayBuilder($"in <#{guildChannel.Id}>"));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = after.Author.GetDisplayAvatarUrl() ?? after.Author.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"**Before:**\n> {(string.IsNullOrWhiteSpace(before.Content) ? "*(Empty)*" : before.Content.Truncate(1000))}"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"**After:**\n> {(string.IsNullOrWhiteSpace(after.Content) ? "*(Empty)*" : after.Content.Truncate(1000))}"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {after.Author.Id} | {TimestampTag.FromDateTimeOffset(after.EditedTimestamp ?? after.Timestamp)}"))
+            .WithActionRow(row => row.WithButton("Jump to Message", style: ButtonStyle.Link, url: after.GetJumpUrl()));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildMessageDeletedComponent(IMessage message, IGuildChannel guildChannel)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.Red)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder("# Message Deleted"));
+                section.AddComponent(new TextDisplayBuilder($"from <#{guildChannel.Id}>"));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"**Content:**\n> {(string.IsNullOrWhiteSpace(message.Content) ? "*(Empty)*" : message.Content.Truncate(2000))}"
+            ));
+
+        if (message.Attachments.Count > 0)
+        {
+            var attachmentsText = string.Join("\n",
+                message.Attachments.Select(a => $"📄 [{a.Filename}]({a.Url}) ({FormatUtils.FormatBytes(a.Size)})"));
+            container.WithTextDisplay(new TextDisplayBuilder($"**Attachments:**\n{attachmentsText}"));
+        }
+
+        container
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {message.Author.Id} | Message ID: {message.Id} | {TimestampTag.FromDateTimeOffset(message.Timestamp)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildNicknameChangeComponent(IGuildUser before, IGuildUser after)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.LightOrange)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder("# Nickname Changed"));
+                section.AddComponent(new TextDisplayBuilder($"{after.Mention}"));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder($"**Before:** `{before.DisplayName}`"))
+            .WithTextDisplay(new TextDisplayBuilder($"**After:** `{after.DisplayName}`"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {after.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildUserProfileUpdateComponent(IUser before, IUser after)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.Blue)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder("# User Profile Updated"));
+                section.AddComponent(new TextDisplayBuilder($"{after.Mention}"));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator();
+
+        if (before.Username != after.Username)
+            container.WithTextDisplay(
+                new TextDisplayBuilder($"**Username:** `{before.Username}` → `{after.Username}`"));
+
+        if (before.GetDisplayAvatarUrl() != after.GetDisplayAvatarUrl())
+            container.WithMediaGallery(new List<string>
+            {
+                before.GetDisplayAvatarUrl() ?? before.GetDefaultAvatarUrl(),
+                after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()
+            });
+
+        container
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {after.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildVoiceStateUpdateComponent(IGuildUser member, string actionDescription)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.DarkGreen)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder("# Voice State Update"));
+                section.AddComponent(new TextDisplayBuilder(member.Mention));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = member.GetDisplayAvatarUrl() ?? member.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(actionDescription))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {member.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildGuildEventComponent(IGuildUser user, string title, Color color)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(color)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# {user.Username} {title}"));
+                section.AddComponent(new TextDisplayBuilder(user.Mention));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl() }
+                });
+            });
+
+        if (title.Equals("Joined", StringComparison.OrdinalIgnoreCase))
+            container.WithTextDisplay(new TextDisplayBuilder(
+                $"**Account Created:** {TimestampTag.FromDateTimeOffset(user.CreatedAt, TimestampTagStyles.Relative)}"));
+
+        container
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {user.Id} | {TimestampTag.FromDateTimeOffset(user.JoinedAt ?? DateTimeOffset.UtcNow)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildBanEventComponent(IUser user, string banReason)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.DarkRed)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# {user.Username} Banned"));
+                section.AddComponent(new TextDisplayBuilder(user.Mention));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder($"**Reason:** {banReason}"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {user.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildUnbanEventComponent(IUser user)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.DarkGreen)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# {user.Username} Unbanned"));
+                section.AddComponent(new TextDisplayBuilder(user.Mention));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"User ID: {user.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
 
     // --- Event Handlers ---
 
@@ -56,35 +274,26 @@ public class SurveillanceService
             (_config.Client.OwnerId.HasValue && after.Author.Id == _config.Client.OwnerId.Value)) return;
         if (channel is not SocketGuildChannel guildChannel) return;
 
-        var loggingChannelId = GetLoggingChannelId(guildChannel.Guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(guildChannel.Guild.Id);
+        if (loggingConfig == null) return;
 
         var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (before == null || before.Content == after.Content) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var author = after.Author;
-        var embed = new EmbedBuilder()
-            .WithTitle("Message Edit")
-            .WithDescription($"in <#{guildChannel.Id}> ({after.GetJumpUrl()})")
-            .WithColor(Color.Orange)
-            .AddField("Original Message",
-                string.IsNullOrWhiteSpace(before.Content) ? "*(Empty)*" : before.Content.Truncate(1024))
-            .AddField("Altered Message",
-                string.IsNullOrWhiteSpace(after.Content) ? "*(Empty)*" : after.Content.Truncate(1024))
-            .WithFooter($"User ID: {author.Id}")
-            .WithTimestamp(after.EditedTimestamp ?? after.Timestamp)
-            .Build();
+        var components = BuildMessageUpdatedComponent(before, after, guildChannel);
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embed],
+                components: components,
                 username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
-                avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
+                avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl(),
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[MESSAGE EDIT] @{User} in #{Channel}", author.Username, guildChannel.Name);
             _ = Task.Delay(DeleteDelay)
@@ -106,37 +315,27 @@ public class SurveillanceService
             : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (channel is not SocketGuildChannel guildChannel) return;
 
-        var loggingChannelId = GetLoggingChannelId(guildChannel.Guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(guildChannel.Guild.Id);
+        if (loggingConfig == null) return;
 
         var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (message == null || message.Author.IsBot ||
             (_config.Client.OwnerId.HasValue && message.Author.Id == _config.Client.OwnerId.Value)) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
         var author = message.Author;
-        var embedBuilder = new EmbedBuilder()
-            .WithTitle("Message Deleted")
-            .WithDescription($"in <#{guildChannel.Id}>")
-            .WithColor(Color.Red)
-            .AddField("Message Content",
-                string.IsNullOrWhiteSpace(message.Content) ? "*(Empty)*" : message.Content.Truncate(1024))
-            .WithFooter($"User ID: {author.Id} | Message ID: {message.Id}")
-            .WithTimestamp(message.Timestamp);
-
-        if (message.Attachments.Count != 0)
-            embedBuilder.AddField("Attachments",
-                string.Join("\n", message.Attachments.Select(a => $"[{a.Filename}]({a.Url}) (Size: {a.Size} bytes)")));
+        var components = BuildMessageDeletedComponent(message, guildChannel);
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embedBuilder.Build()],
+                components: components,
                 username: author is SocketGuildUser sgu ? sgu.DisplayName : author.Username,
-                avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl()
+                avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl(),
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[MESSAGE DELETE] @{User} in #{Channel}\n\tMessage: {Content}", author.Username,
                 guildChannel.Name, message.Content);
@@ -159,30 +358,22 @@ public class SurveillanceService
         var before = beforeCache.HasValue ? beforeCache.Value : null;
         if (before == null || before.DisplayName == after.DisplayName) return;
 
-        var loggingChannelId = GetLoggingChannelId(after.Guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(after.Guild.Id);
+        if (loggingConfig == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
-        var embed = new EmbedBuilder()
-            .WithTitle("Member Update: Nickname Change")
-            .WithDescription($"{after.Mention} ({after.Username}#{after.Discriminator})")
-            .WithColor(Color.LightOrange)
-            .AddField("Old Nickname", string.IsNullOrWhiteSpace(before.Nickname) ? "*(None)*" : before.DisplayName,
-                true)
-            .AddField("New Nickname", string.IsNullOrWhiteSpace(after.Nickname) ? "*(None)*" : after.DisplayName, true)
-            .WithFooter($"User ID: {after.Id}")
-            .WithTimestamp(DateTimeOffset.UtcNow)
-            .Build();
+        var components = BuildNicknameChangeComponent(before, after);
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embed],
+                components: components,
                 username: after.DisplayName,
-                avatarUrl: after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()
+                avatarUrl: after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl(),
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Nickname {GuildName}: @{OldName} -> @{NewName}", after.Guild.Name,
                 before.DisplayName, after.DisplayName);
@@ -200,46 +391,26 @@ public class SurveillanceService
     {
         if (after.IsBot || (_config.Client.OwnerId.HasValue && after.Id == _config.Client.OwnerId.Value)) return;
         if (before.Username == after.Username &&
-            before.Discriminator == after.Discriminator &&
             before.GetDisplayAvatarUrl() == after.GetDisplayAvatarUrl()) return;
 
         foreach (var guild in _client.Guilds)
         {
-            var loggingChannelId = GetLoggingChannelId(guild.Id);
-            if (loggingChannelId == null) continue;
+            var loggingConfig = GetLoggingGuildConfig(guild.Id);
+            if (loggingConfig == null || guild.GetUser(after.Id) == null) continue;
 
-            var member = guild.GetUser(after.Id);
-            if (member == null) continue;
-
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
                 .ConfigureAwait(false);
             if (webhookClient == null) continue;
 
-            var embed = new EmbedBuilder()
-                .WithTitle("User Profile Update")
-                .WithDescription($"{after.Mention} ({after.Username}#{after.Discriminator})")
-                .WithColor(Color.Blue)
-                .WithThumbnailUrl(after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl())
-                .WithFooter($"User ID: {after.Id}")
-                .WithTimestamp(DateTimeOffset.UtcNow);
-
-            if (before.Username != after.Username || before.Discriminator != after.Discriminator)
-                embed.AddField("Username Change",
-                    $"`{before.Username}#{before.Discriminator}` → `{after.Username}#{after.Discriminator}`");
-            if (before.GetDisplayAvatarUrl() != after.GetDisplayAvatarUrl())
-            {
-                embed.AddField("Avatar Changed",
-                    $"[Before]({before.GetDisplayAvatarUrl() ?? before.GetDefaultAvatarUrl()}) → [After]({after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()})");
-                embed.WithImageUrl(after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl());
-            }
-
+            var components = BuildUserProfileUpdateComponent(before, after);
 
             try
             {
                 var msgId = await webhookClient.SendMessageAsync(
-                    embeds: [embed.Build()],
+                    components: components,
                     username: _client.CurrentUser.GlobalName,
-                    avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
+                    avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
+                    flags: MessageFlags.ComponentsV2
                 ).ConfigureAwait(false);
                 _logger.LogInformation("[UPDATE] User Profile {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
                     before, after);
@@ -250,8 +421,7 @@ public class SurveillanceService
             {
                 _logger.LogError(ex,
                     "Failed to send user profile update log via webhook for User {UserId} in Guild {GuildId}.",
-                    after.Id,
-                    guild.Id);
+                    after.Id, guild.Id);
             }
         }
     }
@@ -260,8 +430,8 @@ public class SurveillanceService
     {
         if (user.IsBot || user is not SocketGuildUser guildUser) return;
 
-        var loggingChannelId = GetLoggingChannelId(guildUser.Guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(guildUser.Guild.Id);
+        if (loggingConfig is not { LogPresenceUpdates: true }) return;
 
         var bClients = ActivityUtils.GetClients(before);
         var aClients = ActivityUtils.GetClients(after);
@@ -273,7 +443,7 @@ public class SurveillanceService
             before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
 
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -355,28 +525,19 @@ public class SurveillanceService
         if (user.IsBot || (_config.Client.OwnerId.HasValue && user.Id == _config.Client.OwnerId.Value) ||
             user is not SocketGuildUser member) return;
 
-        // Log only if channel actually changed
         if (before.VoiceChannel?.Id == after.VoiceChannel?.Id &&
-            before.IsMuted == after.IsMuted &&
-            before.IsDeafened == after.IsDeafened &&
-            before.IsSelfMuted == after.IsSelfMuted &&
-            before.IsSelfDeafened == after.IsSelfDeafened &&
-            before.IsStreaming == after.IsStreaming &&
-            before.IsVideoing == after.IsVideoing &&
+            before.IsMuted == after.IsMuted && before.IsDeafened == after.IsDeafened &&
+            before.IsSelfMuted == after.IsSelfMuted && before.IsSelfDeafened == after.IsSelfDeafened &&
+            before.IsStreaming == after.IsStreaming && before.IsVideoing == after.IsVideoing &&
             before.IsSuppressed == after.IsSuppressed)
             return;
 
-        var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(member.Guild.Id);
+        if (loggingConfig == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
-
-        var embed = new EmbedBuilder()
-            .WithColor(Color.DarkGreen)
-            .WithFooter($"User ID: {member.Id}")
-            .WithTimestamp(DateTimeOffset.UtcNow);
 
         var actionDescription = new StringBuilder();
 
@@ -390,10 +551,9 @@ public class SurveillanceService
                     $"⬅️ Left voice channel {before.VoiceChannel.Mention} (`{before.VoiceChannel.Name}`).");
             else if (before.VoiceChannel != null && after.VoiceChannel != null)
                 actionDescription.AppendLine(
-                    $"🔄 Switched voice channel from {before.VoiceChannel.Mention} to {after.VoiceChannel.Mention}.");
+                    $"🔄 Switched from {before.VoiceChannel.Mention} to {after.VoiceChannel.Mention}.");
         }
 
-        // Detailed state changes
         if (before.IsMuted != after.IsMuted)
             actionDescription.AppendLine(after.IsMuted ? "🔇 Server Muted" : "🔊 Server Unmuted");
         if (before.IsDeafened != after.IsDeafened)
@@ -407,17 +567,18 @@ public class SurveillanceService
         if (before.IsVideoing != after.IsVideoing)
             actionDescription.AppendLine(after.IsVideoing ? "📹 Camera On" : "🚫 Camera Off");
 
-        if (actionDescription.Length == 0) return; // No loggable change
+        if (actionDescription.Length == 0) return;
 
-        embed.WithDescription(actionDescription.ToString());
+        var components = BuildVoiceStateUpdateComponent(member, actionDescription.ToString());
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embed.Build()],
+                components: components,
                 username: user.Username,
                 avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
-                allowedMentions: AllowedMentions.None
+                allowedMentions: AllowedMentions.None,
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {Action}", member.Guild.Name,
                 member.Username, actionDescription.ToString().Replace("\n", " "));
@@ -430,46 +591,26 @@ public class SurveillanceService
         }
     }
 
-    private Task HandleTypingAsync(Cacheable<IUser, ulong> userCache,
-        Cacheable<IMessageChannel, ulong> channelCache) =>
-        // Typing logs can be very noisy.
-        /*
-        var user = await userCache.GetOrDownloadAsync().ConfigureAwait(false);
-        var channel = await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
-
-        if (user.IsBot || (_config.Client.OwnerId.HasValue && user.Id == _config.Client.OwnerId.Value)) return Task.CompletedTask;
-        if (channel is not SocketGuildChannel guildChannel) return Task.CompletedTask;
-
-        _logger.LogTrace("[TYPING] @{User} - #{Channel} on {Timestamp}",
-            user.Username, guildChannel.Name, DateTime.UtcNow.ToString("dd/MM/yyyy 'at' hh:mm:ss tt"));
-        */
-        Task.CompletedTask;
-
     private async Task HandleUserLeftAsync(SocketGuild guild, SocketUser user)
     {
         if (user.IsBot) return;
 
-        var loggingChannelId = GetLoggingChannelId(guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(guild.Id);
+        if (loggingConfig == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
-        var embed = new EmbedBuilder()
-            .WithAuthor($"{user.Username}#{user.Discriminator} Left",
-                user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl())
-            .WithDescription($"{user.Mention} has left the server.")
-            .WithColor(Color.DarkGrey)
-            .WithFooter($"User ID: {user.Id}")
-            .WithTimestamp(DateTimeOffset.UtcNow);
+        var components = BuildGuildEventComponent(guild.GetUser(user.Id), "Left", Color.DarkGrey);
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embed.Build()],
+                components: components,
                 username: _client.CurrentUser.GlobalName,
-                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Leave @{User}: {GuildName}", user.Username, guild.Name);
             _ = Task.Delay(DeleteDelay)
@@ -486,30 +627,22 @@ public class SurveillanceService
     {
         if (member.IsBot) return;
 
-        var loggingChannelId = GetLoggingChannelId(member.Guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(member.Guild.Id);
+        if (loggingConfig == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
-        var embed = new EmbedBuilder()
-            .WithAuthor($"{member.Username}#{member.Discriminator} Joined",
-                member.GetDisplayAvatarUrl() ?? member.GetDefaultAvatarUrl())
-            .WithDescription($"{member.Mention} has joined the server.")
-            .WithColor(Color.Green)
-            .AddField("Account Created",
-                member.CreatedAt.DateTime.GetLongDateTime() + " (" + member.CreatedAt.DateTime.GetRelativeTime() + ")")
-            .WithFooter($"User ID: {member.Id}")
-            .WithTimestamp(member.JoinedAt ?? DateTimeOffset.UtcNow);
-
+        var components = BuildGuildEventComponent(member, "Joined", Color.Green);
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embed.Build()],
+                components: components,
                 username: _client.CurrentUser.GlobalName,
-                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Join @{User}: {GuildName}", member.Username, member.Guild.Name);
             _ = Task.Delay(DeleteDelay)
@@ -526,10 +659,10 @@ public class SurveillanceService
     {
         if (user.IsBot) return;
 
-        var loggingChannelId = GetLoggingChannelId(guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(guild.Id);
+        if (loggingConfig == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -545,21 +678,15 @@ public class SurveillanceService
                 guild.Id);
         }
 
-        var embed = new EmbedBuilder()
-            .WithAuthor($"{user.Username}#{user.Discriminator} Banned",
-                user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl())
-            .WithDescription($"{user.Mention} was banned from the server.")
-            .AddField("Reason", banReason)
-            .WithColor(Color.DarkRed)
-            .WithFooter($"User ID: {user.Id}")
-            .WithTimestamp(DateTimeOffset.UtcNow);
+        var components = BuildBanEventComponent(user, banReason);
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embed.Build()],
+                components: components,
                 username: _client.CurrentUser.GlobalName,
-                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Ban @{User}: {GuildName}. Reason: {Reason}", user.Username, guild.Name,
                 banReason);
@@ -577,27 +704,22 @@ public class SurveillanceService
     {
         if (user.IsBot) return;
 
-        var loggingChannelId = GetLoggingChannelId(guild.Id);
-        if (loggingChannelId == null) return;
+        var loggingConfig = GetLoggingGuildConfig(guild.Id);
+        if (loggingConfig == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingChannelId.Value)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
-        var embed = new EmbedBuilder()
-            .WithAuthor($"{user.Username}#{user.Discriminator} Unbanned",
-                user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl())
-            .WithDescription($"{user.Mention} was unbanned from the server.")
-            .WithColor(Color.DarkGreen)
-            .WithFooter($"User ID: {user.Id}")
-            .WithTimestamp(DateTimeOffset.UtcNow);
+        var components = BuildUnbanEventComponent(user);
 
         try
         {
             var msgId = await webhookClient.SendMessageAsync(
-                embeds: [embed.Build()],
+                components: components,
                 username: _client.CurrentUser.GlobalName,
-                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl()
+                avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
+                flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Unban @{User}: {GuildName}", user.Username, guild.Name);
             _ = Task.Delay(DeleteDelay)

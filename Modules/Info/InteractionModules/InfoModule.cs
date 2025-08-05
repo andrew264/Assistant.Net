@@ -38,13 +38,26 @@ public class InfoModule(
     [SlashCommand("info", "Get information about the bot.")]
     public async Task InfoAsync()
     {
-        var embed = new EmbedBuilder()
-            .WithTitle("User Information")
-            .WithDescription("This is a test embed.")
-            .WithColor(Color.Blue)
-            .WithCurrentTimestamp();
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"## About {client.CurrentUser.Username}"));
+                section.AddComponent(new TextDisplayBuilder(
+                    "This is a multipurpose Discord bot built with Discord.Net and the .NET platform."));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = client.CurrentUser.GetDisplayAvatarUrl() ?? client.CurrentUser.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                "Use `/botinfo` for detailed statistics or visit the [GitHub Repo](https://github.com/a-k-s-h-a-y/Assistant.Net) for more info."));
 
-        await RespondAsync(embed: embed.Build(), ephemeral: true).ConfigureAwait(false);
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await RespondAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
     }
 
     [SlashCommand("botinfo", "Get detailed information about the bot.")]
@@ -61,32 +74,49 @@ public class InfoModule(
         var lavalinkVersion = typeof(IAudioService).Assembly.GetName().Version?.ToString() ?? "N/A";
         var mongoDriverVersion = typeof(MongoClient).Assembly.GetName().Version?.ToString() ?? "N/A";
 
-        var embed = new EmbedBuilder()
-            .WithDescription(currentUser.Mention)
-            .WithColor(Color.Blue)
-            .WithAuthor(currentUser.GlobalName ?? currentUser.Username,
-                currentUser.GetDisplayAvatarUrl() ?? currentUser.GetDefaultAvatarUrl())
-            .AddField("Creator", ownerMention, true)
-            .AddField("Servers", client.Guilds.Count, true)
-            .AddField("Users", totalUsers, true)
-            .AddField("Gateway Ping", $"{client.Latency}ms", true)
-            .AddField("Slash Commands", interactionService.SlashCommands.Count, true)
-            .AddField("Prefix Commands", commandService.Commands.Count(), true)
-            .AddField("Active Voice Connections", audioService.Players.Players.Count(), true)
-            .AddField("Uptime", TimestampTag.FromDateTimeOffset(ProcessStartTimeOffset, TimestampTagStyles.Relative),
-                true)
-            .AddField("Process ID", Environment.ProcessId, true)
-            .AddField("Threads", Process.GetCurrentProcess().Threads.Count, true)
-            .AddField("Memory Usage", FormatUtils.FormatBytes(Process.GetCurrentProcess().WorkingSet64), true)
-            .AddField("App Version", $"v{appVersion}", true)
-            .AddField(".NET Version", RuntimeInformation.FrameworkDescription)
-            .AddField("Operating System", RuntimeInformation.OSDescription)
-            .AddField("Discord.Net Version", $"v{discordNetVersion}", true)
-            .AddField("Lavalink4NET Version", $"v{lavalinkVersion}", true)
-            .AddField("MongoDB.Driver Version", $"v{mongoDriverVersion}", true)
-            .WithTimestamp(DateTimeOffset.UtcNow);
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"## {currentUser.GlobalName ?? currentUser.Username}"));
+                section.AddComponent(new TextDisplayBuilder(currentUser.Mention));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = currentUser.GetDisplayAvatarUrl() ?? currentUser.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder("### 📊 Core Stats"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"**Creator:** {ownerMention}\n" +
+                $"**Servers:** {client.Guilds.Count}\n" +
+                $"**Total Unique Users:** {totalUsers}\n" +
+                $"**Slash Commands:** {interactionService.SlashCommands.Count}\n" +
+                $"**Prefix Commands:** {commandService.Commands.Count()}"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder("### ⚙️ Performance"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"**Gateway Ping:** {client.Latency}ms\n" +
+                $"**Voice Connections:** {audioService.Players.Players.Count()}\n" +
+                $"**Uptime:** {ProcessStartTimeOffset.GetRelativeTime()}\n" +
+                $"**Memory Usage:** {FormatUtils.FormatBytes(Process.GetCurrentProcess().WorkingSet64)}\n" +
+                $"**Threads:** {Process.GetCurrentProcess().Threads.Count}"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder("### 📦 Application Info"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"**App Version:** v{appVersion}\n" +
+                $"**Discord.Net:** v{discordNetVersion}\n" +
+                $"**Lavalink4NET:** v{lavalinkVersion}\n" +
+                $"**MongoDB.Driver:** v{mongoDriverVersion}\n" +
+                $"**.NET Version:** {RuntimeInformation.FrameworkDescription}\n" +
+                $"**Operating System:** {RuntimeInformation.OSDescription}"))
+            .WithSeparator()
+            .WithTextDisplay(
+                new TextDisplayBuilder($"*Generated at {TimestampTag.FromDateTime(DateTime.UtcNow)}*"));
 
-        await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
 
@@ -123,10 +153,18 @@ public class InfoModule(
                 return;
             }
 
-            await FollowupWithFileAsync(
-                text: $"# {displayUserName}'s Avatar",
-                attachment: fileAttachment.Value
-            ).ConfigureAwait(false);
+            var userColor = UserUtils.GetTopRoleColor(targetUser as SocketUser ?? Context.Guild.GetUser(targetUser.Id));
+
+            var container = new ContainerBuilder()
+                .WithAccentColor(userColor)
+                .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
+                .WithMediaGallery(["attachment://avatar.png"])
+                .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
+
+            var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+            await FollowupWithFileAsync(fileAttachment.Value, components: components,
+                flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
         }
         catch (HttpRequestException ex)
         {
@@ -164,13 +202,16 @@ public class InfoModule(
         var displayUserName = (targetSocketUser as IGuildUser)?.DisplayName ??
                               targetSocketUser.GlobalName ?? targetSocketUser.Username;
 
-        var embed = new EmbedBuilder()
-            .WithTitle($"{displayUserName}'s Avatar")
-            .WithImageUrl(avatarUrl)
-            .WithColor(UserUtils.GetTopRoleColor(targetSocketUser))
-            .Build();
+        var container = new ContainerBuilder()
+            .WithAccentColor(UserUtils.GetTopRoleColor(targetSocketUser))
+            .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
+            .WithMediaGallery([avatarUrl])
+            .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
 
-        await RespondAsync(embed: embed, ephemeral: true).ConfigureAwait(false);
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await RespondAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
     }
 
     [SlashCommand("guildinfo", "Displays information about the current server.")]
@@ -178,52 +219,59 @@ public class InfoModule(
     public async Task GuildInfoAsync()
     {
         await DeferAsync().ConfigureAwait(false);
-        // TODO: Optimize the counting logic.
-
         var guild = Context.Guild;
         var owner = guild.Owner;
-
-        var embed = new EmbedBuilder()
-            .WithTitle(guild.Name)
-            .WithColor(new Color(0x5865F2));
-
-        if (!string.IsNullOrWhiteSpace(guild.Description)) embed.WithDescription(guild.Description);
-
-        if (!string.IsNullOrEmpty(guild.IconUrl)) embed.WithThumbnailUrl(guild.IconUrl);
-
-        embed.AddField("Owner", owner?.Mention ?? "None", true);
-        embed.AddField("Created on",
-            $"{guild.CreatedAt.GetLongDateTime()}\n" +
-            $"{guild.CreatedAt.GetRelativeTime()}", true);
 
         var humanMembers = guild.Users.Where(u => !u.IsBot).ToList();
         var onlineHumanMembers = humanMembers.Count(u => u.Status != UserStatus.Offline);
         var totalBots = guild.Users.Count(u => u.IsBot);
 
-        embed.AddField("Total Members", humanMembers.Count.ToString(), true);
-        embed.AddField("Online Members", onlineHumanMembers.ToString(), true);
-        embed.AddField("Total Bots", totalBots.ToString(), true);
-        embed.AddField("Text Channels", guild.TextChannels.Count.ToString(), true);
-        embed.AddField("Voice Channels", guild.VoiceChannels.Count.ToString(), true);
-        embed.AddField("Roles", guild.Roles.Count.ToString(), true);
-        embed.AddField("Emojis", guild.Emotes.Count.ToString(), true);
+        var container = new ContainerBuilder();
+
+        var headerSection = new SectionBuilder()
+            .AddComponent(new TextDisplayBuilder($"## {guild.Name}"));
+
+        if (!string.IsNullOrWhiteSpace(guild.Description))
+            headerSection.AddComponent(new TextDisplayBuilder(guild.Description));
+
+        if (!string.IsNullOrEmpty(guild.IconUrl))
+            headerSection.WithAccessory(new ThumbnailBuilder
+                { Media = new UnfurledMediaItemProperties { Url = guild.IconUrl } });
+
+        container.WithSection(headerSection);
+
+        container.WithSeparator();
+        container.WithTextDisplay(new TextDisplayBuilder("### 📜 General"));
+        container.WithTextDisplay(new TextDisplayBuilder(
+            $"**Owner:** {owner?.Mention ?? "Unknown"}\n" +
+            $"**Created:** {guild.CreatedAt.GetRelativeTime()}\n" +
+            $"**ID:** `{guild.Id}`"));
+
+        container.WithSeparator();
+        container.WithTextDisplay(new TextDisplayBuilder("### 👥 Members & Channels"));
+        container.WithTextDisplay(new TextDisplayBuilder(
+            $"**Members:** {humanMembers.Count} ({onlineHumanMembers} online)\n" +
+            $"**Bots:** {totalBots}\n" +
+            $"**Text Channels:** {guild.TextChannels.Count}\n" +
+            $"**Voice Channels:** {guild.VoiceChannels.Count}"));
+
+        container.WithSeparator();
+        container.WithTextDisplay(new TextDisplayBuilder("### 🎨 Assets & Roles"));
+        container.WithTextDisplay(new TextDisplayBuilder(
+            $"**Roles:** {guild.Roles.Count}\n" +
+            $"**Emojis:** {guild.Emotes.Count}"));
 
         if (guild.PremiumSubscriptionCount > 0)
         {
-            embed.AddField("Boosts", guild.PremiumSubscriptionCount.ToString(), true);
-            embed.AddField("Boost Tier", guild.PremiumTier.ToString(), true);
+            container.WithSeparator();
+            container.WithTextDisplay(new TextDisplayBuilder("### ✨ Boosts"));
+            container.WithTextDisplay(new TextDisplayBuilder(
+                $"**Boost Tier:** {guild.PremiumTier}\n" +
+                $"**Boosts:** {guild.PremiumSubscriptionCount}"));
         }
 
-        var adminCount = guild.Users.Count(u => u.GuildPermissions.Administrator);
-        embed.AddField("Admins", adminCount.ToString(), true);
-
-        var membersInVc = guild.Users.Count(u => u.VoiceChannel != null);
-        if (membersInVc > 0) embed.AddField("In Voice Chat", membersInVc.ToString(), true);
-
-        embed.WithFooter($"ID: {guild.Id}", Context.User.GetDisplayAvatarUrl());
-        embed.WithTimestamp(DateTimeOffset.UtcNow);
-
-        await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [SlashCommand("userinfo", "Get information about a user.")]
@@ -239,15 +287,10 @@ public class InfoModule(
         if (Context.User is SocketGuildUser requestingGuildUser)
             showSensitiveInfo = requestingGuildUser.GuildPermissions.Administrator;
 
-        var embed = await UserUtils.GenerateUserInfoEmbedAsync(targetUser, showSensitiveInfo, userService, client)
+        var components = await UserUtils.GenerateUserInfoV2Async(targetUser, showSensitiveInfo, userService, client)
             .ConfigureAwait(false);
 
-        var view = new ComponentBuilder()
-            .WithButton("View Avatar", style: ButtonStyle.Link,
-                url: targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl())
-            .Build();
-
-        await FollowupAsync(embed: embed, components: view).ConfigureAwait(false);
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [UserCommand("User Info")]
@@ -255,13 +298,10 @@ public class InfoModule(
     {
         await DeferAsync(true).ConfigureAwait(false);
 
-        var embed = await UserUtils.GenerateUserInfoEmbedAsync(user, false, userService, client).ConfigureAwait(false);
+        var components =
+            await UserUtils.GenerateUserInfoV2Async(user, false, userService, client).ConfigureAwait(false);
 
-        var view = new ComponentBuilder()
-            .WithButton("View Avatar", style: ButtonStyle.Link,
-                url: user.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? user.GetDefaultAvatarUrl())
-            .Build();
-
-        await FollowupAsync(embed: embed, components: view, ephemeral: true).ConfigureAwait(false);
+        await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
     }
 }

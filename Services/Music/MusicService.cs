@@ -22,7 +22,7 @@ public class MusicService(
     DiscordSocketClient client,
     ILogger<MusicService> logger)
 {
-    private const int QueueItemsPerPage = 4;
+    private const int QueueItemsPerPage = 10;
 
     // --- Events for NowPlayingService ---
     public event Func<ulong, Task>? PlayerStopped;
@@ -370,70 +370,95 @@ public class MusicService(
     }
 
     // --- Queue Specific Methods ---
-    public (Embed? Embed, MessageComponent? Components, string? ErrorMessage) BuildQueueEmbed(
+    public (MessageComponent? Components, string? ErrorMessage) BuildQueueComponents(
         CustomPlayer player,
-        int currentPage, // 0-based for this method, 1-based for display
+        int currentPage, // 1-based from caller
         ulong interactionMessageId,
         ulong requesterId)
     {
-        if (player.CurrentTrack is null && player.Queue.IsEmpty) return (null, null, "The queue is empty.");
+        if (player.CurrentTrack is null && player.Queue.IsEmpty) return (null, "The queue is empty.");
 
-        var embed = new EmbedBuilder().WithColor(0xFFA31A); // Orange
+        var componentBuilder = new ComponentBuilderV2();
+        var container = new ContainerBuilder();
 
-        if (player.CurrentTrack != null)
-            embed.WithTitle("Now Playing")
-                .WithDescription($"{player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}");
+        if (player.CurrentTrack is not null)
+        {
+            var nowPlayingSection = new SectionBuilder();
+
+            var trackInfoText =
+                $"**Now Playing**\n{player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}";
+            nowPlayingSection.AddComponent(new TextDisplayBuilder(trackInfoText));
+
+            if (player.CurrentTrack.ArtworkUri is not null)
+                nowPlayingSection.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties { Url = player.CurrentTrack.ArtworkUri.ToString() }
+                });
+
+            container.AddComponent(nowPlayingSection);
+        }
         else
-            embed.WithTitle("Queue is Empty");
+        {
+            container.AddComponent(new TextDisplayBuilder("**Queue**\n*Nothing is currently playing.*"));
+        }
 
         var queueCount = player.Queue.Count;
-        var totalPages = 0;
-
-        // Adjust currentPage for 0-based internal logic if it was passed as 1-based
-        if (currentPage > 0) currentPage--;
+        int totalPages;
 
         if (queueCount > 0)
         {
             totalPages = (int)Math.Ceiling((double)queueCount / QueueItemsPerPage);
-            if (currentPage < 0) currentPage = 0;
-            if (currentPage >= totalPages) currentPage = totalPages - 1;
-            if (totalPages == 0) totalPages = 1;
+            if (currentPage < 1) currentPage = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
 
-            var first = currentPage * QueueItemsPerPage;
-            var last = Math.Min(first + QueueItemsPerPage, queueCount);
+            container.AddComponent(new SeparatorBuilder());
 
+            var queueHeader = new TextDisplayBuilder($"**Next Up ({currentPage}/{totalPages})**");
+            container.AddComponent(queueHeader);
+
+            var firstIndex = (currentPage - 1) * QueueItemsPerPage;
+            var lastIndex = Math.Min(firstIndex + QueueItemsPerPage, queueCount);
 
             var sb = new StringBuilder();
-            for (var i = first; i < last; i++)
+            for (var i = firstIndex; i < lastIndex; i++)
             {
                 var trackItem = player.Queue[i];
                 if (trackItem.Track is not null)
-                    sb.AppendLine($"{i + 1}. {trackItem.Track.Title.AsMarkdownLink(trackItem.Track.Uri?.ToString())}");
+                    sb.AppendLine(
+                        $"{i + 1}. {trackItem.Track.Title.AsMarkdownLink(trackItem.Track.Uri?.ToString())}");
             }
 
-            embed.AddField($"Next Up ({currentPage + 1}/{totalPages})", sb.Length > 0 ? sb.ToString() : "\u200B");
+            if (sb.Length > 0) container.AddComponent(new TextDisplayBuilder(sb.ToString()));
         }
+        else
+        {
+            totalPages = 1;
+        }
+
+        if (totalPages > 1)
+        {
+            var paginationControls = new ActionRowBuilder()
+                .WithButton("◀",
+                    $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev")
+                .WithButton("▶",
+                    $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next");
+            container.AddComponent(paginationControls);
+        }
+
+        container.AddComponent(new SeparatorBuilder());
 
         var loopStatus = player.RepeatMode switch
         {
-            TrackRepeatMode.Queue => "Looping through all songs",
-            TrackRepeatMode.Track => "Looping Current Song",
+            TrackRepeatMode.Queue => "Looping Queue",
+            TrackRepeatMode.Track => "Looping Track",
             _ => "Loop Disabled"
         };
         var totalSongsInQueueSystem = (player.CurrentTrack != null ? 1 : 0) + queueCount;
-        embed.WithFooter(
-            $"{loopStatus} | {totalSongsInQueueSystem} Song{(totalSongsInQueueSystem != 1 ? "s" : "")} in Queue");
+        container.AddComponent(new TextDisplayBuilder(
+            $"{loopStatus} | {totalSongsInQueueSystem} Song{(totalSongsInQueueSystem != 1 ? "s" : "")} in Queue"));
 
-        var components = new ComponentBuilder();
-        if (totalPages <= 1) return (embed.Build(), components.Build(), null);
-        components.WithButton("◀",
-            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage + 1}:prev",
-            ButtonStyle.Secondary);
-        components.WithButton("▶",
-            $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage + 1}:next",
-            ButtonStyle.Secondary);
-
-        return (embed.Build(), components.Build(), null);
+        componentBuilder.AddComponent(container);
+        return (componentBuilder.Build(), null);
     }
 
     public async Task<(bool Success, LavalinkTrack? RemovedTrack, string Message)> RemoveFromQueueAsync(

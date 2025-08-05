@@ -55,8 +55,9 @@ public class GameInteractionModule(
         {
             await responseMessage.ModifyAsync(props =>
             {
-                props.Content = creationResult.InitialMessageContent;
-                props.Components = creationResult.Components;
+                props.Content = "";
+                props.Components = creationResult.Component;
+                props.Flags = MessageFlags.ComponentsV2;
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -74,9 +75,9 @@ public class GameInteractionModule(
             if (updateResult.Status == GameUpdateStatus.GameOver)
                 await responseMessage.ModifyAsync(props =>
                 {
-                    props.Content = updateResult.MessageContent;
-                    props.Embed = updateResult.Embed;
-                    props.Components = updateResult.Components;
+                    props.Content = "";
+                    props.Components = updateResult.Component;
+                    props.Flags = MessageFlags.ComponentsV2;
                 }).ConfigureAwait(false);
         }
     }
@@ -101,17 +102,17 @@ public class GameInteractionModule(
         if (!string.IsNullOrEmpty(updateResult.ErrorMessage))
         {
             await FollowupAsync(updateResult.ErrorMessage, ephemeral: true).ConfigureAwait(false);
-            if (updateResult.Status == GameUpdateStatus.GameNotFound)
-                try
-                {
-                    var msg = await Context.Interaction.GetOriginalResponseAsync().ConfigureAwait(false);
-                    if (msg != null)
-                        await msg.ModifyAsync(p => p.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Failed to disable components on expired RPS game {MessageId}", messageId);
-                }
+            if (updateResult.Status != GameUpdateStatus.GameNotFound) return;
+            try
+            {
+                var msg = await Context.Interaction.GetOriginalResponseAsync().ConfigureAwait(false);
+                if (msg != null)
+                    await msg.ModifyAsync(p => p.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to disable components on expired RPS game {MessageId}", messageId);
+            }
 
             return;
         }
@@ -120,15 +121,15 @@ public class GameInteractionModule(
         {
             await ModifyOriginalResponseAsync(props =>
             {
-                props.Content = updateResult.MessageContent;
-                props.Embed = updateResult.Embed;
-                props.Components = updateResult.Components;
+                props.Content = "";
+                props.Components = updateResult.Component;
+                props.Flags = MessageFlags.ComponentsV2;
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to modify message for RPS game {MessageId} after choice.", messageId);
-            await FollowupAsync(updateResult.MessageContent ?? "Game updated.",
+            await FollowupAsync("Game updated.",
                 ephemeral: updateResult.Status != GameUpdateStatus.GameOver &&
                            updateResult.Status != GameUpdateStatus.Success).ConfigureAwait(false);
         }
@@ -165,7 +166,7 @@ public class GameInteractionModule(
             return;
         }
 
-        await RespondAsync(creationResult.InitialMessageContent, components: creationResult.Components)
+        await RespondAsync(components: creationResult.Component, flags: MessageFlags.ComponentsV2)
             .ConfigureAwait(false);
 
         if (creationResult.GameKey != null)
@@ -177,13 +178,14 @@ public class GameInteractionModule(
                     game.CurrentPlayer, 1, 1,
                     Context.Guild?.Id ?? 0).ConfigureAwait(false); // TODO: make the first choice random
 
-                if (updateResult.Status != GameUpdateStatus.Error && !string.IsNullOrEmpty(updateResult.MessageContent))
+                if (updateResult.Status != GameUpdateStatus.Error)
                 {
                     var originalResponse = await GetOriginalResponseAsync().ConfigureAwait(false);
                     await originalResponse.ModifyAsync(props =>
                     {
-                        props.Content = updateResult.MessageContent;
-                        props.Components = updateResult.Components;
+                        props.Content = "";
+                        props.Components = updateResult.Component;
+                        props.Flags = MessageFlags.ComponentsV2;
                     }).ConfigureAwait(false);
                 }
             }
@@ -227,8 +229,9 @@ public class GameInteractionModule(
 
         await ModifyOriginalResponseAsync(props =>
         {
-            props.Content = updateResult.MessageContent;
-            props.Components = updateResult.Components;
+            props.Content = "";
+            props.Components = updateResult.Component;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
     }
 
@@ -273,8 +276,8 @@ public class GameInteractionModule(
             return;
         }
 
-        await RespondAsync(creationResult.InitialMessageContent, embed: creationResult.InitialEmbed,
-            components: creationResult.Components).ConfigureAwait(false);
+        await RespondAsync(components: creationResult.Component, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
     }
 
     [ComponentInteraction("assistant:hc:*:*:*", true)]
@@ -305,9 +308,9 @@ public class GameInteractionModule(
 
         await ModifyOriginalResponseAsync(props =>
         {
-            props.Content = updateResult.MessageContent;
-            props.Embed = updateResult.Embed;
-            props.Components = updateResult.Components;
+            props.Content = "";
+            props.Components = updateResult.Component;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
     }
 }

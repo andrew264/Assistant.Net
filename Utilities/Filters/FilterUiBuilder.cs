@@ -13,7 +13,6 @@ public static class FilterUiBuilder
 
     // --- EQ Presets ---
     private static readonly Equalizer EqOffPreset = new();
-
     private static readonly Equalizer BassLowPreset = new() { Band0 = 0.20f, Band1 = 0.15f };
     private static readonly Equalizer BassMediumPreset = new() { Band0 = 0.40f, Band1 = 0.25f };
     private static readonly Equalizer BassHighPreset = new() { Band0 = 0.60f, Band1 = 0.35f };
@@ -75,46 +74,54 @@ public static class FilterUiBuilder
 
 
     // --- Simple Confirmation Embeds ---
-    public static Embed BuildNightcoreConfirmationEmbed(bool enabled) =>
-        new EmbedBuilder()
-            .WithTitle(enabled ? "✨ Nightcore Filter Enabled" : "Nightcore Filter Disabled")
-            .WithDescription(enabled ? "Playback speed and pitch increased!" : "Nightcore effect removed.")
-            .WithColor(enabled ? Color.Teal : Color.DarkGrey)
-            .Build();
+    public static MessageComponent BuildNightcoreConfirmation(bool enabled) => new ComponentBuilderV2()
+        .WithContainer(container =>
+        {
+            container.WithTextDisplay(new TextDisplayBuilder(enabled
+                ? "**✨ Nightcore Filter Enabled**"
+                : "**Nightcore Filter Disabled**"));
+            container.WithTextDisplay(new TextDisplayBuilder(enabled
+                ? "Playback speed and pitch increased!"
+                : "Nightcore effect removed."));
+        }).Build();
 
-    public static Embed BuildVaporwaveConfirmationEmbed(bool enabled) =>
-        new EmbedBuilder()
-            .WithTitle(enabled ? "🌴 Vaporwave Filter Enabled" : "Vaporwave Filter Disabled")
-            .WithDescription(enabled
+
+    public static MessageComponent BuildVaporwaveConfirmation(bool enabled) => new ComponentBuilderV2()
+        .WithContainer(container =>
+        {
+            container.WithTextDisplay(new TextDisplayBuilder(enabled
+                ? "**🌴 Vaporwave Filter Enabled**"
+                : "**Vaporwave Filter Disabled**"));
+            container.WithTextDisplay(new TextDisplayBuilder(enabled
                 ? "Slower pitch, reverb, and tremolo activated."
-                : "Vaporwave aesthetic deactivated.")
-            .WithColor(enabled ? Color.Magenta : Color.DarkGrey)
-            .Build();
+                : "Vaporwave aesthetic deactivated."));
+        }).Build();
 
-    public static Embed Build8DConfirmationEmbed(bool enabled) =>
-        new EmbedBuilder()
-            .WithTitle(enabled ? "🎧 8D Audio Enabled" : "8D Audio Disabled")
-            .WithDescription(enabled ? "Enjoy the surround sound experience!" : "8D audio effect turned off.")
-            .WithColor(enabled ? Color.Blue : Color.DarkerGrey)
-            .Build();
+    public static MessageComponent Build8DConfirmation(bool enabled) => new ComponentBuilderV2()
+        .WithContainer(container =>
+        {
+            container.WithTextDisplay(new TextDisplayBuilder(enabled
+                ? "**🎧 8D Audio Enabled**"
+                : "**8D Audio Disabled**"));
+            container.WithTextDisplay(new TextDisplayBuilder(enabled
+                ? "Enjoy the surround sound experience!"
+                : "8D audio effect turned off."));
+        }).Build();
 
-    public static Embed BuildResetConfirmationEmbed() =>
-        new EmbedBuilder()
-            .WithTitle("🔄 All Filters Reset")
-            .WithDescription("All audio effects have been returned to default.")
-            .WithColor(Color.Default)
-            .Build();
+    public static MessageComponent BuildResetConfirmation() => new ComponentBuilderV2()
+        .WithContainer(container =>
+        {
+            container.WithTextDisplay(new TextDisplayBuilder("**🔄 All Filters Reset**"));
+            container.WithTextDisplay(new TextDisplayBuilder("All audio effects have been returned to default."));
+        }).Build();
 
     // --- Interactive UI Builders ---
-    public static (Embed Embed, MessageComponent Components) BuildBassBoostDisplay(CustomPlayer player,
-        ulong requesterId)
+    public static MessageComponent BuildBassBoostDisplay(CustomPlayer player, ulong requesterId)
     {
         var activeLevel = DetermineCurrentBassLevel(player.Filters.Equalizer?.Equalizer);
 
-        var embed = new EmbedBuilder()
-            .WithTitle($"🔊 Bass Boost (Current: {activeLevel})")
-            .WithDescription("Adjust the bass intensity of the music.")
-            .WithColor(activeLevel switch
+        var container = new ContainerBuilder()
+            .WithAccentColor(activeLevel switch
             {
                 "Low" => Color.Green,
                 "Medium" => Color.Blue,
@@ -122,30 +129,29 @@ public static class FilterUiBuilder
                 "Custom" => Color.Orange,
                 _ => Color.DarkGrey
             })
-            .Build();
+            .WithTextDisplay(new TextDisplayBuilder("**🔊 Bass Boost**"))
+            .WithTextDisplay(
+                new TextDisplayBuilder($"Adjust the bass intensity. Your current setting is **{activeLevel}**."))
+            .WithActionRow(new ActionRowBuilder()
+                .WithButton("Off", $"{BassBoostCustomIdPrefix}:off:{requesterId}", ButtonStyle.Secondary,
+                    disabled: activeLevel == "Off")
+                .WithButton("Low", $"{BassBoostCustomIdPrefix}:low:{requesterId}", ButtonStyle.Success,
+                    disabled: activeLevel == "Low")
+                .WithButton("Medium", $"{BassBoostCustomIdPrefix}:medium:{requesterId}",
+                    disabled: activeLevel == "Medium")
+                .WithButton("High", $"{BassBoostCustomIdPrefix}:high:{requesterId}", ButtonStyle.Danger,
+                    disabled: activeLevel == "High")
+            );
 
-        var components = new ComponentBuilder()
-            .WithButton("Off", $"{BassBoostCustomIdPrefix}:off:{requesterId}", ButtonStyle.Secondary,
-                disabled: activeLevel == "Off")
-            .WithButton("Low", $"{BassBoostCustomIdPrefix}:low:{requesterId}", ButtonStyle.Success,
-                disabled: activeLevel == "Low")
-            .WithButton("Medium", $"{BassBoostCustomIdPrefix}:medium:{requesterId}", disabled: activeLevel == "Medium")
-            .WithButton("High", $"{BassBoostCustomIdPrefix}:high:{requesterId}", ButtonStyle.Danger,
-                disabled: activeLevel == "High")
-            .Build();
-
-        return (embed, components);
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    public static (Embed Embed, MessageComponent Components) BuildTrebleBoostDisplay(CustomPlayer player,
-        ulong requesterId)
+    public static MessageComponent BuildTrebleBoostDisplay(CustomPlayer player, ulong requesterId)
     {
         var activeLevel = DetermineCurrentTrebleLevel(player.Filters.Equalizer?.Equalizer);
 
-        var embed = new EmbedBuilder()
-            .WithTitle($"🎼 Treble Boost (Current: {activeLevel})")
-            .WithDescription("Adjust the treble intensity of the music.")
-            .WithColor(activeLevel switch
+        var container = new ContainerBuilder()
+            .WithAccentColor(activeLevel switch
             {
                 "Low" => Color.Green,
                 "Medium" => Color.Blue,
@@ -153,71 +159,70 @@ public static class FilterUiBuilder
                 "Custom" => Color.Orange,
                 _ => Color.DarkGrey
             })
-            .Build();
+            .WithTextDisplay(new TextDisplayBuilder("**🎼 Treble Boost**"))
+            .WithTextDisplay(
+                new TextDisplayBuilder($"Adjust the treble intensity. Your current setting is **{activeLevel}**."))
+            .WithActionRow(new ActionRowBuilder()
+                .WithButton("Off", $"{TrebleBoostCustomIdPrefix}:off:{requesterId}", ButtonStyle.Secondary,
+                    disabled: activeLevel == "Off")
+                .WithButton("Low", $"{TrebleBoostCustomIdPrefix}:low:{requesterId}", ButtonStyle.Success,
+                    disabled: activeLevel == "Low")
+                .WithButton("Medium", $"{TrebleBoostCustomIdPrefix}:medium:{requesterId}",
+                    disabled: activeLevel == "Medium")
+                .WithButton("High", $"{TrebleBoostCustomIdPrefix}:high:{requesterId}", ButtonStyle.Danger,
+                    disabled: activeLevel == "High")
+            );
 
-        var components = new ComponentBuilder()
-            .WithButton("Off", $"{TrebleBoostCustomIdPrefix}:off:{requesterId}", ButtonStyle.Secondary,
-                disabled: activeLevel == "Off")
-            .WithButton("Low", $"{TrebleBoostCustomIdPrefix}:low:{requesterId}", ButtonStyle.Success,
-                disabled: activeLevel == "Low")
-            .WithButton("Medium", $"{TrebleBoostCustomIdPrefix}:medium:{requesterId}",
-                disabled: activeLevel == "Medium")
-            .WithButton("High", $"{TrebleBoostCustomIdPrefix}:high:{requesterId}", ButtonStyle.Danger,
-                disabled: activeLevel == "High")
-            .Build();
-        return (embed, components);
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    public static (Embed Embed, MessageComponent Components) BuildTimescaleDisplay(CustomPlayer player,
-        ulong requesterId, float currentButtonStep)
+    public static MessageComponent BuildTimescaleDisplay(CustomPlayer player, ulong requesterId,
+        float currentButtonStep)
     {
         var tsOptions = player.Filters.Timescale;
         var speed = tsOptions?.Speed.GetValueOrDefault(1.0f) ?? 1.0f;
         var pitch = tsOptions?.Pitch.GetValueOrDefault(1.0f) ?? 1.0f;
         var rate = tsOptions?.Rate.GetValueOrDefault(1.0f) ?? 1.0f;
 
-        var embed = new EmbedBuilder()
-            .WithTitle("⏱️ Timescale Controls")
-            .WithDescription(
-                $"Use the buttons to adjust speed, pitch, and rate.\nAdjustment Step: **{currentButtonStep * 100:F0}%**")
-            .WithColor(Color.Orange)
-            .AddField("Speed", $"{speed * 100:F0}%", true)
-            .AddField("Pitch", $"{pitch * 100:F0}%", true)
-            .AddField("Rate", $"{rate * 100:F0}%", true)
-            .Build();
+        string ButtonId(string action) =>
+            $"{TimescaleCustomIdPrefix}:{action}:{requesterId}:{currentButtonStep.ToString("0.0#", CultureInfo.InvariantCulture)}";
 
-        var components = new ComponentBuilder();
-
-
-        components.WithButton("⬆️ Speed", ButtonId("speed_up"), ButtonStyle.Success, row: 0, disabled: speed >= 1.99f);
-        components.WithButton("⬇️ Speed", ButtonId("speed_down"), ButtonStyle.Danger, row: 0, disabled: speed <= 0.51f);
-        components.WithButton("Reset Speed", ButtonId("speed_reset"), ButtonStyle.Secondary, row: 0,
-            disabled: Math.Abs(speed - 1.0f) < 0.01f);
-
-        components.WithButton("⬆️ Pitch", ButtonId("pitch_up"), ButtonStyle.Success, row: 1, disabled: pitch >= 1.99f);
-        components.WithButton("⬇️ Pitch", ButtonId("pitch_down"), ButtonStyle.Danger, row: 1, disabled: pitch <= 0.51f);
-        components.WithButton("Reset Pitch", ButtonId("pitch_reset"), ButtonStyle.Secondary, row: 1,
-            disabled: Math.Abs(pitch - 1.0f) < 0.01f);
-
-        components.WithButton("⬆️ Rate", ButtonId("rate_up"), ButtonStyle.Success, row: 2, disabled: rate >= 1.99f);
-        components.WithButton("⬇️ Rate", ButtonId("rate_down"), ButtonStyle.Danger, row: 2, disabled: rate <= 0.51f);
-        components.WithButton("Reset Rate", ButtonId("rate_reset"), ButtonStyle.Secondary, row: 2,
-            disabled: Math.Abs(rate - 1.0f) < 0.01f);
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder("**⏱️ Timescale Controls**"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"`Speed: {speed * 100:F0}%` `Pitch: {pitch * 100:F0}%` `Rate: {rate * 100:F0}%`"))
+            .WithSeparator()
+            .WithActionRow(new ActionRowBuilder()
+                .WithButton("Speed ⬇️", ButtonId("speed_down"), ButtonStyle.Danger, disabled: speed <= 0.51f)
+                .WithButton("Reset Speed", ButtonId("speed_reset"), ButtonStyle.Secondary,
+                    disabled: Math.Abs(speed - 1.0f) < 0.01f)
+                .WithButton("Speed ⬆️", ButtonId("speed_up"), ButtonStyle.Success, disabled: speed >= 1.99f)
+            )
+            .WithActionRow(new ActionRowBuilder()
+                .WithButton("Pitch ⬇️", ButtonId("pitch_down"), ButtonStyle.Danger, disabled: pitch <= 0.51f)
+                .WithButton("Reset Pitch", ButtonId("pitch_reset"), ButtonStyle.Secondary,
+                    disabled: Math.Abs(pitch - 1.0f) < 0.01f)
+                .WithButton("Pitch ⬆️", ButtonId("pitch_up"), ButtonStyle.Success, disabled: pitch >= 1.99f)
+            )
+            .WithActionRow(new ActionRowBuilder()
+                .WithButton("Rate ⬇️", ButtonId("rate_down"), ButtonStyle.Danger, disabled: rate <= 0.51f)
+                .WithButton("Reset Rate", ButtonId("rate_reset"), ButtonStyle.Secondary,
+                    disabled: Math.Abs(rate - 1.0f) < 0.01f)
+                .WithButton("Rate ⬆️", ButtonId("rate_up"), ButtonStyle.Success, disabled: rate >= 1.99f)
+            )
+            .WithSeparator();
 
         var nextStepLabel = Math.Abs(currentButtonStep - 0.1f) < 0.01f ? "Set Step: 5%" : "Set Step: 10%";
         var nextStepValueForId = Math.Abs(currentButtonStep - 0.1f) < 0.01f ? 0.05f : 0.1f;
-
         var stepToggleButtonId =
             $"{TimescaleCustomIdPrefix}:step_toggle:{requesterId}:{nextStepValueForId.ToString("0.0#", CultureInfo.InvariantCulture)}";
 
-        components.WithButton(nextStepLabel, stepToggleButtonId, ButtonStyle.Secondary, row: 3);
-        components.WithButton("Reset All Timescale", ButtonId("reset_all_timescale"), ButtonStyle.Danger, row: 3);
+        container.WithActionRow(new ActionRowBuilder()
+            .WithButton(nextStepLabel, stepToggleButtonId, ButtonStyle.Secondary)
+            .WithButton("Reset All", ButtonId("reset_all_timescale"), ButtonStyle.Danger)
+        );
 
-
-        return (embed, components.Build());
-
-        string ButtonId(string action) =>
-            $"{TimescaleCustomIdPrefix}:{action}:{requesterId}:{currentButtonStep.ToString("0.0#", CultureInfo.InvariantCulture)}";
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
     public static Equalizer GetBassBoostEqualizer(string level) => level.ToLowerInvariant() switch

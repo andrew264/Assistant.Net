@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Net;
+using System.Text;
 using Assistant.Net.Configuration;
 using Assistant.Net.Modules.Music.Logic.Player;
 using Assistant.Net.Utilities;
@@ -100,12 +101,13 @@ public class NowPlayingService : IDisposable
         var guildId = player.GuildId;
         await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
 
-        var (embed, components) = BuildNowPlayingDisplay(player, guildId);
+        var components = BuildNowPlayingDisplay(player, guildId);
         IUserMessage? sentMessage;
 
         try
         {
-            sentMessage = await channel.SendMessageAsync(embed: embed, components: components).ConfigureAwait(false);
+            sentMessage = await channel.SendMessageAsync(components: components, flags: MessageFlags.ComponentsV2)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -133,7 +135,7 @@ public class NowPlayingService : IDisposable
         {
             _logger.LogWarning("Failed to add Now Playing info for Guild {GuildId} due to concurrent modification.",
                 guildId);
-            cts.Cancel();
+            await cts.CancelAsync();
             cts.Dispose();
             try
             {
@@ -154,48 +156,58 @@ public class NowPlayingService : IDisposable
     {
         if (_activeNowPlayingMessages.TryRemove(guildId, out var info))
         {
-            if (!info.UpdateTaskCts.IsCancellationRequested) info.UpdateTaskCts.Cancel();
+            if (!info.UpdateTaskCts.IsCancellationRequested) await info.UpdateTaskCts.CancelAsync();
             info.UpdateTaskCts.Dispose();
 
-            if (deleteDiscordMessage && info.MessageInstance != null)
-                try
-                {
-                    await info.MessageInstance.DeleteAsync().ConfigureAwait(false);
-                    _logger.LogInformation("Deleted Now Playing message {MessageId} for Guild {GuildId}.",
-                        info.MessageId, guildId);
-                }
-                catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
-                {
-                    _logger.LogWarning("Now Playing message {MessageId} for Guild {GuildId} was already deleted.",
-                        info.MessageId, guildId);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to delete Now Playing message {MessageId} for Guild {GuildId}.",
-                        info.MessageId, guildId);
-                }
-            else if (deleteDiscordMessage && info.MessageInstance == null)
-                if (_client.GetChannel(info.TextChannelId) is ITextChannel textChannel)
+            switch (deleteDiscordMessage)
+            {
+                case true when info.MessageInstance != null:
                     try
                     {
-                        var msg = await textChannel.GetMessageAsync(info.MessageId).ConfigureAwait(false);
-                        if (msg != null) await msg.DeleteAsync().ConfigureAwait(false);
-                        _logger.LogInformation(
-                            "Fetched and deleted Now Playing message {MessageId} for Guild {GuildId}.", info.MessageId,
-                            guildId);
+                        await info.MessageInstance.DeleteAsync().ConfigureAwait(false);
+                        _logger.LogInformation("Deleted Now Playing message {MessageId} for Guild {GuildId}.",
+                            info.MessageId, guildId);
                     }
                     catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
                     {
-                        _logger.LogWarning(
-                            "Now Playing message {MessageId} (fetched by ID) for Guild {GuildId} was already deleted.",
+                        _logger.LogWarning("Now Playing message {MessageId} for Guild {GuildId} was already deleted.",
                             info.MessageId, guildId);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex,
-                            "Failed to fetch and delete Now Playing message {MessageId} for Guild {GuildId}.",
+                        _logger.LogError(ex, "Failed to delete Now Playing message {MessageId} for Guild {GuildId}.",
                             info.MessageId, guildId);
                     }
+
+                    break;
+                case true when info.MessageInstance == null:
+                {
+                    if (_client.GetChannel(info.TextChannelId) is ITextChannel textChannel)
+                        try
+                        {
+                            var msg = await textChannel.GetMessageAsync(info.MessageId).ConfigureAwait(false);
+                            if (msg != null) await msg.DeleteAsync().ConfigureAwait(false);
+                            _logger.LogInformation(
+                                "Fetched and deleted Now Playing message {MessageId} for Guild {GuildId}.",
+                                info.MessageId,
+                                guildId);
+                        }
+                        catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
+                        {
+                            _logger.LogWarning(
+                                "Now Playing message {MessageId} (fetched by ID) for Guild {GuildId} was already deleted.",
+                                info.MessageId, guildId);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex,
+                                "Failed to fetch and delete Now Playing message {MessageId} for Guild {GuildId}.",
+                                info.MessageId, guildId);
+                        }
+
+                    break;
+                }
+            }
 
             _logger.LogDebug("Removed Now Playing message info for Guild {GuildId}.", guildId);
         }
@@ -271,12 +283,9 @@ public class NowPlayingService : IDisposable
 
         try
         {
-            var (embed, components) = BuildNowPlayingDisplay(player, guildId);
-            await npInfo.MessageInstance!.ModifyAsync(props =>
-            {
-                props.Embed = embed;
-                props.Components = components;
-            }).ConfigureAwait(false);
+            var components = BuildNowPlayingDisplay(player, guildId);
+            await npInfo.MessageInstance!.ModifyAsync(props => { props.Components = components; })
+                .ConfigureAwait(false);
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
         {
@@ -315,97 +324,128 @@ public class NowPlayingService : IDisposable
         _logger.LogTrace("Exited NP update loop for Guild {GuildId}", guildId);
     }
 
-    public (Embed Embed, MessageComponent Components) BuildNowPlayingDisplay(CustomPlayer player, ulong guildId)
+    private MessageComponent BuildNowPlayingDisplay(CustomPlayer player, ulong guildId)
     {
-        var embedBuilder = new EmbedBuilder().WithColor(0x1ED760); // Spotify Green
+        var builder = new ComponentBuilderV2();
+
+        var container = new ContainerBuilder();
 
         var currentTrack = player.CurrentTrack;
         var queue = player.Queue;
 
         if (currentTrack != null)
         {
-            embedBuilder.WithAuthor(currentTrack.Title, url: currentTrack.Uri?.ToString(),
-                iconUrl: currentTrack.ArtworkUri?.ToString());
-            if (currentTrack.ArtworkUri != null) embedBuilder.WithThumbnailUrl(currentTrack.ArtworkUri.ToString());
+            var mainSection = new SectionBuilder();
+
+            if (currentTrack.ArtworkUri != null)
+                mainSection.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties { Url = currentTrack.ArtworkUri.ToString() }
+                });
+
+            var titleText =
+                new TextDisplayBuilder($"**{currentTrack.Title.AsMarkdownLink(currentTrack.Uri?.ToString())}**");
+            mainSection.AddComponent(titleText);
+
             if (player.Position?.Position != null)
             {
                 var position = player.Position.Value.Position;
                 var progressBar = MusicUtils.CreateProgressBar(position, currentTrack.Duration);
                 var currentTime = position.FormatPlayerTime();
                 var totalTime = currentTrack.Duration.FormatPlayerTime();
-                embedBuilder.AddField($"{currentTime} {progressBar} {totalTime}", "\u200B");
+                mainSection.AddComponent(
+                    new TextDisplayBuilder($"`{currentTime}` {progressBar} `{totalTime}`"));
             }
+
+            container.AddComponent(mainSection);
         }
         else
         {
-            embedBuilder.WithTitle("No song currently playing");
-            embedBuilder.WithDescription($"Use `/play` to add songs. {_config.Client.Prefix}play also works.");
+            container.WithTextDisplay(new TextDisplayBuilder(
+                $"**No song currently playing**\nUse `/play` to add songs. `{_config.Client.Prefix}play` also works."));
         }
 
+        // --- Controls ---
+        var controlsDisabled = currentTrack == null;
+        var volumeControlsDisabled = currentTrack == null;
+
+        // Row 0: Playback Controls
+        var playbackRow = new ActionRowBuilder()
+            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:prev_restart", ButtonStyle.Primary, Emoji.Parse("⏮️"),
+                disabled: controlsDisabled)
+            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:rewind", ButtonStyle.Primary, Emoji.Parse("⏪"),
+                disabled: controlsDisabled)
+            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:pause_resume",
+                player.State == PlayerState.Paused ? ButtonStyle.Success : ButtonStyle.Primary,
+                player.State == PlayerState.Paused ? Emoji.Parse("▶️") : Emoji.Parse("⏸️"), disabled: controlsDisabled)
+            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:forward", ButtonStyle.Primary, Emoji.Parse("⏩"),
+                disabled: controlsDisabled)
+            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:skip", ButtonStyle.Primary, Emoji.Parse("⏭️"),
+                disabled: controlsDisabled);
+        container.AddComponent(playbackRow);
+        container.AddComponent(new SeparatorBuilder());
+
+        // Row 1: Player/Queue Controls
+        var loopEmoji = player.RepeatMode switch
+        {
+            TrackRepeatMode.Track => Emoji.Parse("🔂"),
+            TrackRepeatMode.Queue => Emoji.Parse("🔁"),
+            _ => Emoji.Parse("➡️")
+        };
+        var utilityRow = new ActionRowBuilder()
+            .WithButton("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger, Emoji.Parse("⏹️"),
+                disabled: controlsDisabled)
+            .WithButton("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary, loopEmoji,
+                disabled: controlsDisabled);
+        container.AddComponent(utilityRow);
+
+        // --- Footer Info ---
+        var footerText = new StringBuilder();
         if (!queue.IsEmpty)
         {
             var nextTrack = queue[0].Track;
             if (nextTrack != null)
-                embedBuilder.WithFooter($"Next: {nextTrack.Title.Truncate(50)} | {queue.Count} in queue",
-                    nextTrack.ArtworkUri?.ToString());
+                footerText.Append($"Next: {nextTrack.Title.Truncate(50)} | {queue.Count} in queue");
             else
-                embedBuilder.WithFooter($"{queue.Count} songs in queue");
+                footerText.Append($"{queue.Count} songs in queue");
         }
         else
         {
-            embedBuilder.WithFooter("Queue is empty");
+            footerText.Append("Queue is empty");
         }
 
-        if (player.RepeatMode == TrackRepeatMode.Track)
-            embedBuilder.Footer.Text += " | 🔂 Looping Track";
-        else if (player.RepeatMode == TrackRepeatMode.Queue) embedBuilder.Footer.Text += " | 🔁 Looping Queue";
-
-
-        // Components
-        var cb = new ComponentBuilder();
-        var controlsDisabled = currentTrack == null;
-        var volumeControlsDisabled = currentTrack == null; // Volume can sometimes be set when paused
-
-        // Row 0: Playback Controls
-        cb.WithButton(null, $"{NpCustomIdPrefix}:{guildId}:prev_restart", ButtonStyle.Primary, Emoji.Parse("⏮️"),
-            disabled: controlsDisabled, row: 0);
-        cb.WithButton(null, $"{NpCustomIdPrefix}:{guildId}:rewind", ButtonStyle.Primary, Emoji.Parse("⏪"),
-            disabled: controlsDisabled, row: 0);
-        cb.WithButton(null, $"{NpCustomIdPrefix}:{guildId}:pause_resume",
-            player.State == PlayerState.Paused ? ButtonStyle.Success : ButtonStyle.Primary,
-            player.State == PlayerState.Paused ? Emoji.Parse("▶️") : Emoji.Parse("⏸️"), disabled: controlsDisabled,
-            row: 0);
-        cb.WithButton(null, $"{NpCustomIdPrefix}:{guildId}:forward", ButtonStyle.Primary, Emoji.Parse("⏩"),
-            disabled: controlsDisabled, row: 0);
-        cb.WithButton(null, $"{NpCustomIdPrefix}:{guildId}:skip", ButtonStyle.Primary, Emoji.Parse("⏭️"),
-            disabled: controlsDisabled, row: 0);
-
-        // Row 1: Player/Queue Controls
-        cb.WithButton("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger, Emoji.Parse("⏹️"),
-            disabled: controlsDisabled, row: 1);
-
-        var loopEmoji = player.RepeatMode switch
+        switch (player.RepeatMode)
         {
-            TrackRepeatMode.Track => Emoji.Parse("🔂"), // Repeat One
-            TrackRepeatMode.Queue => Emoji.Parse("🔁"), // Repeat All
-            _ => Emoji.Parse("➡️") // Loop off / Next
-        };
-        cb.WithButton("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary, loopEmoji,
-            disabled: controlsDisabled, row: 1);
+            case TrackRepeatMode.Track:
+                footerText.Append(" | 🔂 Looping Track");
+                break;
+            case TrackRepeatMode.Queue:
+                footerText.Append(" | 🔁 Looping Queue");
+                break;
+            case TrackRepeatMode.None:
+            default:
+                break;
+        }
 
+        if (footerText.Length > 0) container.WithTextDisplay(new TextDisplayBuilder(footerText.ToString()));
+
+        container.AddComponent(new SeparatorBuilder());
 
         // Row 2: Volume Controls
         var currentVolumePercent = (int)(player.Volume * 100);
         var maxVolume = _config.Music.MaxPlayerVolumePercent;
+        var volumeRow = new ActionRowBuilder()
+            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success, Emoji.Parse("➖"),
+                disabled: volumeControlsDisabled || currentVolumePercent <= 0)
+            .WithButton($"🔊 {currentVolumePercent}%", $"{NpCustomIdPrefix}:{guildId}:vol_display",
+                ButtonStyle.Secondary, disabled: true)
+            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success, Emoji.Parse("➕"),
+                disabled: volumeControlsDisabled || currentVolumePercent >= maxVolume);
+        container.AddComponent(volumeRow);
 
-        cb.WithButton(null, $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success, Emoji.Parse("➖"),
-            disabled: volumeControlsDisabled || currentVolumePercent <= 0, row: 2);
-        cb.WithButton($"🔊 {currentVolumePercent}%", $"{NpCustomIdPrefix}:{guildId}:vol_display", ButtonStyle.Secondary,
-            disabled: true, row: 2);
-        cb.WithButton(null, $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success, Emoji.Parse("➕"),
-            disabled: volumeControlsDisabled || currentVolumePercent >= maxVolume, row: 2);
 
-        return (embedBuilder.Build(), cb.Build());
+        builder.AddComponent(container);
+        return builder.Build();
     }
 
     // State

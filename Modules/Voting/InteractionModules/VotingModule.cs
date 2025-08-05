@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using Assistant.Net.Modules.Voting.Logic;
-using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -15,7 +14,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
     private const string SkipButtonPrefix = "assistant:poll:skip:";
 
     private static readonly ConcurrentDictionary<ulong, EloRatingSystem> ActivePolls = new();
-
     private static readonly ConcurrentDictionary<ulong, UserVotingState> UserVotingStates = new();
 
     [SlashCommand("create", "Set up the candidates for an Elo poll in this channel.")]
@@ -58,28 +56,29 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         {
             var eloSystem = new EloRatingSystem(candidateList, Context.User.Id, title);
 
-            if (ActivePolls.TryAdd(guildChannel.Id, eloSystem))
+            if (!ActivePolls.TryAdd(guildChannel.Id, eloSystem))
             {
-                var embed = new EmbedBuilder()
-                    .WithTitle($"📊 New Poll Created: {title}")
-                    .WithDescription(
-                        $"Poll created by {Context.User.Mention}.\n\n**Candidates:**\n{string.Join("\n", candidateList.Select(c => $"- {c}"))}\n\nUse `/poll vote` to cast your votes!")
-                    .WithColor(Color.Blue)
-                    .WithFooter($"Poll active in #{guildChannel.Name}")
-                    .WithTimestamp(DateTimeOffset.UtcNow);
-
-                await RespondAsync(embed: embed.Build()).ConfigureAwait(false);
-                logger.LogInformation("Created Elo poll '{Title}' in Channel {ChannelId} by User {UserId}", title,
-                    guildChannel.Id, Context.User.Id);
-            }
-            else
-            {
-                // Should not happen
                 await RespondAsync("Failed to create poll due to a conflict. Please try again.", ephemeral: true)
                     .ConfigureAwait(false);
                 logger.LogWarning("Failed to add poll for Channel {ChannelId} due to race condition.",
                     guildChannel.Id);
+                return;
             }
+
+            var container = new ContainerBuilder()
+                .WithTextDisplay(new TextDisplayBuilder($"# 📊 New Poll Created: {title}"))
+                .WithTextDisplay(new TextDisplayBuilder($"Created by {Context.User.Mention}"))
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder(
+                    $"**Candidates:**\n{string.Join("\n", candidateList.Select(c => $"- {c}"))}"))
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder("*Use `/poll vote` to cast your votes!*"));
+
+            var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+            await RespondAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+            logger.LogInformation("Created Elo poll '{Title}' in Channel {ChannelId} by User {UserId}", title,
+                guildChannel.Id, Context.User.Id);
         }
         catch (ArgumentException ex)
         {
@@ -117,7 +116,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        // Check if user already has an active voting state
         if (UserVotingStates.ContainsKey(Context.User.Id))
         {
             await RespondAsync(
@@ -126,7 +124,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        // Start a new voting session
         var shuffledPairs = eloSystem.GetShuffledCandidatePairings();
         if (shuffledPairs.Count == 0)
         {
@@ -168,7 +165,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        // Permission Check
         var guildUser = Context.User as SocketGuildUser;
         if (eloSystem.CreatorId != Context.User.Id && (guildUser == null || !guildUser.GuildPermissions.ManageGuild))
         {
@@ -178,7 +174,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        // Remove the poll before sending results
         if (ActivePolls.TryRemove(guildChannel.Id, out _))
         {
             var userKeysToRemove = UserVotingStates
@@ -187,12 +182,9 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
                 .ToList();
             foreach (var key in userKeysToRemove) UserVotingStates.TryRemove(key, out _);
 
-            var summary = eloSystem.GenerateSummary();
+            var resultsComponent = eloSystem.GenerateResultsComponent();
 
-            var messageParts = summary.SmartChunkSplitList();
-            await RespondAsync(messageParts[0]).ConfigureAwait(false);
-            for (var i = 1; i < messageParts.Count; i++)
-                await FollowupAsync(messageParts[i]).ConfigureAwait(false);
+            await RespondAsync(components: resultsComponent, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
             logger.LogInformation("Ended Elo poll '{Title}' in Channel {ChannelId} by User {UserId}", eloSystem.Title,
                 guildChannel.Id, Context.User.Id);
@@ -205,8 +197,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
                 guildChannel.Id);
         }
     }
-
-    // --- Component Interaction Handlers ---
 
     [ComponentInteraction("assistant:poll:vote:*", true)]
     public async Task HandleVoteButtonAsync()
@@ -223,9 +213,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
 
         if (!ulong.TryParse(customIdParts[3], out var userIdFromId) || userIdFromId != Context.User.Id)
         {
-            logger.LogWarning(
-                "User mismatch on vote button. Expected {ExpectedUserId}, Got {ActualUserId}. CustomId: {CustomId}",
-                Context.User.Id, userIdFromId, component.Data.CustomId);
             await component.RespondAsync("This button isn't for you!", ephemeral: true).ConfigureAwait(false);
             return;
         }
@@ -243,7 +230,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             await component.RespondAsync("Error processing button data.", ephemeral: true).ConfigureAwait(false);
             return;
         }
-
 
         if (!UserVotingStates.TryGetValue(Context.User.Id, out var userState))
         {
@@ -286,9 +272,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
 
         if (!ulong.TryParse(customIdParts[3], out var userIdFromId) || userIdFromId != Context.User.Id)
         {
-            logger.LogWarning(
-                "User mismatch on skip button. Expected {ExpectedUserId}, Got {ActualUserId}. CustomId: {CustomId}",
-                Context.User.Id, userIdFromId, component.Data.CustomId);
             await component.RespondAsync("This button isn't for you!", ephemeral: true).ConfigureAwait(false);
             return;
         }
@@ -310,7 +293,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        // --- Perform Action ---
         await component.DeferAsync(true).ConfigureAwait(false);
 
         userState.CurrentPairIndex++;
@@ -318,11 +300,8 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         await RespondEphemeralVotePromptAsync(eloSystem, userState, component).ConfigureAwait(false);
     }
 
-
-    // --- Helper Methods ---
-
     private async Task RespondEphemeralVotePromptAsync(EloRatingSystem eloSystem, UserVotingState userState,
-        SocketMessageComponent? interaction = null)
+        IComponentInteraction? interaction = null)
     {
         var currentPair = userState.GetCurrentPair();
 
@@ -331,21 +310,24 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             eloSystem.AddVoter(userState.UserId);
             UserVotingStates.TryRemove(userState.UserId, out _);
 
-            const string completionMsg = "✅ Voting Complete! Thank you for participating.";
+            var completionContainer = new ContainerBuilder()
+                .WithTextDisplay(new TextDisplayBuilder("✅ **Voting Complete!**"))
+                .WithTextDisplay(
+                    new TextDisplayBuilder(
+                        "Thank you for participating. The results will be shown when the poll ends."));
+
+            var components = new ComponentBuilderV2().WithContainer(completionContainer).Build();
+
             if (interaction != null)
-            {
                 await interaction.ModifyOriginalResponseAsync(props =>
                 {
-                    props.Content = completionMsg;
-                    props.Components = new ComponentBuilder().Build();
+                    props.Content = "";
+                    props.Components = components;
+                    props.Flags = MessageFlags.ComponentsV2;
                 }).ConfigureAwait(false);
-            }
             else
-            {
-                await RespondAsync(completionMsg, ephemeral: true).ConfigureAwait(false);
-                logger.LogWarning("Responded completion message on initial /vote call for user {UserId}",
-                    userState.UserId);
-            }
+                await RespondAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+                    .ConfigureAwait(false);
 
             logger.LogInformation("User {UserId} completed voting for poll '{Title}' in Channel {ChannelId}",
                 userState.UserId, eloSystem.Title, userState.ChannelId);
@@ -354,26 +336,32 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         {
             var (c1, c2) = currentPair.Value;
             var progress = $"Pair {userState.CurrentPairIndex + 1} of {userState.ShuffledPairs.Count}";
-            var prompt = $"**{eloSystem.Title}**\nWhich do you prefer?\n\n(`{progress}`)";
 
-            var builder = new ComponentBuilder()
-                .WithButton(c1,
-                    $"{VoteButtonPrefix}{userState.UserId}:{EloRatingSystem.EncodeCandidate(c1)}:{EloRatingSystem.EncodeCandidate(c2)}",
-                    row: 0)
-                .WithButton(c2,
-                    $"{VoteButtonPrefix}{userState.UserId}:{EloRatingSystem.EncodeCandidate(c2)}:{EloRatingSystem.EncodeCandidate(c1)}",
-                    row: 0)
-                .WithButton("Skip", $"{SkipButtonPrefix}{userState.UserId}:{userState.CurrentPairIndex}",
-                    ButtonStyle.Secondary, new Emoji("⏩"), row: 1);
+            var promptContainer = new ContainerBuilder()
+                .WithTextDisplay(new TextDisplayBuilder($"**{eloSystem.Title}** | {progress}"))
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder("Which do you prefer?"))
+                .WithActionRow(row => row
+                    .WithButton(c1,
+                        $"{VoteButtonPrefix}{userState.UserId}:{EloRatingSystem.EncodeCandidate(c1)}:{EloRatingSystem.EncodeCandidate(c2)}")
+                    .WithButton(c2,
+                        $"{VoteButtonPrefix}{userState.UserId}:{EloRatingSystem.EncodeCandidate(c2)}:{EloRatingSystem.EncodeCandidate(c1)}"))
+                .WithActionRow(row => row
+                    .WithButton("Skip", $"{SkipButtonPrefix}{userState.UserId}:{userState.CurrentPairIndex}",
+                        ButtonStyle.Secondary, new Emoji("⏩")));
+
+            var components = new ComponentBuilderV2().WithContainer(promptContainer).Build();
 
             if (interaction != null)
                 await interaction.ModifyOriginalResponseAsync(props =>
                 {
-                    props.Content = prompt;
-                    props.Components = builder.Build();
+                    props.Content = "";
+                    props.Components = components;
+                    props.Flags = MessageFlags.ComponentsV2;
                 }).ConfigureAwait(false);
             else
-                await RespondAsync(prompt, components: builder.Build(), ephemeral: true).ConfigureAwait(false);
+                await RespondAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+                    .ConfigureAwait(false);
         }
     }
 
@@ -381,8 +369,14 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
     {
         try
         {
-            await interaction.ModifyOriginalResponseAsync(props => props.Components = new ComponentBuilder().Build())
-                .ConfigureAwait(false);
+            var container = new ContainerBuilder()
+                .WithTextDisplay(new TextDisplayBuilder("*This voting session has ended.*"));
+
+            await interaction.ModifyOriginalResponseAsync(props =>
+            {
+                props.Components = new ComponentBuilderV2().WithContainer(container).Build();
+                props.Flags = MessageFlags.ComponentsV2;
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

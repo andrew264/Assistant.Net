@@ -18,7 +18,6 @@ public class RedditModule(
     private const int MaxPosts = 5;
     private const string DefaultTimeFilter = "week";
     private const string GalleryDomain = "www.reddit.com/gallery";
-    private static readonly Color RedditOrange = new(0xFF5700);
     private static readonly HashSet<string> VideoDomains = ["redgifs.com", "v.redd.it", "imgur.com", "i.imgur.com"];
     private static readonly Random Random = Random.Shared;
 
@@ -55,88 +54,68 @@ public class RedditModule(
 
     private async Task SendPostAsync(ProcessedRedditPost post)
     {
-        var embed = new EmbedBuilder()
-            .WithTitle(
-                post.Submission.Title.Truncate(256))
-            .WithColor(RedditOrange)
-            .WithUrl(post.Submission.FullPermalink)
-            .WithTimestamp(post.Submission.CreatedDateTime);
+        var component = new ComponentBuilderV2();
+        var container = new ContainerBuilder();
 
-        embed.WithAuthor(
-            !string.IsNullOrWhiteSpace(post.Submission.Author) ? $"u/{post.Submission.Author}" : "Deleted User",
-            url: !string.IsNullOrWhiteSpace(post.Submission.Author)
-                ? $"https://reddit.com/u/{post.Submission.Author}"
-                : null
-        );
+        // --- Header Section ---
+        container.WithTextDisplay(new TextDisplayBuilder($"# {post.Submission.Title.Truncate(250)}"));
+        var authorText = !string.IsNullOrWhiteSpace(post.Submission.Author)
+            ? $"by u/{post.Submission.Author}"
+            : "by [deleted]";
+        container.WithTextDisplay(new TextDisplayBuilder($"{authorText} in r/{post.Submission.Subreddit}"));
 
-        embed.WithFooter($"r/{post.Submission.Subreddit} | 👍 {post.Submission.Score}");
 
-        var view = BuildRedditView(post);
-
+        // --- Content Section ---
+        container.WithSeparator();
         if (post.IsVideo)
         {
-            await FollowupAsync(embed: embed.Build(), components: view.Build()).ConfigureAwait(false);
-            await Task.Delay(250).ConfigureAwait(false);
-            await FollowupAsync(post.ContentUrl).ConfigureAwait(false);
+            container.WithTextDisplay(new TextDisplayBuilder("🎬 A video link will be sent in a separate message."));
         }
         else if (post.IsGallery)
         {
-            await FollowupAsync(embed: embed.Build(), components: view.Build()).ConfigureAwait(false);
+            container.WithTextDisplay(
+                new TextDisplayBuilder("🖼️ This is a gallery post. Use the button below to view."));
+        }
+        else if (post.ContentUrl.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+                 post.ContentUrl.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+                 post.ContentUrl.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+                 post.ContentUrl.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ||
+                 post.ContentUrl.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
+        {
+            container.WithMediaGallery(new List<string> { post.ContentUrl });
         }
         else
         {
-            if (post.ContentUrl.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
-                post.ContentUrl.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase) ||
-                post.ContentUrl.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
-                post.ContentUrl.EndsWith(".gif", StringComparison.OrdinalIgnoreCase) ||
-                post.ContentUrl.EndsWith(".webp", StringComparison.OrdinalIgnoreCase))
-                embed.WithImageUrl(post.ContentUrl);
-            else
-                embed.Description = $"{post.ContentUrl}\n\n{post.Submission.SelfText}";
-            await FollowupAsync(embed: embed.Build(), components: view.Build()).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(post.Submission.SelfText))
+                container.WithTextDisplay(
+                    new TextDisplayBuilder(post.Submission.SelfText.Truncate(1024)));
+
+            if (!string.IsNullOrWhiteSpace(post.ContentUrl) && !post.ContentUrl.Contains("www.reddit.com"))
+                container.WithTextDisplay(new TextDisplayBuilder($"🔗 {post.ContentUrl}"));
         }
-    }
 
-    private static ComponentBuilder BuildRedditView(ProcessedRedditPost post)
-    {
-        var builder = new ComponentBuilder();
-        builder.WithButton("View Post", style: ButtonStyle.Link, url: post.Submission.FullPermalink);
-        if (post.IsGallery) builder.WithButton("View Gallery", style: ButtonStyle.Link, url: post.Submission.Url);
-        return builder;
-    }
+        // --- Stats & Footer Section ---
+        container.WithSeparator();
+        container.WithTextDisplay(new TextDisplayBuilder(
+            $"👍 {post.Submission.Score:N0}  •  💬 {post.Submission.NumComments:N0}  •  {post.Submission.CreatedDateTime.GetRelativeTime()}"));
 
-    private async Task<List<ProcessedRedditPost?>> GetRandomPostsAsync(string subreddit, string timeFilter,
-        bool allowNsfw, int limit)
-    {
-        if (!config.Reddit.IsValid)
-            throw new InvalidOperationException("Reddit client is not configured in config.yaml.");
-
-        var postsData =
-            await redditService.GetTopPostsAsync(subreddit, 100, timeFilter, allowNsfw)
-                .ConfigureAwait(false); // Fetch more to sample from
-
-        if (postsData == null) throw new Exception($"Failed to fetch posts from r/{subreddit}.");
-        if (postsData.Count == 0) return [];
-
-        var processedPosts = postsData
-            .Select(ProcessSubmission)
-            .Where(p => p != null)
-            .ToList();
-
-        if (processedPosts.Count == 0) return [];
-
-        // Fisher-Yates shuffle
-        var n = processedPosts.Count;
-        while (n > 1)
+        // --- Action Row ---
+        container.WithActionRow(row =>
         {
-            n--;
-            var k = Random.Next(n + 1);
-            (processedPosts[k], processedPosts[n]) = (processedPosts[n], processedPosts[k]);
-        }
+            row.WithButton("View on Reddit", style: ButtonStyle.Link, url: post.Submission.FullPermalink);
+            if (post.IsGallery)
+                row.WithButton("View Gallery", style: ButtonStyle.Link, url: post.ContentUrl);
+        });
 
-        return processedPosts.Take(limit).ToList();
+
+        component.WithContainer(container);
+
+        await FollowupAsync(components: component.Build(), flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+
+        if (post.IsVideo)
+            // Send the video URL in a separate message for auto-embedding by Discord
+            await FollowupAsync(post.ContentUrl).ConfigureAwait(false);
     }
-
 
     // --- Commands ---
     [SlashCommand("meme", "Get fresh memes from popular subreddits.")]
@@ -241,5 +220,37 @@ public class RedditModule(
             await FollowupAsync("❌ Failed to fetch NSFW content. Please try again later.", ephemeral: true)
                 .ConfigureAwait(false);
         }
+    }
+
+    private async Task<List<ProcessedRedditPost?>> GetRandomPostsAsync(string subreddit, string timeFilter,
+        bool allowNsfw, int limit)
+    {
+        if (!config.Reddit.IsValid)
+            throw new InvalidOperationException("Reddit client is not configured in config.yaml.");
+
+        var postsData =
+            await redditService.GetTopPostsAsync(subreddit, 100, timeFilter, allowNsfw)
+                .ConfigureAwait(false); // Fetch more to sample from
+
+        if (postsData == null) throw new Exception($"Failed to fetch posts from r/{subreddit}.");
+        if (postsData.Count == 0) return [];
+
+        var processedPosts = postsData
+            .Select(ProcessSubmission)
+            .Where(p => p != null)
+            .ToList();
+
+        if (processedPosts.Count == 0) return [];
+
+        // Fisher-Yates shuffle
+        var n = processedPosts.Count;
+        while (n > 1)
+        {
+            n--;
+            var k = Random.Next(n + 1);
+            (processedPosts[k], processedPosts[n]) = (processedPosts[n], processedPosts[k]);
+        }
+
+        return processedPosts.Take(limit).ToList();
     }
 }

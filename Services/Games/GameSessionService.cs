@@ -30,17 +30,13 @@ public enum GameUpdateStatus
 public record GameCreationResult(
     GameCreationStatus Status,
     string? ErrorMessage = null,
-    string? InitialMessageContent = null,
-    Embed? InitialEmbed = null,
-    MessageComponent? Components = null,
+    MessageComponent? Component = null,
     string? GameKey = null
 );
 
 public record GameUpdateResult(
     GameUpdateStatus Status,
-    string? MessageContent = null,
-    Embed? Embed = null,
-    MessageComponent? Components = null,
+    MessageComponent? Component = null,
     string? ErrorMessage = null
 );
 
@@ -87,34 +83,52 @@ public class GameSessionService(
 
     private void CancelTimeoutTask(string gameKey)
     {
-        if (_gameTimeoutTokens.TryRemove(gameKey, out var cts))
-        {
-            cts.Cancel();
-            cts.Dispose();
-        }
+        if (!_gameTimeoutTokens.TryRemove(gameKey, out var cts)) return;
+        cts.Cancel();
+        cts.Dispose();
     }
 
-    public (string Message, MessageComponent Components) GetRpsTimeoutDisplay(ulong messageId)
+    public MessageComponent GetRpsTimeoutDisplay()
     {
-        var dummyGame = new RpsGame(client.CurrentUser, client.CurrentUser, gameStatsService, logger);
-        return ("Rock Paper Scissors game timed out.", dummyGame.GetButtons(messageId, true));
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder("# Rock Paper Scissors"))
+            .WithTextDisplay(new TextDisplayBuilder("This game has timed out due to inactivity."))
+            .WithActionRow(row => row
+                .WithButton("Rock", "dummy_rock", ButtonStyle.Secondary, new Emoji("🪨"), disabled: true)
+                .WithButton("Paper", "dummy_paper", ButtonStyle.Secondary, new Emoji("📰"), disabled: true)
+                .WithButton("Scissors", "dummy_scissors", ButtonStyle.Secondary, new Emoji("✂️"), disabled: true)
+            );
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    public (string Message, MessageComponent Components) GetTicTacToeTimeoutDisplay()
+    public MessageComponent GetTicTacToeTimeoutDisplay()
     {
-        var cb = new ComponentBuilder();
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder("# Tic Tac Toe"))
+            .WithTextDisplay(new TextDisplayBuilder("This game has timed out due to inactivity."))
+            .WithSeparator();
+
         for (var i = 0; i < 3; i++) // 3 rows
-        for (var j = 0; j < 3; j++) // 3 buttons per row
-            cb.WithButton("\u200b", $"dummy_disabled_{i}_{j}", ButtonStyle.Secondary, disabled: true, row: i);
+        {
+            var rowBuilder = new ActionRowBuilder();
+            for (var j = 0; j < 3; j++) // 3 buttons per row
+                rowBuilder.WithButton("\u200b", $"dummy_disabled_{i}_{j}", ButtonStyle.Secondary, disabled: true);
+            container.WithActionRow(rowBuilder);
+        }
 
-        return ("Tic Tac Toe game timed out.", cb.Build());
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    public (string Message, Embed? Embed, MessageComponent Components) GetHandCricketTimeoutDisplay(
-        HandCricketGame game) =>
-        ($"Hand Cricket game between {game.Player1.Mention} and {game.Player2.Mention} timed out due to inactivity.",
-            null,
-            new ComponentBuilder().Build());
+    public MessageComponent GetHandCricketTimeoutDisplay(HandCricketGame game)
+    {
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder("# Hand Cricket"))
+            .WithTextDisplay(
+                new TextDisplayBuilder(
+                    $"The game between {game.Player1.Mention} and {game.Player2.Mention} has timed out due to inactivity."));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
 
 
     // --- RPS Game Management ---
@@ -138,8 +152,7 @@ public class GameSessionService(
         logger.LogInformation("[RPS] Started game ({MessageId}): {P1} vs {P2}", messageId, player1.Username,
             player2.Username);
 
-        var initialMessageContent = $"{player1.Mention} vs {player2.Mention}: Choose your weapon!";
-        var components = game.GetButtons(messageId);
+        var component = game.BuildGameComponent(messageId);
 
         if (game.BothPlayersChosen)
         {
@@ -157,8 +170,7 @@ public class GameSessionService(
             StartTimeoutTask(gameKey, RpsGameTimeout, _activeRpsGames, "RPS");
         }
 
-        return new GameCreationResult(GameCreationStatus.Success, InitialMessageContent: initialMessageContent,
-            Components: components, GameKey: gameKey);
+        return new GameCreationResult(GameCreationStatus.Success, Component: component, GameKey: gameKey);
     }
 
     private async Task ProcessRpsEndOfGame(string gameKey, RpsGame game, ulong guildId)
@@ -208,20 +220,10 @@ public class GameSessionService(
         if (game.BothPlayersChosen)
         {
             await ProcessRpsEndOfGame(gameKey, game, guildId).ConfigureAwait(false);
-            return new GameUpdateResult(
-                GameUpdateStatus.GameOver,
-                $"{game.Player1.Mention} vs {game.Player2.Mention}",
-                game.GetResultEmbed(),
-                game.GetButtons(messageId, true)
-            );
+            return new GameUpdateResult(GameUpdateStatus.GameOver, game.BuildGameComponent(messageId));
         }
 
-        var waitingFor = user.Id == game.Player1.Id ? game.Player2 : game.Player1;
-        return new GameUpdateResult(
-            GameUpdateStatus.Success,
-            $"{game.Player1.Mention} vs {game.Player2.Mention}\n{user.Mention} has chosen! Waiting for {waitingFor.Mention}...",
-            Components: game.GetButtons(messageId)
-        );
+        return new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent(messageId));
     }
 
     public bool IsRpsGameActive(string gameKey) => _activeRpsGames.ContainsKey(gameKey);
@@ -264,12 +266,9 @@ public class GameSessionService(
             playerO.Username);
         StartTimeoutTask(gameId, TicTacToeGameTimeout, _activeTicTacToeGames, "TicTacToe");
 
-        var initialContent =
-            $"## {playerX.Mention} (❌) vs {playerO.Mention} (⭕)\nIt's {game.CurrentPlayer.Mention}'s turn!";
-        var components = game.GetMessageComponent();
+        var component = game.BuildGameComponent();
 
-        return new GameCreationResult(GameCreationStatus.Success, InitialMessageContent: initialContent,
-            Components: components, GameKey: gameId);
+        return new GameCreationResult(GameCreationStatus.Success, Component: component, GameKey: gameId);
     }
 
     public async Task<GameUpdateResult> ProcessTicTacToeMoveAsync(string gameId, IUser user, int row, int col,
@@ -300,8 +299,7 @@ public class GameSessionService(
                     game.GameId);
         }
 
-        string messageContent;
-        var components = game.GetMessageComponent(); // Get updated components
+        var component = game.BuildGameComponent(); // Get updated components
 
         if (game.IsGameOver)
         {
@@ -313,21 +311,10 @@ public class GameSessionService(
             CancelTimeoutTask(game.GameId);
             logger.LogInformation("[TTT] Game {GameId} ended. Result: {Result}", game.GameId, game.Result);
 
-            messageContent = game.Result switch
-            {
-                GameResultState.XWins =>
-                    $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\n**{game.Player1.Mention} wins!**",
-                GameResultState.OWins =>
-                    $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\n**{game.Player2.Mention} wins!**",
-                GameResultState.Tie => $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\n**It's a tie!**",
-                _ => "Game over, but result is unclear."
-            };
-            return new GameUpdateResult(GameUpdateStatus.GameOver, messageContent, Components: components);
+            return new GameUpdateResult(GameUpdateStatus.GameOver, component);
         }
 
-        messageContent =
-            $"## {game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)\nIt's {game.CurrentPlayer.Mention}'s turn!";
-        return new GameUpdateResult(GameUpdateStatus.Success, messageContent, Components: components);
+        return new GameUpdateResult(GameUpdateStatus.Success, component);
     }
 
     public bool IsTicTacToeGameActive(string gameKey) => _activeTicTacToeGames.ContainsKey(gameKey);
@@ -342,7 +329,7 @@ public class GameSessionService(
         if (player1.IsBot || player2.IsBot)
             return new GameCreationResult(GameCreationStatus.PlayersInvalid, "Bots cannot play Hand Cricket!");
 
-        var game = new HandCricketGame(player1, player2, channelId, gameStatsService, logger);
+        var game = new HandCricketGame(player1, player2, gameStatsService, logger);
 
         if (!_activeHandCricketGames.TryAdd(game.GameId, game))
         {
@@ -357,9 +344,7 @@ public class GameSessionService(
 
         return new GameCreationResult(
             GameCreationStatus.Success,
-            InitialMessageContent: game.GetCurrentPrompt(),
-            InitialEmbed: game.GetEmbed(),
-            Components: game.GetComponents(),
+            Component: game.BuildGameComponent(),
             GameKey: game.GameId
         );
     }
@@ -456,19 +441,15 @@ public class GameSessionService(
                         {
                             if (game.BothPlayersSelectedGameNumber())
                             {
-                                var (_, gameOver) = game.ResolveTurn();
+                                var gameOver = game.ResolveTurn();
                                 if (gameOver)
                                 {
-                                    var finalResultMessage = await game.GetResultStringAndRecordStats(guildId)
-                                        .ConfigureAwait(false);
+                                    await game.GetResultStringAndRecordStats(guildId).ConfigureAwait(false);
                                     _activeHandCricketGames.TryRemove(game.GameId, out _);
                                     CancelTimeoutTask(game.GameId);
                                     logger.LogInformation("[HC] Game {GameId} finished.", game.GameId);
 
-                                    return new GameUpdateResult(GameUpdateStatus.GameOver,
-                                        game.GetCurrentPrompt() + $"\n\n**{finalResultMessage}**",
-                                        game.GetEmbed(),
-                                        game.GetComponents());
+                                    return new GameUpdateResult(GameUpdateStatus.GameOver, game.BuildGameComponent());
                                 }
                             }
                         }
@@ -493,10 +474,7 @@ public class GameSessionService(
         if (!string.IsNullOrEmpty(userVisibleErrorMessage))
             return new GameUpdateResult(GameUpdateStatus.Error, ErrorMessage: userVisibleErrorMessage);
 
-        return new GameUpdateResult(GameUpdateStatus.Success,
-            game.GetCurrentPrompt(),
-            game.GetEmbed(),
-            game.GetComponents());
+        return new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent());
     }
 
     public bool IsHandCricketGameActive(string gameKey) => _activeHandCricketGames.ContainsKey(gameKey);

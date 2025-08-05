@@ -21,8 +21,8 @@ public class QueueInteractionModule(
     private async Task ModifyOrFollowupWithQueueAsync(CustomPlayer player, int currentPage, ulong interactionMessageId,
         bool ephemeral = false)
     {
-        var (embed, components, error) =
-            musicService.BuildQueueEmbed(player, currentPage, interactionMessageId, Context.User.Id);
+        var (components, error) =
+            musicService.BuildQueueComponents(player, currentPage, interactionMessageId, Context.User.Id);
 
         if (error != null)
         {
@@ -48,14 +48,15 @@ public class QueueInteractionModule(
             await ModifyOriginalResponseAsync(props =>
             {
                 props.Content = "";
-                props.Embed = embed;
                 props.Components = components;
+                props.Flags = MessageFlags.ComponentsV2;
             }).ConfigureAwait(false);
         }
         catch
         {
             if (!ephemeral)
-                await FollowupAsync(embed: embed, components: components, ephemeral: ephemeral).ConfigureAwait(false);
+                await FollowupAsync(components: components, ephemeral: ephemeral, flags: MessageFlags.ComponentsV2)
+                    .ConfigureAwait(false);
             else
                 logger.LogWarning(
                     "Failed to modify original ephemeral response for queue. User: {UserId}, InteractionMsgId: {MsgId}",

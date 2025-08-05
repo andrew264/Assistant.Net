@@ -52,31 +52,55 @@ public class ColorRoleModule(Config config, ILogger<ColorRoleModule> logger)
             return;
         }
 
-        var embed = new EmbedBuilder()
-            .WithTitle("Color Roles")
-            .WithDescription("Claim a colour of your choice!")
-            .WithColor(Color.LightGrey)
-            .Build();
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder("# 🎨 Color Roles"));
+                section.AddComponent(new TextDisplayBuilder(
+                    "Select a color to apply it to your profile. Clicking a color you already have will remove it."));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                    {
+                        Url = Context.Client.CurrentUser.GetDisplayAvatarUrl() ??
+                              Context.Client.CurrentUser.GetDefaultAvatarUrl()
+                    }
+                });
+            })
+            .WithSeparator();
 
-        var components = new ComponentBuilder();
-        foreach (var (colorSuffix, value) in ButtonLayout)
+        var rows = new Dictionary<int, ActionRowBuilder>();
+
+        foreach (var (colorSuffix, (emoji, rowIndex)) in ButtonLayout)
         {
-            var (emoji, row) = value;
-
-            if (ColorRolesMap.ContainsKey(colorSuffix))
-                components.WithButton(
-                    emote: Emoji.Parse(emoji),
-                    customId: $"{CustomIdPrefix}{colorSuffix}",
-                    style: ButtonStyle.Secondary,
-                    row: row
-                );
-            else
+            if (!ColorRolesMap.ContainsKey(colorSuffix))
+            {
                 logger.LogWarning("Color role setup skipped button for undefined color suffix: {ColorSuffix}",
                     colorSuffix);
+                continue;
+            }
+
+            if (!rows.TryGetValue(rowIndex, out var row))
+            {
+                row = new ActionRowBuilder();
+                rows[rowIndex] = row;
+            }
+
+            row.WithButton(
+                emote: Emoji.Parse(emoji),
+                customId: $"{CustomIdPrefix}{colorSuffix}",
+                style: ButtonStyle.Secondary
+            );
         }
 
+        foreach (var row in rows.OrderBy(kvp => kvp.Key).Select(kvp => kvp.Value))
+            container.WithActionRow(row);
+
+        var componentsV2 = new ComponentBuilderV2().WithContainer(container).Build();
+
         await RespondAsync("Setting up color roles message...", ephemeral: true).ConfigureAwait(false);
-        await Context.Channel.SendMessageAsync(embed: embed, components: components.Build()).ConfigureAwait(false);
+        await Context.Channel.SendMessageAsync(components: componentsV2, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
 
         logger.LogInformation("Color roles message deployed in Home Guild {GuildId}, Channel {ChannelId} by {User}",
             Context.Guild.Id, Context.Channel.Id, Context.User);

@@ -1,8 +1,9 @@
+using System.Text;
+using Assistant.Net.Models.UrbanDictionary;
 using Assistant.Net.Services.ExternalApis;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
-using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Misc.InteractionModules;
@@ -12,7 +13,7 @@ public class DictionaryInteractionModule(
     ILogger<DictionaryInteractionModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly Random _random = new();
+    private const string CustomIdPrefix = "assistant:ud_page";
 
     [SlashCommand("define", "Define a word using Urban Dictionary.")]
     public async Task DefineSlashAsync(
@@ -25,7 +26,7 @@ public class DictionaryInteractionModule(
 
         if (results == null)
         {
-            await FollowupAsync("Sorry, I couldn't fetch the definition due to an error.", ephemeral: true)
+            await FollowupAsync("Sorry, I couldn't fetch the definition due to an API error.", ephemeral: true)
                 .ConfigureAwait(false);
             return;
         }
@@ -39,43 +40,122 @@ public class DictionaryInteractionModule(
             return;
         }
 
-        // Select a random entry
-        var topResults = results.Take(5).ToList();
-        var selectedEntry = topResults[_random.Next(topResults.Count)];
-        var markdown = selectedEntry.Markdown;
+        var responseComponent =
+            BuildDefinitionResponse(results, 0, Context.User.Id, word ?? "_RANDOM_");
 
-        await SendDefinitionResponseAsync(Context.Interaction, markdown).ConfigureAwait(false);
+        await FollowupAsync(components: responseComponent, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
-    private async Task SendDefinitionResponseAsync(SocketInteraction interaction, string markdown)
+    private static MessageComponent BuildDefinitionResponse(IReadOnlyList<UrbanDictionaryEntry> results, int pageIndex,
+        ulong requesterId, string searchTerm)
     {
-        const int maxLen = DiscordConfig.MaxMessageSize; // Use Discord constant
+        var totalPages = results.Count;
+        var currentPage = Math.Clamp(pageIndex, 0, totalPages - 1);
+        var entry = results[currentPage];
 
-        if (markdown.Length <= maxLen)
-        {
-            await interaction.ModifyOriginalResponseAsync(p =>
+        var container = new ContainerBuilder()
+            .WithSection(section =>
             {
-                p.Content = markdown;
-                p.AllowedMentions = AllowedMentions.None;
-                p.Flags = MessageFlags.SuppressEmbeds;
-            }).ConfigureAwait(false);
-        }
-        else
+                section.AddComponent(new TextDisplayBuilder($"# {entry.Word}"));
+                section.AddComponent(new TextDisplayBuilder($"*by {entry.Author}*"));
+                section.WithAccessory(new ButtonBuilder("View on UD", style: ButtonStyle.Link, url: entry.Permalink));
+            })
+            .WithSeparator();
+
+        container.WithTextDisplay(new TextDisplayBuilder(entry.FormattedDefinition.Truncate(1024)));
+
+        if (!string.IsNullOrWhiteSpace(entry.FormattedExample))
+            container
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder(
+                    $"*Example:*\n{entry.FormattedExample.Truncate(1024)}"));
+
+        container
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder($"{entry.ThumbsUp} 👍  •  {entry.ThumbsDown} 👎"));
+
+        if (totalPages > 1)
         {
-            logger.LogInformation(
-                "Definition exceeds {MaxLength} characters, attempting to split and send (interaction).", maxLen);
-            var parts = markdown.SmartChunkSplitList();
+            // Encode search term to safely include in custom ID
+            var encodedSearchTerm =
+                Convert.ToBase64String(Encoding.UTF8.GetBytes(searchTerm)).Replace('+', '-').Replace('/', '_');
 
-            await interaction.ModifyOriginalResponseAsync(p =>
+            var footerText = $"Definition {currentPage + 1} of {totalPages}";
+            container.WithTextDisplay(new TextDisplayBuilder(footerText));
+
+            container.WithActionRow(row =>
             {
-                p.Content = parts[0];
-                p.AllowedMentions = AllowedMentions.None;
-                p.Flags = MessageFlags.SuppressEmbeds;
-            }).ConfigureAwait(false);
-
-
-            for (var i = 1; i < parts.Count; i++)
-                await interaction.FollowupAsync(parts[i], allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+                row.WithButton("Previous",
+                    $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:prev",
+                    ButtonStyle.Secondary, disabled: currentPage == 0);
+                row.WithButton("Next",
+                    $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:next",
+                    ButtonStyle.Secondary, disabled: currentPage == totalPages - 1);
+            });
         }
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    [ComponentInteraction("assistant:ud_page:*:*:*:*", true)]
+    public async Task HandlePageButtonAsync(ulong requesterId, string encodedSearchTerm, int currentPage,
+        string action)
+    {
+        if (Context.User.Id != requesterId)
+        {
+            await RespondAsync("This interaction is not for you.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        await DeferAsync().ConfigureAwait(false);
+
+        string? searchTerm;
+        try
+        {
+            var base64 = encodedSearchTerm.Replace('-', '+').Replace('_', '/');
+            searchTerm = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
+            if (searchTerm == "_RANDOM_")
+                searchTerm = null;
+        }
+        catch (FormatException)
+        {
+            await ModifyOriginalResponseAsync(props =>
+            {
+                props.Content = "Error: Invalid search term in button. Please try the command again.";
+                props.Components = new ComponentBuilder().Build(); // Clear components
+            }).ConfigureAwait(false);
+            logger.LogWarning("Invalid Base64 search term in UD pagination button: {EncodedTerm}", encodedSearchTerm);
+            return;
+        }
+
+
+        var results = await urbanService.GetDefinitionsAsync(searchTerm).ConfigureAwait(false);
+
+        if (results == null || results.Count == 0)
+        {
+            await ModifyOriginalResponseAsync(props =>
+            {
+                props.Content =
+                    "The definitions for this search seem to have expired from the cache. Please run the command again.";
+                props.Components = new ComponentBuilder().Build();
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        var newPage = action switch
+        {
+            "prev" => currentPage - 1,
+            "next" => currentPage + 1,
+            _ => currentPage
+        };
+
+        var newComponent = BuildDefinitionResponse(results, newPage, requesterId, searchTerm ?? "_RANDOM_");
+
+        await ModifyOriginalResponseAsync(props =>
+        {
+            props.Content = ""; // Clear any previous error content
+            props.Components = newComponent;
+            props.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
     }
 }

@@ -14,41 +14,33 @@ public class HandCricketGame
     private readonly ILogger _logger;
     private string? _lastOutcomeMessage;
 
-    public HandCricketGame(IUser player1, IUser player2, ulong channelId, GameStatsService? gameStatsService,
+    public HandCricketGame(IUser player1, IUser player2, GameStatsService? gameStatsService,
         ILogger logger)
     {
         GameId = Guid.NewGuid().ToString();
         Player1 = player1;
         Player2 = player2;
-        InteractionChannelId = channelId;
         _gameStatsService = gameStatsService;
         _logger = logger;
         CurrentPhase = HandCricketPhase.TossSelectEvenOdd;
         CurrentBatter = Player1;
         CurrentBowler = Player2;
-        LastInteractionTime = DateTime.UtcNow;
     }
 
     public string GameId { get; }
     public IUser Player1 { get; }
     public IUser Player2 { get; }
     public HandCricketPhase CurrentPhase { get; private set; }
-    public ulong InteractionChannelId { get; }
 
     public TossNumberChoices CurrentTossChoices { get; } = new();
-    public IUser? TossEvenOddChooser { get; private set; }
     public IUser? TossWinner { get; private set; }
-    public bool? TossWinnerChoseBat { get; private set; }
 
-    public IUser CurrentBatter { get; private set; }
-    public IUser CurrentBowler { get; private set; }
-    public int Player1Score { get; private set; }
-    public int Player2Score { get; private set; }
-    public GameNumberChoices CurrentTurnChoices { get; private set; } = new();
-    public int CurrentInning { get; private set; }
-    public GameNumberChoices PreviousTurnChoices { get; private set; } = new();
-
-    public DateTime LastInteractionTime { get; private set; }
+    private IUser CurrentBatter { get; set; }
+    private IUser CurrentBowler { get; set; }
+    private int Player1Score { get; set; }
+    private int Player2Score { get; set; }
+    private GameNumberChoices CurrentTurnChoices { get; set; } = new();
+    private int CurrentInning { get; set; }
 
     public bool SetTossEvenOddPreference(IUser chooser, EvenOddChoice choice)
     {
@@ -56,9 +48,7 @@ public class HandCricketGame
 
         CurrentTossChoices.Player1ChoicePreference = chooser.Id == Player1.Id ? choice :
             choice == EvenOddChoice.Even ? EvenOddChoice.Odd : EvenOddChoice.Even;
-        TossEvenOddChooser = chooser;
         CurrentPhase = HandCricketPhase.TossSelectNumber;
-        LastInteractionTime = DateTime.UtcNow;
         _logger.LogDebug("[HC {GameId}] User {Chooser} set toss pref; P1 pref: {P1Pref}. Phase -> {Phase}", GameId,
             chooser.Username, CurrentTossChoices.Player1ChoicePreference, CurrentPhase);
         return true;
@@ -83,7 +73,6 @@ public class HandCricketGame
 
         if (!updated) return updated;
         _logger.LogDebug("[HC {GameId}] User {Chooser} chose toss number {Number}", GameId, chooser.Username, number);
-        LastInteractionTime = DateTime.UtcNow;
         return updated;
     }
 
@@ -100,7 +89,6 @@ public class HandCricketGame
         var player1WinsToss = sumParity == CurrentTossChoices.Player1ChoicePreference;
         TossWinner = player1WinsToss ? Player1 : Player2;
         CurrentPhase = HandCricketPhase.TossSelectBatBowl;
-        LastInteractionTime = DateTime.UtcNow;
 
         _lastOutcomeMessage = $"{Player1.Mention} selected {CurrentTossChoices.Player1Number}\n" +
                               $"{Player2.Mention} selected {CurrentTossChoices.Player2Number}\n" +
@@ -116,7 +104,6 @@ public class HandCricketGame
     {
         if (CurrentPhase != HandCricketPhase.TossSelectBatBowl || chooser.Id != TossWinner?.Id) return false;
 
-        TossWinnerChoseBat = choseBat;
         if (choseBat)
         {
             CurrentBatter = TossWinner;
@@ -130,7 +117,6 @@ public class HandCricketGame
 
         CurrentPhase = HandCricketPhase.Inning1Batting;
         CurrentInning = 0;
-        LastInteractionTime = DateTime.UtcNow;
         _logger.LogInformation("[HC {GameId}] User {Chooser} chose to {Choice}. Batter: {Batter}. Phase -> {Phase}",
             GameId, chooser.Username, choseBat ? "Bat" : "Bowl", CurrentBatter.Username, CurrentPhase);
         return true;
@@ -156,16 +142,15 @@ public class HandCricketGame
 
         if (!updated) return updated;
         _logger.LogDebug("[HC {GameId}] User {Chooser} chose game number {Number}", GameId, chooser.Username, number);
-        LastInteractionTime = DateTime.UtcNow;
         return updated;
     }
 
     public bool BothPlayersSelectedGameNumber() => CurrentTurnChoices is
         { Player1Number: not null, Player2Number: not null };
 
-    public (bool inningOver, bool gameOver) ResolveTurn()
+    public bool ResolveTurn()
     {
-        if (!BothPlayersSelectedGameNumber()) return (false, false);
+        if (!BothPlayersSelectedGameNumber()) return false;
         _lastOutcomeMessage = null;
 
         var batterChoice = CurrentBatter.Id == Player1.Id
@@ -176,7 +161,6 @@ public class HandCricketGame
             : CurrentTurnChoices.Player2Number!.Value;
 
         var isOut = batterChoice == bowlerChoice;
-        PreviousTurnChoices = CurrentTurnChoices;
 
         if (!isOut)
         {
@@ -188,7 +172,7 @@ public class HandCricketGame
 
         if (CurrentInning == 0)
         {
-            if (!isOut) return (false, false);
+            if (!isOut) return false;
             CurrentInning = 1;
             (CurrentBatter, CurrentBowler) = (CurrentBowler, CurrentBatter);
             CurrentPhase = HandCricketPhase.Inning2Batting;
@@ -196,7 +180,7 @@ public class HandCricketGame
                 "[HC {GameId}] Inning 1 over. Batter Out. Score: P1={P1S} P2={P2S}. New Batter: {Batter}. Phase -> {Phase}",
                 GameId, Player1Score, Player2Score, CurrentBatter.Username, CurrentPhase);
             _lastOutcomeMessage = $"{CurrentBowler.Mention} is out! Target: {GetTargetScore()}";
-            return (true, false);
+            return false;
         }
 
         if (isOut)
@@ -205,21 +189,21 @@ public class HandCricketGame
             _logger.LogInformation("[HC {GameId}] Game Over. Batter Out (Inning 2). Final Score: P1={P1S} P2={P2S}",
                 GameId, Player1Score, Player2Score);
             _lastOutcomeMessage = $"{CurrentBatter.Mention} is out!";
-            return (true, true);
+            return true;
         }
 
         if ((Player1Score <= Player2Score || CurrentBatter.Id != Player1.Id) &&
             (Player2Score <= Player1Score || CurrentBatter.Id != Player2.Id))
-            return (false, false);
+            return false;
 
         CurrentPhase = HandCricketPhase.GameOver;
         _logger.LogInformation("[HC {GameId}] Game Over. Target Chased. Final Score: P1={P1S} P2={P2S}", GameId,
             Player1Score, Player2Score);
         _lastOutcomeMessage = "Target chased!";
-        return (false, true);
+        return true;
     }
 
-    public int GetTargetScore()
+    private int GetTargetScore()
     {
         if (CurrentInning == 0) return -1;
         return (CurrentBatter.Id == Player1.Id ? Player2Score : Player1Score) + 1;
@@ -287,131 +271,149 @@ public class HandCricketGame
         };
     }
 
-    public Embed GetEmbed()
+    public MessageComponent BuildGameComponent()
     {
-        var embed = new EmbedBuilder()
-            .WithTitle($"Hand Cricket: {Player1.Username} vs {Player2.Username}")
-            .WithColor(Color.Orange)
-            .WithFooter($"Game ID: {GameId[..5]} | Phase: {GetHumanPhaseName()}");
+        var builder = new ComponentBuilderV2();
+        var container = new ContainerBuilder();
 
-        embed.AddField($"{Player1.Username} ({(CurrentBatter.Id == Player1.Id ? "🏏" : "⚾")})", Player1Score.ToString(),
-            true);
-        embed.AddField($"{Player2.Username} ({(CurrentBatter.Id == Player2.Id ? "🏏" : "⚾")})", Player2Score.ToString(),
-            true);
+        // --- Header ---
+        container.AddComponent(new TextDisplayBuilder($"# Hand Cricket: {Player1.Username} vs {Player2.Username}"));
+        container.AddComponent(new TextDisplayBuilder($"*Phase: {GetHumanPhaseName()}*"));
+        container.WithSeparator();
+
+        // --- Scoreboard ---
+        var p1Role = CurrentBatter.Id == Player1.Id ? "🏏" : "⚾";
+        var p2Role = CurrentBatter.Id == Player2.Id ? "🏏" : "⚾";
+        container.AddComponent(new TextDisplayBuilder($"**{Player1.Username} {p1Role}:** {Player1Score}"));
+        container.AddComponent(new TextDisplayBuilder($"**{Player2.Username} {p2Role}:** {Player2Score}"));
 
         var targetScore = GetTargetScore();
         if (targetScore > 0 && CurrentPhase == HandCricketPhase.Inning2Batting)
-            embed.AddField("Target", targetScore.ToString(), true);
-        else if (CurrentInning == 0 && CurrentPhase == HandCricketPhase.Inning1Batting)
-            embed.AddField("Target", "Set in 2nd Inning", true);
+            container.AddComponent(new TextDisplayBuilder($"**Target:** {targetScore}"));
 
-        var p1Last = PreviousTurnChoices.Player1Number?.ToString() ?? "-";
-        var p2Last = PreviousTurnChoices.Player2Number?.ToString() ?? "-";
-
-        if (p1Last != "-" && p2Last != "-")
-            embed.AddField("Last Selection", $"{Player1.Username}: {p1Last}\n{Player2.Username}: {p2Last}");
-
-
-        return embed.Build();
-    }
-
-    public MessageComponent GetComponents()
-    {
-        var builder = new ComponentBuilder();
-        LastInteractionTime = DateTime.UtcNow;
-
-        switch (CurrentPhase)
+        // --- Last Turn Info & Current Prompt ---
+        var prompt = GetCurrentPrompt();
+        if (!string.IsNullOrWhiteSpace(prompt))
         {
-            case HandCricketPhase.TossSelectEvenOdd:
-                builder.WithButton("Even", $"{CustomIdPrefix}:{GameId}:toss_eo:even", ButtonStyle.Success, row: 0);
-                builder.WithButton("Odd", $"{CustomIdPrefix}:{GameId}:toss_eo:odd", ButtonStyle.Danger, row: 0);
-                break;
-
-            case HandCricketPhase.TossSelectNumber:
-                AddNumberButtons(builder, TossNumbers, "toss_num");
-                break;
-
-            case HandCricketPhase.TossSelectBatBowl:
-                builder.WithButton("Bat 🏏", $"{CustomIdPrefix}:{GameId}:batbowl:bat", row: 0);
-                builder.WithButton("Bowl ⚾", $"{CustomIdPrefix}:{GameId}:batbowl:bowl", ButtonStyle.Success, row: 0);
-                break;
-
-            case HandCricketPhase.Inning1Batting:
-            case HandCricketPhase.Inning2Batting:
-                AddNumberButtons(builder, GameNumbers, "play_num");
-                break;
-
-            case HandCricketPhase.GameOver:
-                break;
-            default:
-                throw new ArgumentOutOfRangeException();
+            container.WithSeparator();
+            container.WithTextDisplay(new TextDisplayBuilder(prompt));
         }
 
+        // --- Buttons ---
+        var buttonActionRows = GetActionRowsForCurrentPhase();
+        foreach (var row in buttonActionRows) container.WithActionRow(row);
+
+        // --- Footer ---
+        container.WithSeparator();
+        container.WithTextDisplay(new TextDisplayBuilder($"*Game ID: {GameId[..8]}*"));
+
+        builder.WithContainer(container);
         return builder.Build();
     }
 
-    private void AddNumberButtons(ComponentBuilder builder, IEnumerable<int> numbers, string action)
-    {
-        var count = 0;
-        var row = 0;
-        foreach (var num in numbers)
-        {
-            builder.WithButton(num.ToString(), $"{CustomIdPrefix}:{GameId}:{action}:{num}", ButtonStyle.Secondary,
-                row: row);
-            count++;
-            if (count % 5 == 0)
-                row++;
-        }
-    }
 
-    public string GetCurrentPrompt()
+    private string GetCurrentPrompt()
     {
         var outcome = _lastOutcomeMessage;
-        _lastOutcomeMessage = null;
+        _lastOutcomeMessage = null; // Consume the message
 
-        string phasePrompt;
+        var phasePrompt = CurrentPhase switch
+        {
+            HandCricketPhase.TossSelectEvenOdd =>
+                $"{Player1.Mention} / {Player2.Mention}, select Even or Odd for the toss.",
+            HandCricketPhase.TossSelectNumber => GetTossNumberPrompt(),
+            HandCricketPhase.TossSelectBatBowl => $"{TossWinner?.Mention}, choose to Bat or Bowl.",
+            HandCricketPhase.Inning1Batting or HandCricketPhase.Inning2Batting => GetGameNumberPrompt(),
+            HandCricketPhase.GameOver => "Game Over!",
+            _ => "Hand Cricket"
+        };
+
+        return string.IsNullOrWhiteSpace(outcome) ? phasePrompt : $"**{outcome}**\n\n{phasePrompt}";
+    }
+
+    private string GetTossNumberPrompt()
+    {
+        var waitingFor = "";
+        if (CurrentTossChoices.Player1Number == null && CurrentTossChoices.Player2Number != null)
+            waitingFor = Player1.Mention;
+        else if (CurrentTossChoices is { Player1Number: not null, Player2Number: null })
+            waitingFor = Player2.Mention;
+
+        var prompt = "Select a number (1-6) for the toss.";
+        if (!string.IsNullOrEmpty(waitingFor)) prompt += $" Waiting for {waitingFor}...";
+
+        return prompt;
+    }
+
+    private string GetGameNumberPrompt()
+    {
+        var waitingFor = "";
+        if (CurrentTurnChoices.Player1Number == null && CurrentTurnChoices.Player2Number != null)
+            waitingFor = Player1.Mention;
+        else if (CurrentTurnChoices is { Player1Number: not null, Player2Number: null })
+            waitingFor = Player2.Mention;
+
+        var prompt = $"{CurrentBatter.Mention} is batting. {CurrentBowler.Mention} is bowling.\nSelect a number (1-6).";
+        if (!string.IsNullOrEmpty(waitingFor)) prompt += $" Waiting for {waitingFor}...";
+
+        return prompt;
+    }
+
+    private List<ActionRowBuilder> GetActionRowsForCurrentPhase()
+    {
+        var rows = new List<ActionRowBuilder>();
+
         switch (CurrentPhase)
         {
             case HandCricketPhase.TossSelectEvenOdd:
-                phasePrompt = $"{Player1.Mention} / {Player2.Mention}, select Even or Odd for the toss.";
+                rows.Add(new ActionRowBuilder()
+                    .WithButton("Even", $"{CustomIdPrefix}:{GameId}:toss_eo:even", ButtonStyle.Success)
+                    .WithButton("Odd", $"{CustomIdPrefix}:{GameId}:toss_eo:odd", ButtonStyle.Danger));
                 break;
-            case HandCricketPhase.TossSelectNumber:
-                var tossPrefMsg = TossEvenOddChooser != null
-                    ? $"{TossEvenOddChooser.Mention} chose `{(CurrentTossChoices.Player1ChoicePreference == EvenOddChoice.Even ? "Even" : "Odd")}` (P1 Pref)."
-                    : "";
-                var waitingForToss = "";
-                if (CurrentTossChoices.Player1Number == null && CurrentTossChoices.Player2Number != null)
-                    waitingForToss = Player1.Mention;
-                else if (CurrentTossChoices.Player1Number != null && CurrentTossChoices.Player2Number == null)
-                    waitingForToss = Player2.Mention;
 
-                phasePrompt = $"{tossPrefMsg}\nSelect a number (1-6) for the toss." +
-                              (string.IsNullOrEmpty(waitingForToss)
-                                  ? ""
-                                  : $" Waiting for {waitingForToss}...");
+            case HandCricketPhase.TossSelectNumber:
+                rows.AddRange(CreateNumberButtonRows(TossNumbers, "toss_num"));
                 break;
+
             case HandCricketPhase.TossSelectBatBowl:
-                phasePrompt = $"{TossWinner?.Mention}, choose to Bat or Bowl.";
+                rows.Add(new ActionRowBuilder()
+                    .WithButton("Bat 🏏", $"{CustomIdPrefix}:{GameId}:batbowl:bat")
+                    .WithButton("Bowl ⚾", $"{CustomIdPrefix}:{GameId}:batbowl:bowl", ButtonStyle.Success));
                 break;
+
             case HandCricketPhase.Inning1Batting:
             case HandCricketPhase.Inning2Batting:
-                var waitingForGame = "";
-                if (CurrentTurnChoices.Player1Number == null && CurrentTurnChoices.Player2Number != null)
-                    waitingForGame = Player1.Mention;
-                else if (CurrentTurnChoices.Player1Number != null && CurrentTurnChoices.Player2Number == null)
-                    waitingForGame = Player2.Mention;
-                phasePrompt =
-                    $"{CurrentBatter.Mention} is batting. {CurrentBowler.Mention} is bowling.\nSelect a number (1-6)." +
-                    (string.IsNullOrEmpty(waitingForGame) ? "" : $" Waiting for {waitingForGame}...");
+                rows.AddRange(CreateNumberButtonRows(GameNumbers, "play_num"));
                 break;
+
             case HandCricketPhase.GameOver:
-                phasePrompt = "Game Over!";
-                break;
-            default:
-                phasePrompt = "Hand Cricket";
+                // No buttons for game over state
                 break;
         }
 
-        return string.IsNullOrEmpty(outcome) ? phasePrompt : $"{outcome}\n{new string('-', 20)}\n{phasePrompt}";
+        return rows;
+    }
+
+    private IEnumerable<ActionRowBuilder> CreateNumberButtonRows(IEnumerable<int> numbers, string action)
+    {
+        var actionRows = new List<ActionRowBuilder>();
+        var currentRow = new ActionRowBuilder();
+        var count = 0;
+
+        foreach (var num in numbers)
+        {
+            if (count > 0 && count % 5 == 0)
+            {
+                actionRows.Add(currentRow);
+                currentRow = new ActionRowBuilder();
+            }
+
+            currentRow.WithButton(num.ToString(), $"{CustomIdPrefix}:{GameId}:{action}:{num}", ButtonStyle.Secondary);
+            count++;
+        }
+
+        if (currentRow.Components.Count > 0) actionRows.Add(currentRow);
+
+        return actionRows;
     }
 }

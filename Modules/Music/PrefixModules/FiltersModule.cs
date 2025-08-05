@@ -49,12 +49,13 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
 
         player.Filters.Timescale = FilterOperations.GetNightcoreSettings(enable);
 
-        var embed = FilterUiBuilder.BuildNightcoreConfirmationEmbed(enable);
+        var components = FilterUiBuilder.BuildNightcoreConfirmation(enable);
         logger.LogInformation("[FILTERS CMD] User {User} {Action} nightcore in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+            flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [Command("vaporwave")]
@@ -83,12 +84,13 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         player.Filters.Tremolo = tremoloSettings;
         player.Filters.Equalizer = new EqualizerFilterOptions(eqSettings);
 
-        var embed = FilterUiBuilder.BuildVaporwaveConfirmationEmbed(enable);
+        var components = FilterUiBuilder.BuildVaporwaveConfirmation(enable);
         logger.LogInformation("[FILTERS CMD] User {User} {Action} vaporwave in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+            flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [Command("8d")]
@@ -108,12 +110,13 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
 
         player.Filters.Rotation = FilterOperations.Get8DSettings(enable);
 
-        var embed = FilterUiBuilder.Build8DConfirmationEmbed(enable);
+        var components = FilterUiBuilder.Build8DConfirmation(enable);
         logger.LogInformation("[FILTERS CMD] User {User} {Action} 8D audio in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+            flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [Command("reset")]
@@ -130,12 +133,13 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         }
 
         player.Filters.Clear();
-        var embed = FilterUiBuilder.BuildResetConfirmationEmbed();
+        var components = FilterUiBuilder.BuildResetConfirmation();
         logger.LogInformation("[FILTERS CMD] User {User} reset all filters in {GuildName}", Context.User.Username,
             Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
-        await ReplyAsync(embed: embed, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+            flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [Command("bassboost")]
@@ -151,9 +155,9 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
             return;
         }
 
-        var (embed, components) = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None)
-            .ConfigureAwait(false);
+        var components = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
+        var msg = await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+            flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -182,9 +186,9 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
             return;
         }
 
-        var (embed, components) = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None)
-            .ConfigureAwait(false);
+        var components = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
+        var msg = await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+            flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -213,9 +217,9 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
             return;
         }
 
-        var (embed, components) = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
-        var msg = await ReplyAsync(embed: embed, components: components, allowedMentions: AllowedMentions.None)
-            .ConfigureAwait(false);
+        var components = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
+        var msg = await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+            flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {

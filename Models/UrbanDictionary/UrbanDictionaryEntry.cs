@@ -26,26 +26,9 @@ public class UrbanDictionaryEntry
 
     [JsonProperty("written_on")] public string WrittenOn { get; set; } = string.Empty;
 
-    [JsonIgnore] // Don't serialize
-    private string FormattedDefinition => FormatLinks(Definition);
+    [JsonIgnore] public string FormattedDefinition => FormatLinks(Definition);
 
-    [JsonIgnore] private string FormattedExample => FormatLinks(Example.Replace("\r", ""));
-
-    [JsonIgnore]
-    public string Markdown
-    {
-        get
-        {
-            var formattedExampleSection = !string.IsNullOrWhiteSpace(FormattedExample)
-                ? $"\n\n*Example:*\n{FormattedExample}"
-                : "";
-
-            return $"# Define: [{Word}](<{Permalink}>)\n\n" +
-                   $"{FormattedDefinition}" +
-                   $"{formattedExampleSection}\n\n" +
-                   $"{ThumbsUp} 👍  •  {ThumbsDown} 👎";
-        }
-    }
+    [JsonIgnore] public string FormattedExample => FormatLinks(Example.Replace("\r", ""));
 
     private static string FormatLinks(string text)
     {

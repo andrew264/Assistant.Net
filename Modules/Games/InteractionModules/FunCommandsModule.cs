@@ -12,12 +12,28 @@ internal record DeathMessagesConfig
     public List<string> Messages { get; init; } = [];
 }
 
-public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger, Config config)
-    : InteractionModuleBase<SocketInteractionContext>
+public class FunCommands : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly List<string> _deathMsgsTemplate = LoadDeathMessages(config.ResourcePath, logger);
-    private readonly List<string> _flames = ["Friends", "Lovers", "Angry", "Married", "Enemies", "Soulmates"];
-    private readonly Random _random = new();
+    private static List<string>? _deathMsgsTemplate;
+    private static readonly Lock TemplateLock = new();
+    private static readonly List<string> Flames = ["Friends", "Lovers", "Angry", "Married", "Enemies", "Soulmates"];
+    private static readonly Random Random = new();
+
+    private readonly DiscordSocketClient _client;
+    private readonly Config _config;
+
+    public FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger, Config config)
+    {
+        _client = client;
+        _config = config;
+
+        // Lazy-load the death messages from the JSON file
+        if (_deathMsgsTemplate != null) return;
+        lock (TemplateLock)
+        {
+            _deathMsgsTemplate ??= LoadDeathMessages(config.ResourcePath, logger);
+        }
+    }
 
     private static List<string> LoadDeathMessages(string resourcePath, ILogger logger)
     {
@@ -63,27 +79,38 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
             return;
         }
 
-        var embed = new EmbedBuilder()
-            .WithColor(Color.Red)
-            .WithAuthor(user.Username, user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
-            .WithDescription(user.IsBot
-                ? "You cannot attack my kind."
-                : GetDeathMessage(user, Context.User));
+        var description = user.IsBot
+            ? "You cannot attack my kind."
+            : GetDeathMessage(user, Context.User);
 
-        await RespondAsync(embed: embed.Build()).ConfigureAwait(false);
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# R.I.P. {user.Username}"));
+                section.AddComponent(new TextDisplayBuilder(description));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl() }
+                });
+            });
+
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await RespondAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     private string GetDeathMessage(SocketUser target, SocketUser killer)
     {
-        if (_random.NextDouble() < 0.1)
+        if (Random.NextDouble() < 0.1)
             (target, killer) = (killer, target);
 
-        var template = _deathMsgsTemplate[_random.Next(_deathMsgsTemplate.Count)];
+        var template = _deathMsgsTemplate![Random.Next(_deathMsgsTemplate.Count)];
 
         return template
             .Replace("{user1}", target.Mention)
             .Replace("{user2}", killer.Mention)
-            .Replace("{user3}", client.CurrentUser.Mention);
+            .Replace("{user3}", _client.CurrentUser.Mention);
     }
 
     [SlashCommand("pp", "Check your pp size")]
@@ -98,18 +125,27 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
             return;
         }
 
-        var embed = new EmbedBuilder()
-            .WithColor(Color.Red)
-            .WithAuthor(user.DisplayName, user.GetGuildAvatarUrl() ?? user.GetDisplayAvatarUrl());
-
-        var description = user.Id == config.Client.OwnerId
-            ? $"[8{new string('=', _random.Next(7, 13))}D](https://www.youtube.com/watch?v=dQw4w9WgXcQ \"Ran out of Tape while measuring\")"
+        var description = user.Id == _config.Client.OwnerId
+            ? $"[8{new string('=', Random.Next(7, 13))}D](https://www.youtube.com/watch?v=dQw4w9WgXcQ \"Ran out of Tape while measuring\")"
             : user.IsBot
                 ? "404 Not Found"
-                : $"8{new string('=', _random.Next(0, 10))}D";
+                : $"8{new string('=', Random.Next(0, 10))}D";
 
-        embed.Description = description;
-        await RespondAsync(embed: embed.Build()).ConfigureAwait(false);
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# {user.DisplayName}'s PP Size"));
+                section.AddComponent(new TextDisplayBuilder(description));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = user.GetGuildAvatarUrl() ?? user.GetDisplayAvatarUrl() }
+                });
+            });
+
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await RespondAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [SlashCommand("flames", "Check your relationship with someone")]
@@ -149,13 +185,15 @@ public class FunCommands(DiscordSocketClient client, ILogger<FunCommands> logger
             return;
         }
 
-        var result = _flames[count % _flames.Count];
+        var result = Flames[count % Flames.Count];
 
-        var embed = new EmbedBuilder()
-            .WithColor(Color.Red)
-            .WithTitle($"{user1} and {user2 ?? Context.User.GlobalName}")
-            .WithDescription($"are **{result}**");
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder($"# FLAMES: {user1} & {user2 ?? Context.User.GlobalName}"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder($"Your relationship is... **{result}**"));
 
-        await RespondAsync(embed: embed.Build()).ConfigureAwait(false);
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await RespondAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 }

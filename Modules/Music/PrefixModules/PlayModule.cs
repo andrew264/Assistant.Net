@@ -24,30 +24,40 @@ public class PlayModule(
             return;
         }
 
-        var embed = new EmbedBuilder()
-            .WithTitle($"🔎 Search Results for: `{originalQuery}`")
-            .WithColor(Color.Blue)
-            .WithDescription("Select a track to add to the queue:");
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder($"**🔎 Search Results for:** `{originalQuery.Truncate(100)}`"))
+            .WithTextDisplay(new TextDisplayBuilder($"*Select a track to add to the queue, <@{Context.User.Id}>:*"))
+            .WithSeparator();
 
-        var components = new ComponentBuilder();
-        for (var i = 0; i < topTracks.Count; i++)
+        foreach (var track in topTracks)
         {
-            var track = topTracks[i];
-            var title = track.Title.Truncate(50);
-            embed.AddField("\u200B",
-                $"{i + 1}: {title.AsMarkdownLink(track.Uri?.ToString())} by {track.Author} ({track.Duration:mm\\:ss})");
+            var trackInfo = new SectionBuilder()
+                .AddComponent(new TextDisplayBuilder(
+                    $"**{track.Title.Truncate(80)}**\nby {track.Author.Truncate(80)}"))
+                .AddComponent(new TextDisplayBuilder(
+                    $"Duration: {track.Duration:mm\\:ss} | Source: {track.SourceName ?? "Unknown"}"));
 
             var customId = $"assistant:play_search:{Context.User.Id}:{track.Uri?.ToString() ?? string.Empty}";
             if (customId.Length <= 100 && track.Uri != null)
-                components.WithButton((i + 1).ToString(), customId, ButtonStyle.Secondary);
-            else if (track.Uri == null)
-                embed.Fields[i].Value += "\n*(Cannot be selected: Missing URI)*";
+            {
+                trackInfo.WithAccessory(new ButtonBuilder("Select", customId, ButtonStyle.Secondary));
+            }
             else
-                embed.Fields[i].Value += "\n*(Cannot be selected via button due to URI length)*";
+            {
+                var reason = track.Uri == null ? "(Missing URI)" : "(URI too long for button)";
+                trackInfo.AddComponent(new TextDisplayBuilder($"*Cannot be selected via button {reason}*"));
+            }
+
+            container.AddComponent(trackInfo);
         }
 
-        // Prefix commands typically don't use ephemeral messages for search results easily
-        await Context.Channel.SendMessageAsync(embed: embed.Build(), components: components.Build())
+        // For prefix commands, a cancel button that deletes the message is appropriate.
+        container.WithActionRow(new ActionRowBuilder()
+            .WithButton("Cancel", $"assistant:play_search_cancel:{Context.User.Id}", ButtonStyle.Danger));
+
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await Context.Channel.SendMessageAsync(components: components, flags: MessageFlags.ComponentsV2)
             .ConfigureAwait(false);
     }
 
@@ -114,6 +124,7 @@ public class PlayModule(
                 await ReplyAsync($"❌ No results found for: `{loadResult.OriginalQuery}`").ConfigureAwait(false);
                 break;
             case TrackLoadStatus.LoadFailed:
+            default:
                 await ReplyAsync($"❌ Failed to load track(s): {loadResult.ErrorMessage ?? "Unknown error"}")
                     .ConfigureAwait(false);
                 break;

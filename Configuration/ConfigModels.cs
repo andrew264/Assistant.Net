@@ -57,12 +57,12 @@ public record MongoConfig
         if (Url.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase))
         {
             schemeToUse = "mongodb+srv://";
-            addressPart = Url.Substring("mongodb+srv://".Length);
+            addressPart = Url["mongodb+srv://".Length..];
         }
         else if (Url.StartsWith("mongodb://", StringComparison.OrdinalIgnoreCase))
         {
             schemeToUse = "mongodb://";
-            addressPart = Url.Substring("mongodb://".Length);
+            addressPart = Url["mongodb://".Length..];
         }
         else
         {
@@ -112,6 +112,7 @@ public record LoggingGuildConfig
 {
     public ulong GuildId { get; init; }
     public ulong ChannelId { get; init; }
+    public bool LogPresenceUpdates { get; set; }
 }
 
 public record MusicConfig

@@ -19,7 +19,7 @@ public class GameModule(
         var player1 = Context.User;
         var player2 = opponent;
 
-        if (Context.Guild != null && player2 != null && !player2.IsBot)
+        if (Context.Guild != null && player2 is { IsBot: false })
         {
             var guildUser = Context.Guild.GetUser(player2.Id);
             if (guildUser == null)
@@ -48,8 +48,9 @@ public class GameModule(
         {
             await responseMessage.ModifyAsync(props =>
             {
-                props.Content = creationResult.InitialMessageContent;
-                props.Components = creationResult.Components;
+                props.Content = "";
+                props.Components = creationResult.Component;
+                props.Flags = MessageFlags.ComponentsV2;
             }).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -69,9 +70,9 @@ public class GameModule(
             if (updateResult.Status == GameUpdateStatus.GameOver)
                 await responseMessage.ModifyAsync(props =>
                 {
-                    props.Content = updateResult.MessageContent;
-                    props.Embed = updateResult.Embed;
-                    props.Components = updateResult.Components;
+                    props.Content = "";
+                    props.Components = updateResult.Component;
+                    props.Flags = MessageFlags.ComponentsV2;
                 }).ConfigureAwait(false);
         }
     }
@@ -106,7 +107,7 @@ public class GameModule(
         }
 
         var responseMessage =
-            await ReplyAsync(creationResult.InitialMessageContent, components: creationResult.Components)
+            await ReplyAsync(components: creationResult.Component, flags: MessageFlags.ComponentsV2)
                 .ConfigureAwait(false);
 
         if (creationResult.GameKey != null)
@@ -116,11 +117,12 @@ public class GameModule(
             {
                 var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
                     game.CurrentPlayer, 1, 1, Context.Guild?.Id ?? 0).ConfigureAwait(false); // TODO: make it random
-                if (updateResult.Status != GameUpdateStatus.Error && !string.IsNullOrEmpty(updateResult.MessageContent))
+                if (updateResult.Status != GameUpdateStatus.Error)
                     await responseMessage.ModifyAsync(props =>
                     {
-                        props.Content = updateResult.MessageContent;
-                        props.Components = updateResult.Components;
+                        props.Content = "";
+                        props.Components = updateResult.Component;
+                        props.Flags = MessageFlags.ComponentsV2;
                     }).ConfigureAwait(false);
             }
         }
@@ -162,7 +164,6 @@ public class GameModule(
             return;
         }
 
-        await ReplyAsync(creationResult.InitialMessageContent, embed: creationResult.InitialEmbed,
-            components: creationResult.Components).ConfigureAwait(false);
+        await ReplyAsync(components: creationResult.Component, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 }

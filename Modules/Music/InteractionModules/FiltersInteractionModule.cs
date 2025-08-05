@@ -48,12 +48,12 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
 
         player.Filters.Timescale = FilterOperations.GetNightcoreSettings(enable);
 
-        var embed = FilterUiBuilder.BuildNightcoreConfirmationEmbed(enable);
+        var components = FilterUiBuilder.BuildNightcoreConfirmation(enable);
         logger.LogInformation("[FILTERS] User {User} {Action} nightcore in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
-        await FollowupAsync(embed: embed).ConfigureAwait(false);
         await player.Filters.CommitAsync().ConfigureAwait(false);
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [SlashCommand("vaporwave", "Enable/Disable the vaporwave filter.")]
@@ -80,12 +80,12 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         player.Filters.Tremolo = tremoloSettings;
         player.Filters.Equalizer = new EqualizerFilterOptions(eqSettings);
 
-        var embed = FilterUiBuilder.BuildVaporwaveConfirmationEmbed(enable);
+        var components = FilterUiBuilder.BuildVaporwaveConfirmation(enable);
         logger.LogInformation("[FILTERS] User {User} {Action} vaporwave in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
-        await FollowupAsync(embed: embed).ConfigureAwait(false);
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [SlashCommand("8d", "Enable/Disable the 8D audio filter.")]
@@ -104,12 +104,12 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
 
         player.Filters.Rotation = FilterOperations.Get8DSettings(enable);
 
-        var embed = FilterUiBuilder.Build8DConfirmationEmbed(enable);
+        var components = FilterUiBuilder.Build8DConfirmation(enable);
         logger.LogInformation("[FILTERS] User {User} {Action} 8D audio in {GuildName}",
             Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
-        await FollowupAsync(embed: embed).ConfigureAwait(false);
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [SlashCommand("reset", "Reset all audio filters to default.")]
@@ -124,11 +124,12 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         }
 
         player.Filters.Clear();
-        var embed = FilterUiBuilder.BuildResetConfirmationEmbed();
-        await FollowupAsync(embed: embed).ConfigureAwait(false);
+        var components = FilterUiBuilder.BuildResetConfirmation();
         logger.LogInformation("[FILTERS] User {User} reset all filters in {GuildName}", Context.User.Username,
             Context.Guild.Name);
+
         await player.Filters.CommitAsync().ConfigureAwait(false);
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     [SlashCommand("bassboost", "Adjust the bass boost filter.")]
@@ -142,9 +143,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             return;
         }
 
-        var (embed, components) = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
-        var msg = await FollowupAsync(embed: embed, components: components).ConfigureAwait(false);
-        // No commit needed here, as this command only displays UI. Button handler commits.
+        var components = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
+        var msg = await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -171,9 +171,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             return;
         }
 
-        var (embed, components) = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
-        var msg = await FollowupAsync(embed: embed, components: components).ConfigureAwait(false);
-        // No commit needed here.
+        var components = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
+        var msg = await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -200,9 +199,8 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             return;
         }
 
-        var (embed, components) = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
-        var msg = await FollowupAsync(embed: embed, components: components).ConfigureAwait(false);
-        // No commit needed here.
+        var components = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
+        var msg = await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
         _ = Task.Run(async () =>
         {
@@ -238,7 +236,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             {
                 props.Content = errorMessage ?? "Player not available or not playing anything.";
                 props.Embed = null;
-                props.Components = null;
+                props.Components = new ComponentBuilder().Build();
             }).ConfigureAwait(false);
             return;
         }
@@ -251,11 +249,12 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         logger.LogInformation("[FILTERS] User {User} set BassBoost to {Level} in {GuildName}", Context.User.Username,
             level, Context.Guild.Name);
 
-        var (newEmbed, newComponents) = FilterUiBuilder.BuildBassBoostDisplay(player, originalRequesterId);
+        var newComponents = FilterUiBuilder.BuildBassBoostDisplay(player, originalRequesterId);
         await ModifyOriginalResponseAsync(props =>
         {
-            props.Embed = newEmbed;
+            props.Embed = null;
             props.Components = newComponents;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
         await player.Filters.CommitAsync().ConfigureAwait(false);
     }
@@ -278,7 +277,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             {
                 props.Content = errorMessage ?? "Player not available or not playing anything.";
                 props.Embed = null;
-                props.Components = null;
+                props.Components = new ComponentBuilder().Build();
             }).ConfigureAwait(false);
             return;
         }
@@ -291,11 +290,12 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         logger.LogInformation("[FILTERS] User {User} set TrebleBoost to {Level} in {GuildName}", Context.User.Username,
             level, Context.Guild.Name);
 
-        var (newEmbed, newComponents) = FilterUiBuilder.BuildTrebleBoostDisplay(player, originalRequesterId);
+        var newComponents = FilterUiBuilder.BuildTrebleBoostDisplay(player, originalRequesterId);
         await ModifyOriginalResponseAsync(props =>
         {
-            props.Embed = newEmbed;
+            props.Embed = null;
             props.Components = newComponents;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
         await player.Filters.CommitAsync().ConfigureAwait(false);
     }
@@ -329,7 +329,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             {
                 props.Content = errorMessage ?? "Player not available or not playing anything.";
                 props.Embed = null;
-                props.Components = null;
+                props.Components = new ComponentBuilder().Build();
             }).ConfigureAwait(false);
             return;
         }
@@ -363,12 +363,13 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
                 logger.LogInformation("[FILTERS] User {User} reset all Timescale in {GuildName}", Context.User.Username,
                     Context.Guild.Name);
 
-                var (resetEmbed, resetComponents) =
+                var resetComponents =
                     FilterUiBuilder.BuildTimescaleDisplay(player, originalRequesterId, buttonStepValue);
                 await ModifyOriginalResponseAsync(props =>
                 {
-                    props.Embed = resetEmbed;
+                    props.Embed = null;
                     props.Components = resetComponents;
+                    props.Flags = MessageFlags.ComponentsV2;
                 }).ConfigureAwait(false);
                 await player.Filters.CommitAsync().ConfigureAwait(false);
                 return;
@@ -392,12 +393,13 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             Context.User.Username, logMessageAction, buttonStepValue * 100, Context.Guild.Name, newSpeed, newPitch,
             newRate);
 
-        var (updatedEmbed, updatedComponents) =
+        var updatedComponents =
             FilterUiBuilder.BuildTimescaleDisplay(player, originalRequesterId, buttonStepValue);
         await ModifyOriginalResponseAsync(props =>
         {
-            props.Embed = updatedEmbed;
+            props.Embed = null;
             props.Components = updatedComponents;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
 
         if (action != "step_toggle") await player.Filters.CommitAsync().ConfigureAwait(false);

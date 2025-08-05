@@ -46,9 +46,21 @@ public class InfoPrefixModule(
                 return;
             }
 
+            var userColor = UserUtils.GetTopRoleColor(targetUser as SocketUser ??
+                                                      Context.Guild.GetUser(targetUser.Id));
+
+            var container = new ContainerBuilder()
+                .WithAccentColor(userColor)
+                .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
+                .WithMediaGallery(["attachment://avatar.png"])
+                .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
+
+            var components = new ComponentBuilderV2().WithContainer(container).Build();
+
             await Context.Channel.SendFileAsync(
                 fileAttachment.Value,
-                $"# {displayUserName}'s Avatar",
+                components: components,
+                flags: MessageFlags.ComponentsV2,
                 allowedMentions: AllowedMentions.None,
                 messageReference: new MessageReference(Context.Message.Id)
             ).ConfigureAwait(false);
@@ -83,14 +95,11 @@ public class InfoPrefixModule(
         if (Context.User is SocketGuildUser requestingGuildUser)
             showSensitiveInfo = requestingGuildUser.GuildPermissions.Administrator;
 
-        var embed = await UserUtils.GenerateUserInfoEmbedAsync(targetUser, showSensitiveInfo, userService, client)
+        var components = await UserUtils.GenerateUserInfoV2Async(targetUser, showSensitiveInfo, userService, client)
             .ConfigureAwait(false);
 
-        var view = new ComponentBuilder()
-            .WithButton("View Avatar", style: ButtonStyle.Link,
-                url: targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl())
-            .Build();
-
-        await ReplyAsync(embed: embed, components: view, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
+                flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
     }
 }

@@ -10,8 +10,6 @@ namespace Assistant.Net.Services.GuildFeatures.Starboard;
 
 public class StarboardService
 {
-    private const string StarContentFormat = "{emoji} **{count}** | {channelMention}";
-
     private readonly DiscordSocketClient _client;
     private readonly StarboardConfigService _configService;
     private readonly ILogger<StarboardService> _logger;
@@ -72,7 +70,8 @@ public class StarboardService
         return Task.CompletedTask;
     }
 
-    private Task HandleReactionsClearedAsync(Cacheable<IUserMessage, ulong> msg, Cacheable<IMessageChannel, ulong> chan)
+    private Task HandleReactionsClearedAsync(Cacheable<IUserMessage, ulong> msg,
+        Cacheable<IMessageChannel, ulong> chan)
     {
         _ = Task.Run(async () =>
         {
@@ -181,45 +180,67 @@ public class StarboardService
             .DeleteManyAsync(Builders<StarredMessageModel>.Filter.In(m => m.Id, compositeIds)).ConfigureAwait(false);
     }
 
-    private static Embed CreateStarboardEmbed(IMessage originalMessage)
+    private static MessageComponent BuildStarboardComponents(IMessage originalMessage, int starCount,
+        string starEmoji)
     {
-        var embedBuilder = new EmbedBuilder()
-            .WithDescription(originalMessage.Content)
-            .WithColor(Color.Gold)
-            .WithTimestamp(originalMessage.CreatedAt)
-            .WithAuthor(originalMessage.Author.GlobalName ?? originalMessage.Author.Username,
-                originalMessage.Author.GetDisplayAvatarUrl() ?? originalMessage.Author.GetDefaultAvatarUrl(),
-                originalMessage.GetJumpUrl())
-            .AddField("Original Message", $"[Jump!]({originalMessage.GetJumpUrl()})");
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.Gold);
 
-        var imageSet = false;
-        var attachmentList = new List<string>();
-
-        switch (originalMessage.Embeds.FirstOrDefault())
+        // --- Header Section ---
+        container.WithSection(section =>
         {
-            case { Image: not null } firstEmbedWithImage:
-                embedBuilder.WithImageUrl(firstEmbedWithImage.Image.Value.Url);
-                imageSet = true;
-                break;
-            case { Thumbnail: not null } firstEmbedWithThumb:
-                embedBuilder.WithThumbnailUrl(firstEmbedWithThumb.Thumbnail.Value.Url);
-                break;
-        }
+            section.AddComponent(
+                new TextDisplayBuilder($"## {starEmoji} {starCount} Star{(starCount == 1 ? "" : "s")}"));
+            section.AddComponent(new TextDisplayBuilder(
+                $"by {originalMessage.Author.Mention} in {MentionUtils.MentionChannel(originalMessage.Channel.Id)}"));
+            section.WithAccessory(new ThumbnailBuilder
+            {
+                Media = new UnfurledMediaItemProperties
+                {
+                    Url = originalMessage.Author.GetDisplayAvatarUrl() ?? originalMessage.Author.GetDefaultAvatarUrl()
+                }
+            });
+        });
+        container.WithSeparator();
+
+        // --- Content Section ---
+        if (!string.IsNullOrWhiteSpace(originalMessage.Content))
+            container.WithTextDisplay(new TextDisplayBuilder(originalMessage.Content));
+
+        var imageUrls = new List<string>();
+        var otherAttachments = new List<IAttachment>();
+
+        foreach (var embed in originalMessage.Embeds)
+            if (embed.Image.HasValue)
+                imageUrls.Add(embed.Image.Value.Url);
+            else if (embed.Thumbnail.HasValue) imageUrls.Add(embed.Thumbnail.Value.Url);
 
         foreach (var attachment in originalMessage.Attachments)
-            if (!imageSet && attachment.ContentType?.StartsWith("image/") == true && attachment.Height.HasValue)
-            {
-                embedBuilder.WithImageUrl(attachment.Url);
-                imageSet = true;
-            }
+            if (attachment.ContentType?.StartsWith("image/") == true && attachment.Height.HasValue)
+                imageUrls.Add(attachment.Url);
             else
-            {
-                attachmentList.Add($"[{attachment.Filename}]({attachment.Url})");
-            }
+                otherAttachments.Add(attachment);
 
-        if (attachmentList.Count > 0) embedBuilder.AddField("Attachments", string.Join("\n", attachmentList));
-        return embedBuilder.Build();
+        if (imageUrls.Any())
+            container.WithMediaGallery(imageUrls);
+
+        if (otherAttachments.Any())
+        {
+            var attachmentsText = string.Join("\n",
+                otherAttachments.Select(a => $"📄 [{a.Filename}]({a.Url})"));
+            container.WithTextDisplay(new TextDisplayBuilder($"**Attachments:**\n{attachmentsText}"));
+        }
+
+        // --- Footer & Actions ---
+        container.WithSeparator();
+        container.WithActionRow(row =>
+            row.WithButton("Jump to Message", style: ButtonStyle.Link, url: originalMessage.GetJumpUrl()));
+        container.WithTextDisplay(new TextDisplayBuilder(
+            $"Posted {TimestampTag.FormatFromDateTimeOffset(originalMessage.CreatedAt, TimestampTagStyles.Relative)}"));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
+
 
     private async Task<(bool Success, IUserMessage? Message)> ExecuteStarboardActionAsync(
         StarboardConfigModel config,
@@ -268,7 +289,7 @@ public class StarboardService
         }
 
         ChannelPermission requiredPermissions = 0;
-        if (isCreate) requiredPermissions = ChannelPermission.SendMessages | ChannelPermission.EmbedLinks;
+        if (isCreate) requiredPermissions = ChannelPermission.SendMessages;
         if (isUpdate) requiredPermissions |= ChannelPermission.SendMessages;
         if (isDelete) requiredPermissions |= ChannelPermission.ManageMessages;
 
@@ -336,14 +357,11 @@ public class StarboardService
     private async Task CreateStarboardPostAsync(IMessage originalMessage, StarredMessageModel entry,
         StarboardConfigModel config)
     {
-        var content = StarContentFormat.Replace("{emoji}", config.StarEmoji)
-            .Replace("{count}", entry.StarCount.ToString())
-            .Replace("{channelMention}", $"<#{originalMessage.Channel.Id}>");
-        var embed = CreateStarboardEmbed(originalMessage);
+        var components = BuildStarboardComponents(originalMessage, entry.StarCount, config.StarEmoji);
 
         async Task<IUserMessage?> CreateAction(ITextChannel channel) =>
-            await channel.SendMessageAsync(content, embed: embed, allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
+            await channel.SendMessageAsync(components: components, allowedMentions: AllowedMentions.None,
+                flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
 
         var (success, sentMessage) =
             await ExecuteStarboardActionAsync(config, entry, CreateAction, null!, null!, "CreateStarboardPost", true)
@@ -366,7 +384,8 @@ public class StarboardService
         }
     }
 
-    private async Task UpdateStarboardPostAsync(StarredMessageModel entry, StarboardConfigModel config)
+    private async Task UpdateStarboardPostAsync(StarredMessageModel entry, StarboardConfigModel config,
+        IMessage? originalMessage = null)
     {
         if (entry.StarboardMessageId == null) return;
 
@@ -379,6 +398,16 @@ public class StarboardService
 
         async Task UpdateAction(StarredMessageModel currentEntry, ITextChannel channel)
         {
+            var resolvedOriginalMessage = originalMessage;
+            if (resolvedOriginalMessage == null)
+                if (_client.GetChannel(currentEntry.OriginalChannelId) is ITextChannel originalChannel)
+                    resolvedOriginalMessage = await originalChannel.GetMessageAsync(currentEntry.Id.OriginalMessageId)
+                        .ConfigureAwait(false);
+                else
+                    return;
+
+            if (resolvedOriginalMessage == null) return;
+
             if (await channel.GetMessageAsync(currentEntry.StarboardMessageId!.Value).ConfigureAwait(false) is not
                 IUserMessage starboardMsg)
             {
@@ -390,17 +419,17 @@ public class StarboardService
                 throw new HttpException(HttpStatusCode.NotFound, null);
             }
 
-            var newContent = StarContentFormat.Replace("{emoji}", config.StarEmoji)
-                .Replace("{count}", currentEntry.StarCount.ToString())
-                .Replace("{channelMention}", $"<#{currentEntry.OriginalChannelId}>");
-
-            if (starboardMsg.Content != newContent)
+            var newComponents =
+                BuildStarboardComponents(resolvedOriginalMessage, currentEntry.StarCount, config.StarEmoji);
+            await starboardMsg.ModifyAsync(props =>
             {
-                await starboardMsg.ModifyAsync(props => props.Content = newContent).ConfigureAwait(false);
-                _logger.LogDebug(
-                    "[UpdateStarboardPost] Updated star count for starboard message {StarboardMessageId} in guild {GuildId} to {StarCount}",
-                    currentEntry.StarboardMessageId, config.GuildId, currentEntry.StarCount);
-            }
+                props.Content = "";
+                props.Components = newComponents;
+            }).ConfigureAwait(false);
+
+            _logger.LogDebug(
+                "[UpdateStarboardPost] Updated components for starboard message {StarboardMessageId} in guild {GuildId} to {StarCount} stars",
+                currentEntry.StarboardMessageId, config.GuildId, currentEntry.StarCount);
         }
     }
 
@@ -507,7 +536,8 @@ public class StarboardService
             entry.StarCount = entry.StarrerUserIds.Count;
             await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
 
-            if (entry.IsPosted) await UpdateStarboardPostAsync(entry, config).ConfigureAwait(false);
+            if (entry.IsPosted)
+                await UpdateStarboardPostAsync(entry, config, originalMessage).ConfigureAwait(false);
             else if (entry.StarCount >= config.Threshold)
                 await CreateStarboardPostAsync(originalMessage, entry, config).ConfigureAwait(false);
         }
@@ -551,9 +581,14 @@ public class StarboardService
             if (entry.IsPosted)
             {
                 if (entry.StarCount < config.Threshold && config.DeleteIfUnStarred)
+                {
                     await DeleteStarboardPostAsync(entry, config).ConfigureAwait(false);
+                }
                 else
-                    await UpdateStarboardPostAsync(entry, config).ConfigureAwait(false);
+                {
+                    var originalMessage = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
+                    await UpdateStarboardPostAsync(entry, config, originalMessage).ConfigureAwait(false);
+                }
             }
 
             await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);
@@ -596,9 +631,14 @@ public class StarboardService
         if (entry.IsPosted)
         {
             if (config.DeleteIfUnStarred)
+            {
                 await DeleteStarboardPostAsync(entry, config).ConfigureAwait(false);
+            }
             else
-                await UpdateStarboardPostAsync(entry, config).ConfigureAwait(false);
+            {
+                var originalMessage = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
+                await UpdateStarboardPostAsync(entry, config, originalMessage).ConfigureAwait(false);
+            }
         }
 
         await SaveStarredMessageEntryAsync(entry).ConfigureAwait(false);

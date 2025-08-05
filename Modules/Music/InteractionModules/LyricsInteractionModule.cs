@@ -80,7 +80,6 @@ public class LyricsInteractionModule(
         }
 
         var initialBestMatch = geniusSongs.First();
-        // Ensure full song details are fetched and cached if not already
         var bestMatch = await geniusLyricsService.GetSongByIdAsync(initialBestMatch.Id).ConfigureAwait(false);
 
         if (bestMatch == null)
@@ -102,49 +101,70 @@ public class LyricsInteractionModule(
         }
 
         var lyricsChunks = lyrics.SmartChunkSplitList();
+        var components = BuildLyricsPage(bestMatch, lyricsChunks, 0);
 
-        var embedColor = Color.Blue;
-        if (!string.IsNullOrEmpty(bestMatch.SongArtPrimaryColor))
-        {
-            var hexColor = bestMatch.SongArtPrimaryColor.Replace("#", "");
-            if (uint.TryParse(hexColor, NumberStyles.HexNumber, null, out var colorValue))
-                embedColor = new Color(colorValue);
-        }
-
-        var (embed, components) = BuildLyricsPage(bestMatch, lyricsChunks, 0, embedColor);
-        await FollowupAsync(embed: embed, components: components, ephemeral: false).ConfigureAwait(false);
+        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2, ephemeral: false)
+            .ConfigureAwait(false);
     }
 
-    private static (Embed Embed, MessageComponent? Components) BuildLyricsPage(GeniusSong song,
-        List<string> lyricsChunks,
-        int currentPage, Color embedColor)
+    private static MessageComponent BuildLyricsPage(GeniusSong song, IReadOnlyList<string> lyricsChunks,
+        int currentPage)
     {
         var totalPages = lyricsChunks.Count;
         currentPage = Math.Clamp(currentPage, 0, totalPages - 1);
 
-        var embed = new EmbedBuilder()
-            .WithTitle($"🎶 {song.FullTitle.Truncate(250)}")
-            .WithDescription(lyricsChunks.ElementAtOrDefault(currentPage) ?? "Lyrics page out of bounds.")
-            .WithUrl(song.Url)
-            .WithColor(embedColor)
-            .WithTimestamp(DateTimeOffset.UtcNow);
+        var accentColor = Color.Blue;
+        if (!string.IsNullOrEmpty(song.SongArtPrimaryColor))
+        {
+            var hexColor = song.SongArtPrimaryColor.Replace("#", "");
+            if (uint.TryParse(hexColor, NumberStyles.HexNumber, null, out var colorValue))
+                accentColor = new Color(colorValue);
+        }
 
-        if (!string.IsNullOrEmpty(song.SongArtImageThumbnailUrl))
-            embed.WithThumbnailUrl(song.SongArtImageThumbnailUrl);
+        var container = new ContainerBuilder()
+            .WithAccentColor(accentColor)
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# 🎶 {song.FullTitle.Truncate(250)}"));
+                section.AddComponent(new TextDisplayBuilder($"*by {song.ArtistNames}*"));
 
-        if (totalPages > 1) embed.WithFooter($"Page {currentPage + 1}/{totalPages}");
+                if (!string.IsNullOrEmpty(song.SongArtImageThumbnailUrl))
+                    section.WithAccessory(new ThumbnailBuilder
+                    {
+                        Media = new UnfurledMediaItemProperties { Url = song.SongArtImageThumbnailUrl }
+                    });
+            })
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(lyricsChunks.ElementAtOrDefault(currentPage) ??
+                                                    "Lyrics page out of bounds."));
 
-        MessageComponent? components = null;
-        if (totalPages <= 1) return (embed.Build(), components);
-        var cb = new ComponentBuilder()
-            .WithButton("Previous", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:prev", ButtonStyle.Secondary,
-                disabled: currentPage == 0)
-            .WithButton("Next", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:next", ButtonStyle.Secondary,
-                disabled: currentPage == totalPages - 1);
-        components = cb.Build();
+        if (totalPages > 1)
+        {
+            container.WithSeparator();
+            container.WithTextDisplay(new TextDisplayBuilder($"Page {currentPage + 1}/{totalPages}"));
+        }
 
-        return (embed.Build(), components);
+        var actionRow = new ActionRowBuilder();
+        var hasPagination = false;
+        if (totalPages > 1)
+        {
+            actionRow.WithButton("Previous", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:prev",
+                ButtonStyle.Secondary,
+                new Emoji("◀️"), disabled: currentPage == 0);
+            actionRow.WithButton("Next", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:next",
+                ButtonStyle.Secondary,
+                new Emoji("▶️"), disabled: currentPage == totalPages - 1);
+            hasPagination = true;
+        }
+
+        actionRow.WithButton("View on Genius", style: ButtonStyle.Link, url: song.Url);
+
+        if (hasPagination || !string.IsNullOrEmpty(song.Url))
+            container.WithActionRow(actionRow);
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
+
 
     [ComponentInteraction(LyricsPageButtonPrefix + ":*:*:*", true)]
     public async Task HandleLyricsPageButtonAsync(long songId, int currentPage, string action)
@@ -206,20 +226,12 @@ public class LyricsInteractionModule(
 
         newPage = Math.Clamp(newPage, 0, totalPages - 1);
 
-        var embedColor = Color.Blue;
-        if (!string.IsNullOrEmpty(song.SongArtPrimaryColor))
-        {
-            var hexColor = song.SongArtPrimaryColor.Replace("#", "");
-            if (uint.TryParse(hexColor, NumberStyles.HexNumber, null, out var colorValue))
-                embedColor = new Color(colorValue);
-        }
-
-        var (updatedEmbed, updatedComponents) = BuildLyricsPage(song, lyricsChunks, newPage, embedColor);
+        var updatedComponents = BuildLyricsPage(song, lyricsChunks, newPage);
 
         await ModifyOriginalResponseAsync(props =>
         {
-            props.Embed = updatedEmbed;
             props.Components = updatedComponents;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
     }
 }

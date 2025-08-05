@@ -18,6 +18,7 @@ public class GameStatsModule(
     : InteractionModuleBase<SocketInteractionContext>
 {
     private const int ResultsPerPage = 10;
+    private const string TrophyEmojiUrl = "https://em-content.zobj.net/source/twitter/376/trophy_1f3c6.png";
 
     [SlashCommand("leaderboard", "Shows the leaderboard for a game in this server.")]
     [RequireContext(ContextType.Guild)]
@@ -46,39 +47,53 @@ public class GameStatsModule(
                 return;
             }
 
-            var embed = new EmbedBuilder()
-                .WithTitle($"{gameName.CapitalizeFirstLetter()} Leaderboard - {Context.Guild.Name}")
-                .WithColor(Color.Gold)
-                .WithTimestamp(DateTimeOffset.UtcNow);
+            var container = new ContainerBuilder()
+                .WithAccentColor(Color.Gold)
+                .WithSection(section =>
+                {
+                    section.AddComponent(
+                        new TextDisplayBuilder($"# 🏆 {gameName.CapitalizeFirstLetter()} Leaderboard"));
+                    section.AddComponent(new TextDisplayBuilder($"Top players in {Context.Guild.Name}"));
+                    section.WithAccessory(new ThumbnailBuilder
+                        { Media = new UnfurledMediaItemProperties { Url = TrophyEmojiUrl } });
+                })
+                .WithSeparator();
 
-            var description = new StringBuilder();
             for (var i = 0; i < leaderboardData.Count; i++)
             {
                 var entry = leaderboardData[i];
                 var user = await client.Rest.GetUserAsync(entry.Id.UserId).ConfigureAwait(false);
                 var userName = user?.ToString() ?? $"User ID: {entry.Id.UserId}";
+                var userAvatarUrl = user?.GetDisplayAvatarUrl() ?? user?.GetDefaultAvatarUrl();
 
                 if (entry.Games.TryGetValue(gameName, out var stats))
                 {
-                    var elo = stats.Elo;
-                    var wins = stats.Wins;
-                    var losses = stats.Losses;
-                    var ties = stats.Ties;
+                    var userSection = new SectionBuilder()
+                        .AddComponent(new TextDisplayBuilder($"**{i + 1}.** {userName}"))
+                        .AddComponent(new TextDisplayBuilder(
+                            $"**Elo:** {stats.Elo:F1} (W:{stats.Wins} L:{stats.Losses} T:{stats.Ties})"));
 
-                    description.AppendLine(
-                        $"**{i + 1}.** {userName} - **Elo:** {elo:F1} (W:{wins} L:{losses} T:{ties})");
+                    if (userAvatarUrl != null)
+                        userSection.WithAccessory(new ThumbnailBuilder
+                            { Media = new UnfurledMediaItemProperties { Url = userAvatarUrl } });
+
+                    container.WithSection(userSection);
                 }
                 else
                 {
-                    description.AppendLine($"**{i + 1}.** {userName} - Error loading stats");
                     logger.LogWarning(
                         "Leaderboard entry for User {UserId} in Guild {GuildId} for Game {GameName} missing projected stats.",
                         entry.Id.UserId, guildId, gameName);
                 }
             }
 
-            embed.Description = description.ToString();
-            await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+            container
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder(
+                    $"*Generated {TimestampTag.FromDateTime(DateTime.UtcNow, TimestampTagStyles.Relative)}*"));
+
+            var components = new ComponentBuilderV2().WithContainer(container).Build();
+            await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
         }
         catch (MongoException ex)
         {
@@ -107,7 +122,6 @@ public class GameStatsModule(
         var guildId = Context.Guild.Id;
         var targetUser = user ?? Context.User;
 
-        // Validate game name if provided
         if (gameName != null &&
             !GameAutocompleteProvider.GameNames.Contains(gameName, StringComparer.OrdinalIgnoreCase))
         {
@@ -128,30 +142,40 @@ public class GameStatsModule(
             }
 
             var userColor = UserUtils.GetTopRoleColor(targetUser as SocketUser ?? Context.Guild.GetUser(targetUser.Id));
-            var embed = new EmbedBuilder()
-                .WithTitle($"Game Stats for {targetUser.Username} in {Context.Guild.Name}")
-                .WithColor(userColor == Color.Default ? Color.Blue : userColor)
-                .WithThumbnailUrl(targetUser.GetDisplayAvatarUrl() ?? targetUser.GetDefaultAvatarUrl())
-                .WithTimestamp(DateTimeOffset.UtcNow);
+            var container = new ContainerBuilder()
+                .WithAccentColor(userColor)
+                .WithSection(section =>
+                {
+                    section.AddComponent(new TextDisplayBuilder($"# Game Stats for {targetUser.Username}"));
+                    section.AddComponent(new TextDisplayBuilder($"in {Context.Guild.Name}"));
+                    section.WithAccessory(new ThumbnailBuilder
+                    {
+                        Media = new UnfurledMediaItemProperties
+                            { Url = targetUser.GetDisplayAvatarUrl() ?? targetUser.GetDefaultAvatarUrl() }
+                    });
+                });
+
+            var hasStatsToShow = false;
 
             if (!string.IsNullOrEmpty(gameName))
             {
                 if (userStatsData.Games.TryGetValue(gameName, out var stats))
                 {
-                    var elo = stats.Elo;
-                    var wins = stats.Wins;
-                    var losses = stats.Losses;
-                    var ties = stats.Ties;
                     var matches = stats.MatchesPlayed;
-                    var winRate = matches > 0 ? (double)wins / matches * 100 : 0;
+                    var winRate = matches > 0 ? (double)stats.Wins / matches * 100 : 0;
 
-                    embed.AddField(gameName.CapitalizeFirstLetter(),
-                        $"**Elo:** {elo:F1}\n" +
-                        $"**Wins:** {wins}\n" +
-                        $"**Losses:** {losses}\n" +
-                        $"**Ties:** {ties}\n" +
-                        $"**Matches:** {matches}\n" +
-                        $"**Win Rate:** {winRate:F1}%");
+                    var statsText = new StringBuilder()
+                        .AppendLine($"**Elo:** {stats.Elo:F1}")
+                        .AppendLine($"**Record:** {stats.Wins} Wins / {stats.Losses} Losses / {stats.Ties} Ties")
+                        .AppendLine($"**Total Matches:** {matches}")
+                        .AppendLine($"**Win Rate:** {winRate:F1}%")
+                        .ToString();
+
+                    container
+                        .WithSeparator()
+                        .WithTextDisplay(new TextDisplayBuilder($"## {gameName.CapitalizeFirstLetter()}"))
+                        .WithTextDisplay(new TextDisplayBuilder(statsText));
+                    hasStatsToShow = true;
                 }
                 else
                 {
@@ -165,40 +189,44 @@ public class GameStatsModule(
             {
                 var gamesPlayed = userStatsData.Games
                     .Where(kvp => GameAutocompleteProvider.GameNames.Contains(kvp.Key))
+                    .OrderBy(kvp => kvp.Key)
                     .ToList();
 
-                if (gamesPlayed.Count == 0)
+                if (gamesPlayed.Count > 0)
                 {
-                    await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.")
-                        .ConfigureAwait(false);
-                    return;
+                    container.WithSeparator();
+                    hasStatsToShow = true;
                 }
 
-                foreach (var (gName, gStats) in gamesPlayed.OrderBy(kvp => kvp.Key))
+                foreach (var (gName, gStats) in gamesPlayed)
                 {
-                    var elo = gStats.Elo;
-                    var wins = gStats.Wins;
-                    var losses = gStats.Losses;
-                    var ties = gStats.Ties;
                     var matches = gStats.MatchesPlayed;
-                    var winRate = matches > 0 ? (double)wins / matches * 100 : 0;
+                    var winRate = matches > 0 ? (double)gStats.Wins / matches * 100 : 0;
+                    var statsSummary =
+                        $"Elo: {gStats.Elo:F1} | W/L/T: {gStats.Wins}/{gStats.Losses}/{gStats.Ties} | Matches: {matches} ({winRate:F1}%)";
 
-                    embed.AddField(gName.CapitalizeFirstLetter(),
-                        $"**Elo:** {elo:F1}\n" +
-                        $"W/L/T: {wins}/{losses}/{ties}\n" +
-                        $"Matches: {matches} ({winRate:F1}%)",
-                        true);
+                    container.WithSection(section =>
+                    {
+                        section.AddComponent(new TextDisplayBuilder($"**{gName.CapitalizeFirstLetter()}**"));
+                        section.AddComponent(new TextDisplayBuilder(statsSummary));
+                    });
                 }
             }
 
-            if (embed.Fields.Count == 0)
+            if (!hasStatsToShow)
             {
                 await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.")
                     .ConfigureAwait(false);
                 return;
             }
 
-            await FollowupAsync(embed: embed.Build()).ConfigureAwait(false);
+            container
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder(
+                    $"*Stats as of {TimestampTag.FromDateTime(DateTime.UtcNow, TimestampTagStyles.Relative)}*"));
+
+            var components = new ComponentBuilderV2().WithContainer(container).Build();
+            await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
         }
         catch (MongoException ex)
         {

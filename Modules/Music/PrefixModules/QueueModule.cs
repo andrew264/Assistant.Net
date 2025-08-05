@@ -39,12 +39,12 @@ public class QueueModule(
 
         var reply = await ReplyAsync("Loading Queue...").ConfigureAwait(false);
 
-        var (embed, components, _) = musicService.BuildQueueEmbed(player, 0, reply.Id, Context.User.Id);
+        var (components, _) = musicService.BuildQueueComponents(player, 0, reply.Id, Context.User.Id);
         await reply.ModifyAsync(props =>
         {
             props.Content = "";
-            props.Embed = embed;
             props.Components = components;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
     }
 
@@ -110,16 +110,17 @@ public class QueueModule(
         }
 
         var (success, message) = await musicService.ShuffleQueueAsync(player).ConfigureAwait(false);
-        var reply = await ReplyAsync(message, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+        var reply = await ReplyAsync(message, allowedMentions: AllowedMentions.None, flags: MessageFlags.ComponentsV2)
+            .ConfigureAwait(false);
         if (success) await Context.Message.AddReactionAsync(new Emoji("🔀")).ConfigureAwait(false);
 
-        var (embed, components, _) = musicService.BuildQueueEmbed(player, 0, reply.Id, Context.User.Id);
+        var (components, _) = musicService.BuildQueueComponents(player, 0, reply.Id, Context.User.Id);
         await Task.Delay(2000).ConfigureAwait(false);
         await reply.ModifyAsync(props =>
         {
             props.Content = "";
-            props.Embed = embed;
             props.Components = components;
+            props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
     }
 

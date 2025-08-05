@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
+using Assistant.Net.Utilities;
+using Discord;
 
 namespace Assistant.Net.Modules.Voting.Logic;
 
@@ -42,7 +44,6 @@ public class EloRatingSystem
         for (var j = i + 1; j < Candidates.Count; j++)
             allPairs.Add((Candidates[i], Candidates[j]));
 
-        // Fisher-Yates shuffle
         var n = allPairs.Count;
         while (n > 1)
         {
@@ -75,41 +76,47 @@ public class EloRatingSystem
         Ratings[loser] = newLoserRating;
     }
 
-    public string GenerateSummary()
+    public MessageComponent GenerateResultsComponent()
     {
         var sortedRatings = Ratings.OrderByDescending(pair => pair.Value).ToList();
 
-        var highestRating = sortedRatings.Count > 0 ? sortedRatings.First().Value : InitialRating;
-        var lowestRating = sortedRatings.Count > 0 ? sortedRatings.Last().Value : InitialRating;
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.Gold)
+            .WithTextDisplay(new TextDisplayBuilder($"# {Title.Truncate(250)} | Final Results"))
+            .WithTextDisplay(new TextDisplayBuilder($"Poll by <@{CreatorId}>"))
+            .WithSeparator();
 
-        var highestRatedCandidates = sortedRatings
-            .Where(pair => Math.Abs(pair.Value - highestRating) < 0.01)
-            .Select(pair => pair.Key)
-            .ToList();
+        if (sortedRatings.Count > 0)
+        {
+            var highestRating = sortedRatings.First().Value;
+            var winners = sortedRatings
+                .Where(pair => Math.Abs(pair.Value - highestRating) < 0.01)
+                .Select(pair => pair.Key)
+                .ToList();
 
-        var lowestRatedCandidates = sortedRatings
-            .Where(pair => Math.Abs(pair.Value - lowestRating) < 0.01)
-            .Select(pair => pair.Key)
-            .ToList();
+            var insights = new StringBuilder();
+            insights.AppendLine($"🏆 **Winner{(winners.Count > 1 ? "s" : "")}:** {string.Join(", ", winners)}");
+            insights.AppendLine($"⭐ **Highest Rating:** {highestRating:F2}");
+            insights.AppendLine($"👥 **Total Voters:** {Voters.Count}");
+            container.WithTextDisplay(new TextDisplayBuilder(insights.ToString()));
+            container.WithSeparator();
+        }
 
-        var summary = new StringBuilder();
-        summary.AppendLine($"# {Title} | Results (Poll by <@{CreatorId}>)");
-        summary.AppendLine();
+        container.WithTextDisplay(new TextDisplayBuilder("## 📈 Final Elo Ratings"));
 
-        summary.AppendLine("## Insights");
-        summary.AppendLine($"- **Highest Rating**: {highestRating:F2} ({string.Join(", ", highestRatedCandidates)})");
-        summary.AppendLine($"- **Lowest Rating**: {lowestRating:F2} ({string.Join(", ", lowestRatedCandidates)})");
-        summary.AppendLine($"- **Total Votes Cast**: {Voters.Count}");
-        summary.AppendLine();
-
-        summary.AppendLine("## Final Elo Ratings");
+        var rankings = new StringBuilder();
         if (sortedRatings.Count == 0)
-            summary.AppendLine("No ratings available.");
+            rankings.AppendLine("No ratings available.");
         else
-            foreach (var (candidate, rating) in sortedRatings)
-                summary.AppendLine($"- **{candidate}**: {rating:F2}");
+            for (var i = 0; i < sortedRatings.Count; i++)
+            {
+                var (candidate, rating) = sortedRatings[i];
+                rankings.AppendLine($"{i + 1}. **{candidate}**: {rating:F2}");
+            }
 
-        return summary.ToString();
+        container.WithTextDisplay(new TextDisplayBuilder(rankings.ToString()));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
     public static string EncodeCandidate(string candidate) =>

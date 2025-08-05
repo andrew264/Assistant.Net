@@ -1,17 +1,16 @@
+using System.Text;
+using Assistant.Net.Models.UrbanDictionary;
 using Assistant.Net.Services.ExternalApis;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;
-using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Misc.PrefixModules;
 
-public class DictionaryModule(
-    UrbanDictionaryService urbanService,
-    ILogger<DictionaryModule> logger)
+public class DictionaryModule(UrbanDictionaryService urbanService)
     : ModuleBase<SocketCommandContext>
 {
-    private readonly Random _random = new();
+    private const string CustomIdPrefix = "assistant:ud_page";
 
     [Command("define", RunMode = RunMode.Async)]
     [Alias("def", "dictionary", "dict")]
@@ -20,9 +19,9 @@ public class DictionaryModule(
     {
         var results = await urbanService.GetDefinitionsAsync(word).ConfigureAwait(false);
 
-        if (results == null) // Error
+        if (results == null)
         {
-            await ReplyAsync("Sorry, I couldn't fetch the definition due to an error.",
+            await ReplyAsync("Sorry, I couldn't fetch the definition due to an API error.",
                 allowedMentions: AllowedMentions.None).ConfigureAwait(false);
             return;
         }
@@ -36,42 +35,57 @@ public class DictionaryModule(
             return;
         }
 
-        // Select random
-        var topResults = results.Take(5).ToList();
-        var selectedEntry = topResults[_random.Next(topResults.Count)];
-        var markdown = selectedEntry.Markdown;
+        var responseComponent = BuildDefinitionResponse(results, 0, Context.User.Id, word ?? "_RANDOM_");
 
-        await SendDefinitionResponseAsync(Context, markdown).ConfigureAwait(false);
+        await ReplyAsync(components: responseComponent, flags: MessageFlags.ComponentsV2,
+            allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
-    private async Task SendDefinitionResponseAsync(SocketCommandContext context, string markdown)
+    private static MessageComponent BuildDefinitionResponse(IReadOnlyList<UrbanDictionaryEntry> results, int pageIndex,
+        ulong requesterId, string searchTerm)
     {
-        const int maxLen = DiscordConfig.MaxMessageSize;
+        var totalPages = results.Count;
+        var currentPage = Math.Clamp(pageIndex, 0, totalPages - 1);
+        var entry = results[currentPage];
 
-        if (markdown.Length <= maxLen)
-        {
-            await context.Message.ReplyAsync(markdown, allowedMentions: AllowedMentions.None,
-                flags: MessageFlags.SuppressEmbeds).ConfigureAwait(false);
-        }
-        else
-        {
-            logger.LogInformation(
-                "Definition exceeds {MaxLength} characters, attempting to split and send (prefix command).", maxLen);
-            var parts = markdown.SmartChunkSplitList();
-
-            // Send first part via reply
-            var lastMessage = await context.Message.ReplyAsync(parts[0], allowedMentions: AllowedMentions.None,
-                flags: MessageFlags.SuppressEmbeds).ConfigureAwait(false);
-
-            for (var i = 1; i < parts.Count; i++)
+        var container = new ContainerBuilder()
+            .WithSection(section =>
             {
-                await Task.Delay(250).ConfigureAwait(false);
-                lastMessage = await lastMessage.ReplyAsync(
-                    parts[i],
-                    allowedMentions: AllowedMentions.None,
-                    flags: MessageFlags.SuppressEmbeds
-                ).ConfigureAwait(false);
-            }
-        }
+                section.AddComponent(new TextDisplayBuilder($"# {entry.Word}"));
+                section.AddComponent(new TextDisplayBuilder($"*by {entry.Author}*"));
+                section.WithAccessory(new ButtonBuilder("View on UD", style: ButtonStyle.Link, url: entry.Permalink));
+            })
+            .WithSeparator();
+
+        container.WithTextDisplay(new TextDisplayBuilder(entry.FormattedDefinition.Truncate(1024)));
+
+        if (!string.IsNullOrWhiteSpace(entry.FormattedExample))
+            container
+                .WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder(
+                    $"*Example:*\n{entry.FormattedExample.Truncate(1024)}"));
+
+        container
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder($"{entry.ThumbsUp} 👍  •  {entry.ThumbsDown} 👎"));
+
+        if (totalPages <= 1) return new ComponentBuilderV2().WithContainer(container).Build();
+        var encodedSearchTerm =
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(searchTerm)).Replace('+', '-').Replace('/', '_');
+
+        var footerText = $"Definition {currentPage + 1} of {totalPages}";
+        container.WithTextDisplay(new TextDisplayBuilder(footerText));
+
+        container.WithActionRow(row =>
+        {
+            row.WithButton("Previous",
+                $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:prev",
+                ButtonStyle.Secondary, disabled: currentPage == 0);
+            row.WithButton("Next",
+                $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:next",
+                ButtonStyle.Secondary, disabled: currentPage == totalPages - 1);
+        });
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
     }
 }
