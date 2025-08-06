@@ -186,13 +186,12 @@ public class StarboardService
         var container = new ContainerBuilder()
             .WithAccentColor(Color.Gold);
 
-        // --- Header Section ---
+        // --- Header Section with Author and Content ---
+        var hasContent = !string.IsNullOrWhiteSpace(originalMessage.Content);
         container.WithSection(section =>
         {
-            section.AddComponent(
-                new TextDisplayBuilder($"## {starEmoji} {starCount} Star{(starCount == 1 ? "" : "s")}"));
-            section.AddComponent(new TextDisplayBuilder(
-                $"by {originalMessage.Author.Mention} in {MentionUtils.MentionChannel(originalMessage.Channel.Id)}"));
+            section.AddComponent(new TextDisplayBuilder($"## {originalMessage.Author.Mention}"));
+            if (hasContent) section.AddComponent(new TextDisplayBuilder(originalMessage.Content));
             section.WithAccessory(new ThumbnailBuilder
             {
                 Media = new UnfurledMediaItemProperties
@@ -201,15 +200,12 @@ public class StarboardService
                 }
             });
         });
-        container.WithSeparator();
 
-        // --- Content Section ---
-        if (!string.IsNullOrWhiteSpace(originalMessage.Content))
-            container.WithTextDisplay(new TextDisplayBuilder(originalMessage.Content));
-
+        // --- Attachments ---
         var imageUrls = new List<string>();
         var otherAttachments = new List<IAttachment>();
 
+        // Collect images from embeds and attachments
         foreach (var embed in originalMessage.Embeds)
             if (embed.Image.HasValue)
                 imageUrls.Add(embed.Image.Value.Url);
@@ -221,22 +217,29 @@ public class StarboardService
             else
                 otherAttachments.Add(attachment);
 
-        if (imageUrls.Any())
-            container.WithMediaGallery(imageUrls);
+        var hasImages = imageUrls.Count != 0;
+        var hasOtherAttachments = otherAttachments.Count != 0;
 
-        if (otherAttachments.Any())
+        if (hasImages) container.WithMediaGallery(imageUrls);
+
+        if (hasOtherAttachments)
         {
             var attachmentsText = string.Join("\n",
                 otherAttachments.Select(a => $"📄 [{a.Filename}]({a.Url})"));
             container.WithTextDisplay(new TextDisplayBuilder($"**Attachments:**\n{attachmentsText}"));
         }
 
-        // --- Footer & Actions ---
+        // --- Metadata and Footer Section ---
         container.WithSeparator();
+
+        // Star count, channel name, and timestamp are secondary
+        var starText = $"{starEmoji} **{starCount}** in {MentionUtils.MentionChannel(originalMessage.Channel.Id)}";
+        var timeText =
+            $"{TimestampTag.FormatFromDateTimeOffset(originalMessage.CreatedAt, TimestampTagStyles.Relative)}";
+        container.WithTextDisplay(new TextDisplayBuilder($"{starText}  •  {timeText}"));
+
         container.WithActionRow(row =>
             row.WithButton("Jump to Message", style: ButtonStyle.Link, url: originalMessage.GetJumpUrl()));
-        container.WithTextDisplay(new TextDisplayBuilder(
-            $"Posted {TimestampTag.FormatFromDateTimeOffset(originalMessage.CreatedAt, TimestampTagStyles.Relative)}"));
 
         return new ComponentBuilderV2().WithContainer(container).Build();
     }

@@ -117,7 +117,7 @@ public record LoggingGuildConfig
 
 public record MusicConfig
 {
-    public int MaxHistorySize { get; init; } = 100;
+    public int MaxHistorySize { get; init; } = 500;
     public float DefaultVolume { get; init; } = 0.30f; // 30%
     public int MaxPlayerVolumePercent { get; init; } = 100; // 100%
     public float TitleSimilarityCutoff { get; init; } = 0.80f; // 80%

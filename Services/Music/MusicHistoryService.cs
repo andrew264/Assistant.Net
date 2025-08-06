@@ -105,7 +105,7 @@ public class MusicHistoryService
         {
             var filter = Builders<GuildMusicSettingsModel>.Filter.Eq(x => x.GuildId, guildId);
             var update = Builders<GuildMusicSettingsModel>.Update
-                .PushEach("songs", [songEntry], -_musicConfig.MaxHistorySize, 0)
+                .PushEach("songs", [songEntry], _musicConfig.MaxHistorySize, 0)
                 .SetOnInsert(x => x.GuildId, guildId) // Ensure GuildId is set on insert
                 .SetOnInsert(x => x.Volume, _musicConfig.DefaultVolume) // Set default volume on insert
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
@@ -131,7 +131,7 @@ public class MusicHistoryService
         var settings = await GetOrAddSettingsAsync(guildId).ConfigureAwait(false);
         if (settings.Songs.Count == 0) return [];
 
-        var jaroWinkler = new JaroWinkler();
+        var jaroWinkler = new JaroWinkler(0.4);
         var lowerSearchTerm = searchTerm.ToLowerInvariant();
 
         var matchedSongs = new List<(SongHistoryEntry Song, double Score)>();

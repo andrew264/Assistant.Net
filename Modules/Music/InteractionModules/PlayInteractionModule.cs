@@ -23,14 +23,15 @@ public class PlayInteractionModule(
         MessageComponent? components = null,
         AllowedMentions? allowedMentions = null)
     {
+        var flags = components is not null ? MessageFlags.ComponentsV2 : MessageFlags.None;
+        var content = components is not null ? null : text;
+
         if (Context.Interaction.HasResponded)
-            await FollowupAsync(text, ephemeral: ephemeral,
-                components: components, allowedMentions: allowedMentions ?? AllowedMentions.None,
-                flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+            await FollowupAsync(content, ephemeral: ephemeral, components: components,
+                allowedMentions: allowedMentions ?? AllowedMentions.None, flags: flags).ConfigureAwait(false);
         else
-            await RespondAsync(text, ephemeral: ephemeral, components: components,
-                    allowedMentions: allowedMentions ?? AllowedMentions.None, flags: MessageFlags.ComponentsV2)
-                .ConfigureAwait(false);
+            await RespondAsync(content, ephemeral: ephemeral, components: components,
+                allowedMentions: allowedMentions ?? AllowedMentions.None, flags: flags).ConfigureAwait(false);
     }
 
     private async Task HandleSearchResultsUi(IReadOnlyList<LavalinkTrack> tracks, string originalQuery)

@@ -36,12 +36,15 @@ public abstract class MusicInteractionModuleBase(MusicService musicService, ILog
         var effectiveEphemeral = ephemeral || isError;
         var finalAllowedMentions = allowedMentions ?? AllowedMentions.None;
 
+        var flags = components is not null ? MessageFlags.ComponentsV2 : MessageFlags.None;
+        var content = components is not null ? null : text;
+
         if (Context.Interaction.HasResponded)
-            await FollowupAsync(text, ephemeral: effectiveEphemeral, components: components,
-                allowedMentions: finalAllowedMentions, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+            await FollowupAsync(content, ephemeral: effectiveEphemeral, components: components,
+                allowedMentions: finalAllowedMentions, flags: flags).ConfigureAwait(false);
         else
-            await RespondAsync(text, ephemeral: effectiveEphemeral, components: components,
-                allowedMentions: finalAllowedMentions, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+            await RespondAsync(content, ephemeral: effectiveEphemeral, components: components,
+                allowedMentions: finalAllowedMentions, flags: flags).ConfigureAwait(false);
     }
 
     private async Task RespondOrFollowupErrorAsync(string errorMessage)
