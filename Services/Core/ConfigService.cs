@@ -44,7 +44,7 @@ public class ConfigService
                 throw new InvalidOperationException("Bot token is missing in config.yaml.");
             }
 
-            if (config.Client.OwnerId == null || config.Client.OwnerId == 0)
+            if (config.Client.OwnerId is null or 0)
                 _logger.LogWarning("OwnerId is missing or zero in the configuration.");
             // Depending on requirements, you might throw or just warn
 

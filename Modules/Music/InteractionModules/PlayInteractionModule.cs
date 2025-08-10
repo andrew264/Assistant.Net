@@ -1,6 +1,6 @@
 using Assistant.Net.Models.Music;
 using Assistant.Net.Modules.Music.Autocomplete;
-using Assistant.Net.Modules.Music.Logic;
+using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
@@ -9,31 +9,14 @@ using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Tracks;
+using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Music.InteractionModules;
 
 [CommandContextType(InteractionContextType.Guild)]
-public class PlayInteractionModule(
-    MusicService musicService
-) : InteractionModuleBase<SocketInteractionContext>
+public class PlayInteractionModule(MusicService musicService, ILogger<PlayInteractionModule> logger)
+    : MusicInteractionModuleBase(musicService, logger)
 {
-    private async Task RespondOrFollowupAsync(
-        string? text = null,
-        bool ephemeral = false,
-        MessageComponent? components = null,
-        AllowedMentions? allowedMentions = null)
-    {
-        var flags = components is not null ? MessageFlags.ComponentsV2 : MessageFlags.None;
-        var content = components is not null ? null : text;
-
-        if (Context.Interaction.HasResponded)
-            await FollowupAsync(content, ephemeral: ephemeral, components: components,
-                allowedMentions: allowedMentions ?? AllowedMentions.None, flags: flags).ConfigureAwait(false);
-        else
-            await RespondAsync(content, ephemeral: ephemeral, components: components,
-                allowedMentions: allowedMentions ?? AllowedMentions.None, flags: flags).ConfigureAwait(false);
-    }
-
     private async Task HandleSearchResultsUi(IReadOnlyList<LavalinkTrack> tracks, string originalQuery)
     {
         var topTracks = tracks.Take(5).ToList();
@@ -86,42 +69,22 @@ public class PlayInteractionModule(
     {
         await DeferAsync().ConfigureAwait(false);
 
-        if (Context.User is not IGuildUser guildUser)
-        {
-            await RespondOrFollowupAsync("You must be in a guild to use this command.", true).ConfigureAwait(false);
-            return;
-        }
-
-        if (Context.Channel is not ITextChannel textChannel)
-        {
-            await RespondOrFollowupAsync("This command must be used in a text channel.", true).ConfigureAwait(false);
-            return;
-        }
-
         var connectToVoice = !string.IsNullOrWhiteSpace(query);
-        var (player, retrieveStatus) = await musicService.GetPlayerAsync(
-            Context.Guild.Id,
-            guildUser.VoiceChannel?.Id,
-            textChannel,
+        var (player, isError) = await GetVerifiedPlayerAsync(
             connectToVoice ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
             connectToVoice ? MemberVoiceStateBehavior.RequireSame : MemberVoiceStateBehavior.Ignore
         ).ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await RespondOrFollowupAsync(errorMessage, true).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
         if (string.IsNullOrWhiteSpace(query)) // No query means pause/resume
         {
-            var (success, message) = await musicService.PauseOrResumeAsync(player, Context.User).ConfigureAwait(false);
+            var (success, message) = await MusicService.PauseOrResumeAsync(player, Context.User).ConfigureAwait(false);
             await RespondOrFollowupAsync(message, !success).ConfigureAwait(false);
             return;
         }
 
-        var loadResult = await musicService.LoadAndQueueTrackAsync(player, query, Context.User).ConfigureAwait(false);
+        var loadResult = await MusicService.LoadAndQueueTrackAsync(player, query, Context.User).ConfigureAwait(false);
 
         switch (loadResult.Status)
         {
@@ -129,13 +92,13 @@ public class PlayInteractionModule(
                 await RespondOrFollowupAsync(
                         $"Added to queue: {loadResult.LoadedTrack!.Title.AsMarkdownLink(loadResult.LoadedTrack.Uri?.ToString())}")
                     .ConfigureAwait(false);
-                await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
+                await MusicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.PlaylistLoaded:
                 await RespondOrFollowupAsync(
                         $"Added {loadResult.Tracks.Count} tracks from playlist '{loadResult.PlaylistInformation!.Name.AsMarkdownLink(loadResult.OriginalQuery)}' to queue.")
                     .ConfigureAwait(false);
-                await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
+                await MusicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
                 break;
             case TrackLoadStatus.SearchResults:
                 await HandleSearchResultsUi(loadResult.Tracks, loadResult.OriginalQuery).ConfigureAwait(false);
@@ -164,28 +127,14 @@ public class PlayInteractionModule(
 
         await DeferAsync().ConfigureAwait(false);
 
-        if (Context.User is not IGuildUser guildUser || Context.Channel is not ITextChannel textChannel)
-        {
-            await FollowupAsync("Error: Could not verify your context.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        var (player, retrieveStatus) = await musicService.GetPlayerAsync(
-            Context.Guild.Id,
-            guildUser.VoiceChannel?.Id,
-            textChannel,
+        var (player, isError) = await GetVerifiedPlayerAsync(
             PlayerChannelBehavior.Join,
             MemberVoiceStateBehavior.RequireSame
         ).ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await FollowupAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
-        var track = await musicService.GetTrackFromSearchSelectionAsync(uri).ConfigureAwait(false);
+        var track = await MusicService.GetTrackFromSearchSelectionAsync(uri).ConfigureAwait(false);
 
         if (track is not null)
         {
@@ -200,7 +149,7 @@ public class PlayInteractionModule(
 
             await ModifyOriginalResponseAsync(props => { props.Components = components; }).ConfigureAwait(false);
 
-            await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
+            await MusicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
         }
         else
         {

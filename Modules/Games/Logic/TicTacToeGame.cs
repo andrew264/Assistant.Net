@@ -153,15 +153,14 @@ public class TicTacToeGame
             if (botMarker == PlayerMarker.O) // Bot is O (Maximizing)
             {
                 if (score <= bestScore) continue;
-                bestScore = score;
-                bestMove = move;
             }
             else // Bot is X (Minimizing)
             {
                 if (score >= bestScore) continue;
-                bestScore = score;
-                bestMove = move;
             }
+
+            bestScore = score;
+            bestMove = move;
         }
 
         switch (bestMove)
@@ -180,7 +179,7 @@ public class TicTacToeGame
         return bestMove;
     }
 
-    private int RunMinimax(PlayerMarker[,] currentBoard, int currentMovesMade, PlayerMarker playerToSimulate)
+    private static int RunMinimax(PlayerMarker[,] currentBoard, int currentMovesMade, PlayerMarker playerToSimulate)
     {
         var winner = CheckWinnerOnBoard(currentBoard);
         if (winner != PlayerMarker.None) return (int)winner;
@@ -204,7 +203,7 @@ public class TicTacToeGame
 
     private List<(int row, int col)> GetEmptyCells() => GetEmptyCells(Board);
 
-    private List<(int row, int col)> GetEmptyCells(PlayerMarker[,] boardState)
+    private static List<(int row, int col)> GetEmptyCells(PlayerMarker[,] boardState)
     {
         var cells = new List<(int row, int col)>();
         for (var i = 0; i < BoardSize; i++)

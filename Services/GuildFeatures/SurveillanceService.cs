@@ -77,7 +77,7 @@ public class SurveillanceService
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private static MessageComponent BuildMessageDeletedComponent(IMessage message, IGuildChannel guildChannel)
+    private static MessageComponent BuildMessageDeletedComponent(IMessage message, SocketGuildChannel guildChannel)
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.Red)
@@ -111,7 +111,7 @@ public class SurveillanceService
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private static MessageComponent BuildNicknameChangeComponent(IGuildUser before, IGuildUser after)
+    private static MessageComponent BuildNicknameChangeComponent(SocketGuildUser before, SocketGuildUser after)
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.LightOrange)
@@ -135,7 +135,7 @@ public class SurveillanceService
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private static MessageComponent BuildUserProfileUpdateComponent(IUser before, IUser after)
+    private static MessageComponent BuildUserProfileUpdateComponent(SocketUser before, SocketUser after)
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.Blue)
@@ -170,7 +170,7 @@ public class SurveillanceService
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private static MessageComponent BuildVoiceStateUpdateComponent(IGuildUser member, string actionDescription)
+    private static MessageComponent BuildVoiceStateUpdateComponent(SocketGuildUser member, string actionDescription)
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.DarkGreen)
@@ -193,7 +193,7 @@ public class SurveillanceService
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private static MessageComponent BuildGuildEventComponent(IGuildUser user, string title, Color color)
+    private static MessageComponent BuildGuildEventComponent(SocketGuildUser user, string title, Color color)
     {
         var container = new ContainerBuilder()
             .WithAccentColor(color)
@@ -220,7 +220,7 @@ public class SurveillanceService
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private static MessageComponent BuildBanEventComponent(IUser user, string banReason)
+    private static MessageComponent BuildBanEventComponent(SocketUser user, string banReason)
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.DarkRed)
@@ -243,7 +243,7 @@ public class SurveillanceService
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private static MessageComponent BuildUnbanEventComponent(IUser user)
+    private static MessageComponent BuildUnbanEventComponent(SocketUser user)
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.DarkGreen)

@@ -2,7 +2,7 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Assistant.Net.Models.Reminder;
 
-public class CounterModel
+public abstract class CounterModel
 {
     [BsonId] public string Id { get; set; } = null!;
 

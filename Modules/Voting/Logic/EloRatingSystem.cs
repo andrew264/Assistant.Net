@@ -24,11 +24,11 @@ public class EloRatingSystem
         foreach (var candidate in Candidates) Ratings.TryAdd(candidate, InitialRating);
     }
 
-    public ConcurrentDictionary<string, double> Ratings { get; } = new();
-    public HashSet<ulong> Voters { get; } = [];
+    private ConcurrentDictionary<string, double> Ratings { get; } = new();
+    private HashSet<ulong> Voters { get; } = [];
     public ulong CreatorId { get; }
     public string Title { get; }
-    public List<string> Candidates { get; }
+    private List<string> Candidates { get; }
 
     public void AddVoter(ulong userId)
     {

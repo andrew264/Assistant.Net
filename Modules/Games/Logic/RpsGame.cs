@@ -53,7 +53,7 @@ public class RpsGame
         return true;
     }
 
-    public IUser? GetWinner()
+    private IUser? GetWinner()
     {
         if (!BothPlayersChosen) return null;
 
@@ -79,9 +79,7 @@ public class RpsGame
         if (!BothPlayersChosen) return "Waiting for players...";
 
         var winner = GetWinner();
-        if (winner != null)
-            return $"{winner.Mention} wins!";
-        return "It's a tie!";
+        return winner != null ? $"{winner.Mention} wins!" : "It's a tie!";
     }
 
     public async Task RecordStatsIfApplicable(ulong guildId)

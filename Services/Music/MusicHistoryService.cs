@@ -35,7 +35,7 @@ public class MusicHistoryService
         _logger.LogInformation("MusicHistoryService initialized.");
     }
 
-    private async Task EnsureIndexesAsync()
+    private static async Task EnsureIndexesAsync()
     {
         // If specific queries on song properties become frequent, consider indexing `songs.uri` or `songs.title`.
 
@@ -179,7 +179,7 @@ public class MusicHistoryService
             var update = Builders<GuildMusicSettingsModel>.Update
                 .Set(x => x.Volume, clampedVolume)
                 .SetOnInsert(x => x.GuildId, guildId)
-                .SetOnInsert(x => x.Songs, new List<SongHistoryEntry>())
+                .SetOnInsert(x => x.Songs, [])
                 .Set(x => x.UpdatedAt, DateTime.UtcNow);
 
 

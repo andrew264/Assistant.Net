@@ -7,9 +7,9 @@ namespace Assistant.Net.Utilities.Filters;
 
 public static class FilterUiBuilder
 {
-    public const string BassBoostCustomIdPrefix = "filters:bb";
-    public const string TrebleBoostCustomIdPrefix = "filters:tb";
-    public const string TimescaleCustomIdPrefix = "filters:ts";
+    private const string BassBoostCustomIdPrefix = "assistant:filters:bb";
+    private const string TrebleBoostCustomIdPrefix = "assistant:filters:tb";
+    private const string TimescaleCustomIdPrefix = "assistant:filters:ts";
 
     // --- EQ Presets ---
     private static readonly Equalizer EqOffPreset = new();
@@ -77,21 +77,18 @@ public static class FilterUiBuilder
     public static MessageComponent BuildNightcoreConfirmation(bool enabled) => new ComponentBuilderV2()
         .WithContainer(container =>
         {
-            container.WithTextDisplay(new TextDisplayBuilder(enabled
-                ? "**✨ Nightcore Filter Enabled**"
-                : "**Nightcore Filter Disabled**"));
-            container.WithTextDisplay(new TextDisplayBuilder(enabled
-                ? "Playback speed and pitch increased!"
-                : "Nightcore effect removed."));
+            container.WithTextDisplay(
+                new TextDisplayBuilder(enabled ? "**✨ Nightcore Filter Enabled**" : "**Nightcore Filter Disabled**"));
+            container.WithTextDisplay(
+                new TextDisplayBuilder(enabled ? "Playback speed and pitch increased!" : "Nightcore effect removed."));
         }).Build();
 
 
     public static MessageComponent BuildVaporwaveConfirmation(bool enabled) => new ComponentBuilderV2()
         .WithContainer(container =>
         {
-            container.WithTextDisplay(new TextDisplayBuilder(enabled
-                ? "**🌴 Vaporwave Filter Enabled**"
-                : "**Vaporwave Filter Disabled**"));
+            container.WithTextDisplay(
+                new TextDisplayBuilder(enabled ? "**🌴 Vaporwave Filter Enabled**" : "**Vaporwave Filter Disabled**"));
             container.WithTextDisplay(new TextDisplayBuilder(enabled
                 ? "Slower pitch, reverb, and tremolo activated."
                 : "Vaporwave aesthetic deactivated."));
@@ -100,12 +97,12 @@ public static class FilterUiBuilder
     public static MessageComponent Build8DConfirmation(bool enabled) => new ComponentBuilderV2()
         .WithContainer(container =>
         {
-            container.WithTextDisplay(new TextDisplayBuilder(enabled
-                ? "**🎧 8D Audio Enabled**"
-                : "**8D Audio Disabled**"));
-            container.WithTextDisplay(new TextDisplayBuilder(enabled
-                ? "Enjoy the surround sound experience!"
-                : "8D audio effect turned off."));
+            container.WithTextDisplay(
+                new TextDisplayBuilder(enabled ? "**🎧 8D Audio Enabled**" : "**8D Audio Disabled**"));
+            container.WithTextDisplay(
+                new TextDisplayBuilder(enabled
+                    ? "Enjoy the surround sound experience!"
+                    : "8D audio effect turned off."));
         }).Build();
 
     public static MessageComponent BuildResetConfirmation() => new ComponentBuilderV2()
@@ -184,13 +181,11 @@ public static class FilterUiBuilder
         var pitch = tsOptions?.Pitch.GetValueOrDefault(1.0f) ?? 1.0f;
         var rate = tsOptions?.Rate.GetValueOrDefault(1.0f) ?? 1.0f;
 
-        string ButtonId(string action) =>
-            $"{TimescaleCustomIdPrefix}:{action}:{requesterId}:{currentButtonStep.ToString("0.0#", CultureInfo.InvariantCulture)}";
-
         var container = new ContainerBuilder()
             .WithTextDisplay(new TextDisplayBuilder("**⏱️ Timescale Controls**"))
-            .WithTextDisplay(new TextDisplayBuilder(
-                $"`Speed: {speed * 100:F0}%` `Pitch: {pitch * 100:F0}%` `Rate: {rate * 100:F0}%`"))
+            .WithTextDisplay(
+                new TextDisplayBuilder(
+                    $"`Speed: {speed * 100:F0}%` `Pitch: {pitch * 100:F0}%` `Rate: {rate * 100:F0}%`"))
             .WithSeparator()
             .WithActionRow(new ActionRowBuilder()
                 .WithButton("Speed ⬇️", ButtonId("speed_down"), ButtonStyle.Danger, disabled: speed <= 0.51f)
@@ -223,6 +218,9 @@ public static class FilterUiBuilder
         );
 
         return new ComponentBuilderV2().WithContainer(container).Build();
+
+        string ButtonId(string action) =>
+            $"{TimescaleCustomIdPrefix}:{action}:{requesterId}:{currentButtonStep.ToString("0.0#", CultureInfo.InvariantCulture)}";
     }
 
     public static Equalizer GetBassBoostEqualizer(string level) => level.ToLowerInvariant() switch

@@ -3,12 +3,13 @@ using System.Text;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Models.Playlist;
 using Assistant.Net.Modules.Music.Autocomplete;
-using Assistant.Net.Modules.Music.Logic;
+using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Modules.Music.Logic.Player;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
@@ -24,8 +25,7 @@ public class PlaylistInteractionModule(
     PlaylistService playlistService,
     MusicService musicService,
     IAudioService audioService,
-    ILogger<PlaylistInteractionModule> logger)
-    : InteractionModuleBase<SocketInteractionContext>
+    ILogger<PlaylistInteractionModule> logger) : MusicInteractionModuleBase(musicService, logger)
 {
     private const int SongsPerPage = 10;
     private static readonly ConcurrentDictionary<ulong, IUserMessage> ActiveShowViews = new();
@@ -71,8 +71,8 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var confirmId = $"playlist:delete_confirm:{Context.User.Id}:{name}";
-        var cancelId = $"playlist:delete_cancel:{Context.User.Id}:{name}";
+        var confirmId = $"assistant:playlist:delete_confirm:{Context.User.Id}:{name}";
+        var cancelId = $"assistant:playlist:delete_cancel:{Context.User.Id}:{name}";
 
         var container = new ContainerBuilder()
             .WithAccentColor(Color.Red)
@@ -90,7 +90,7 @@ public class PlaylistInteractionModule(
             .ConfigureAwait(false);
     }
 
-    [ComponentInteraction("playlist:delete_confirm:*:*", true)]
+    [ComponentInteraction("assistant:playlist:delete_confirm:*:*", true)]
     public async Task HandleDeleteConfirm(ulong userId, string playlistName)
     {
         if (Context.User.Id != userId)
@@ -105,24 +105,22 @@ public class PlaylistInteractionModule(
 
         var container = new ContainerBuilder();
         if (success)
-            container
-                .WithTextDisplay(new TextDisplayBuilder($"✅ Playlist **'{playlistName}'** has been deleted."));
+            container.WithTextDisplay(new TextDisplayBuilder($"✅ Playlist **'{playlistName}'** has been deleted."));
         else
-            container.WithAccentColor(Color.Red)
-                .WithTextDisplay(
-                    new TextDisplayBuilder(
-                        $"❌ Failed to delete **'{playlistName}'**. It might have been deleted already."));
+            container.WithAccentColor(Color.Red).WithTextDisplay(
+                new TextDisplayBuilder(
+                    $"❌ Failed to delete **'{playlistName}'**. It might have been deleted already."));
 
         var components = new ComponentBuilderV2().WithContainer(container).Build();
         await ModifyOriginalResponseAsync(props =>
         {
-            props.Content = ""; // Clear original text content
+            props.Content = "";
             props.Components = components;
             props.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
     }
 
-    [ComponentInteraction("playlist:delete_cancel:*:*", true)]
+    [ComponentInteraction("assistant:playlist:delete_cancel:*:*", true)]
     public async Task HandleDeleteCancel(ulong userId, string playlistName)
     {
         if (Context.User.Id != userId)
@@ -154,30 +152,24 @@ public class PlaylistInteractionModule(
     {
         await DeferAsync().ConfigureAwait(false);
 
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
+        var (player, isError) = await GetVerifiedPlayerAsync(
             !string.IsNullOrWhiteSpace(query) ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
             MemberVoiceStateBehavior.RequireSame // User must be in a VC to add songs
         ).ConfigureAwait(false);
 
-        switch (player)
+        if (isError || player is null)
         {
-            case null when !string.IsNullOrWhiteSpace(query):
-                await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true)
-                    .ConfigureAwait(false);
-                return;
-            case null when string.IsNullOrWhiteSpace(query):
-                await FollowupAsync("I'm not connected to a voice channel to get the current song.", ephemeral: true)
-                    .ConfigureAwait(false);
-                return;
+            if (string.IsNullOrWhiteSpace(query) && !isError)
+                await RespondOrFollowupAsync("I'm not connected to a voice channel to get the current song.",
+                    isError: true).ConfigureAwait(false);
+            return;
         }
-
 
         var songsToAdd = new List<SongModel>();
 
         if (!string.IsNullOrWhiteSpace(query))
         {
-            var loadResult = await musicService.LoadAndQueueTrackAsync(player!, query, Context.User)
+            var loadResult = await MusicService.LoadAndQueueTrackAsync(player, query, Context.User)
                 .ConfigureAwait(false);
 
             if (loadResult.Status == TrackLoadStatus.LoadFailed || loadResult.Status == TrackLoadStatus.NoMatches ||
@@ -198,7 +190,7 @@ public class PlaylistInteractionModule(
                 Source = track.SourceName ?? "other"
             }));
         }
-        else if (player?.CurrentTrack != null)
+        else if (player.CurrentTrack != null)
         {
             var currentTrack = player.CurrentTrack;
             songsToAdd.Add(new SongModel
@@ -253,9 +245,9 @@ public class PlaylistInteractionModule(
         int position)
     {
         await DeferAsync().ConfigureAwait(false);
-        var (success, message, removedSong) =
-            await playlistService.RemoveSongFromPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName,
-                position).ConfigureAwait(false);
+        var (success, message, removedSong) = await playlistService
+            .RemoveSongFromPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName, position)
+            .ConfigureAwait(false);
 
         if (success && removedSong != null)
         {
@@ -344,19 +336,19 @@ public class PlaylistInteractionModule(
             if (!ActiveShowViews.TryRemove(message.Id, out var msgToClean)) return;
             try
             {
-                await msgToClean.ModifyAsync(m => m.Components = new ComponentBuilder().Build())
-                    .ConfigureAwait(false);
+                await msgToClean.ModifyAsync(m => m.Components = new ComponentBuilder().Build()).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                logger.LogDebug(ex, "Failed to disable components on timed-out show playlist view {MessageId}",
+                Logger.LogDebug(ex, "Failed to disable components on timed-out show playlist view {MessageId}",
                     msgToClean.Id);
             }
         });
     }
 
-    private (MessageComponent? Components, string? ErrorMessage) BuildShowPlaylistResponse(PlaylistModel playlist,
-        int currentPage, IUser requester)
+    private static (MessageComponent? Components, string? ErrorMessage) BuildShowPlaylistResponse(
+        PlaylistModel playlist,
+        int currentPage, SocketUser requester)
     {
         var totalSongs = playlist.Songs.Count;
         if (totalSongs == 0)
@@ -400,20 +392,21 @@ public class PlaylistInteractionModule(
         container.WithTextDisplay(new TextDisplayBuilder(footerText));
 
         var controlsRow = new ActionRowBuilder()
-            .WithButton("Previous", $"playlist:show_prev:{requester.Id}:{playlist.Name}:{currentPage}",
+            .WithButton("Previous", $"assistant:playlist:show_prev:{requester.Id}:{playlist.Name}:{currentPage}",
                 ButtonStyle.Secondary, new Emoji("◀"), disabled: currentPage == 1)
-            .WithButton("Next", $"playlist:show_next:{requester.Id}:{playlist.Name}:{currentPage}",
+            .WithButton("Next", $"assistant:playlist:show_next:{requester.Id}:{playlist.Name}:{currentPage}",
                 ButtonStyle.Secondary, new Emoji("▶"), disabled: currentPage == totalPages)
-            .WithButton("Shuffle", $"playlist:action_shuffle:{requester.Id}:{playlist.Name}", ButtonStyle.Primary,
+            .WithButton("Shuffle", $"assistant:playlist:action_shuffle:{requester.Id}:{playlist.Name}",
+                ButtonStyle.Primary,
                 new Emoji("🔀"))
-            .WithButton("Play", $"playlist:action_play:{requester.Id}:{playlist.Name}", ButtonStyle.Success,
+            .WithButton("Play", $"assistant:playlist:action_play:{requester.Id}:{playlist.Name}", ButtonStyle.Success,
                 new Emoji("▶️"));
 
         container.WithActionRow(controlsRow);
         return (new ComponentBuilderV2().WithContainer(container).Build(), null);
     }
 
-    [ComponentInteraction("playlist:show_prev:*:*:*", true)]
+    [ComponentInteraction("assistant:playlist:show_prev:*:*:*", true)]
     public async Task HandleShowPrev(ulong requesterId, string playlistName, int currentPage)
     {
         if (Context.User.Id != requesterId)
@@ -443,7 +436,7 @@ public class PlaylistInteractionModule(
         }).ConfigureAwait(false);
     }
 
-    [ComponentInteraction("playlist:show_next:*:*:*", true)]
+    [ComponentInteraction("assistant:playlist:show_next:*:*:*", true)]
     public async Task HandleShowNext(ulong requesterId, string playlistName, int currentPage)
     {
         if (Context.User.Id != requesterId)
@@ -473,7 +466,7 @@ public class PlaylistInteractionModule(
         }).ConfigureAwait(false);
     }
 
-    [ComponentInteraction("playlist:action_shuffle:*:*", true)]
+    [ComponentInteraction("assistant:playlist:action_shuffle:*:*", true)]
     public async Task HandleShuffleButtonAsync(ulong requesterId, string playlistName)
     {
         if (Context.User.Id != requesterId)
@@ -510,7 +503,7 @@ public class PlaylistInteractionModule(
         }
     }
 
-    [ComponentInteraction("playlist:action_play:*:*", true)]
+    [ComponentInteraction("assistant:playlist:action_play:*:*", true)]
     public async Task HandlePlayButtonAsync(ulong requesterId, string playlistName)
     {
         if (Context.User.Id != requesterId)
@@ -535,14 +528,10 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(Context.Guild, Context.User,
-            Context.Channel, PlayerChannelBehavior.Join, MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
-        if (player == null)
-        {
-            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true)
+        var (player, isError) =
+            await GetVerifiedPlayerAsync(PlayerChannelBehavior.Join, MemberVoiceStateBehavior.RequireSame)
                 .ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
         await player.Queue.ClearAsync().ConfigureAwait(false);
         var (addedCount, failedTracks) = await QueuePlaylistSongsAsync(player, playlist).ConfigureAwait(false);
@@ -554,7 +543,7 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
+        await MusicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
 
         var container = new ContainerBuilder()
             .WithTextDisplay(new TextDisplayBuilder("▶️ **Now Playing Playlist**"))
@@ -591,14 +580,10 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(Context.Guild, Context.User,
-            Context.Channel, PlayerChannelBehavior.Join, MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
-        if (player == null)
-        {
-            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true)
+        var (player, isError) =
+            await GetVerifiedPlayerAsync(PlayerChannelBehavior.Join, MemberVoiceStateBehavior.RequireSame)
                 .ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
         await player.Queue.ClearAsync().ConfigureAwait(false);
         var (addedCount, failedTracks) = await QueuePlaylistSongsAsync(player, playlist).ConfigureAwait(false);
@@ -611,7 +596,7 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        await musicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
+        await MusicService.StartPlaybackIfNeededAsync(player).ConfigureAwait(false);
 
         var container = new ContainerBuilder()
             .WithTextDisplay(new TextDisplayBuilder("▶️ **Now Playing Playlist**"))
@@ -636,7 +621,7 @@ public class PlaylistInteractionModule(
         {
             if (string.IsNullOrWhiteSpace(song.Uri))
             {
-                logger.LogWarning("Skipping song '{SongTitle}' from playlist '{PlaylistName}' due to missing URI.",
+                Logger.LogWarning("Skipping song '{SongTitle}' from playlist '{PlaylistName}' due to missing URI.",
                     song.Title, playlist.Name);
                 failedTracks.Add(song.Title.Truncate(30) + " (Missing URI)");
                 continue;
@@ -653,7 +638,7 @@ public class PlaylistInteractionModule(
                 }
                 else
                 {
-                    logger.LogWarning(
+                    Logger.LogWarning(
                         "Failed to load track '{TrackUri}' (Title: {SongTitle}) from playlist '{PlaylistName}'.",
                         song.Uri, song.Title, playlist.Name);
                     failedTracks.Add(song.Title.Truncate(30) + " (Load Failed)");
@@ -661,7 +646,7 @@ public class PlaylistInteractionModule(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex,
+                Logger.LogError(ex,
                     "Error loading track '{TrackUri}' (Title: {SongTitle}) for playlist '{PlaylistName}'", song.Uri,
                     song.Title, playlist.Name);
                 failedTracks.Add(song.Title.Truncate(30) + " (Error)");
@@ -745,7 +730,7 @@ public class PlaylistInteractionModule(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Failed to send public share confirmation message for playlist '{PlaylistName}'",
+                Logger.LogError(ex, "Failed to send public share confirmation message for playlist '{PlaylistName}'",
                     playlistName);
             }
     }

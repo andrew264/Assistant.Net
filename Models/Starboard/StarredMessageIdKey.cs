@@ -2,13 +2,20 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Assistant.Net.Models.Starboard;
 
-public struct StarredMessageIdKey
+public readonly struct StarredMessageIdKey : IEquatable<StarredMessageIdKey>
 {
-    [BsonElement("gid")] public ulong GuildId { get; set; }
+    [BsonElement("gid")] public ulong GuildId { get; init; }
 
-    [BsonElement("mid")] public ulong OriginalMessageId { get; set; }
+    [BsonElement("mid")] public ulong OriginalMessageId { get; init; }
 
-    // Optional: Implement IEquatable<StarredMessageIdKey> and override GetHashCode/Equals
-    // for better performance in dictionaries/hashsets if needed elsewhere,
-    // though MongoDB driver handles comparisons correctly.
+    public bool Equals(StarredMessageIdKey other) =>
+        GuildId == other.GuildId && OriginalMessageId == other.OriginalMessageId;
+
+    public override bool Equals(object? obj) => obj is StarredMessageIdKey other && Equals(other);
+
+    public override int GetHashCode() => HashCode.Combine(GuildId, OriginalMessageId);
+
+    public static bool operator ==(StarredMessageIdKey left, StarredMessageIdKey right) => left.Equals(right);
+
+    public static bool operator !=(StarredMessageIdKey left, StarredMessageIdKey right) => !left.Equals(right);
 }

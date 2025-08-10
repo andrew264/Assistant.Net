@@ -8,13 +8,13 @@ public class StarredMessageModel
     // composite key structure
     public StarredMessageIdKey Id { get; init; }
 
-    [BsonElement("originalChannelId")] public ulong OriginalChannelId { get; set; }
+    [BsonElement("originalChannelId")] public ulong OriginalChannelId { get; init; }
 
     [BsonElement("starboardMessageId")]
     [BsonIgnoreIfDefault]
     public ulong? StarboardMessageId { get; set; }
 
-    [BsonElement("starrerUserIds")] public HashSet<ulong> StarrerUserIds { get; set; } = [];
+    [BsonElement("starrerUserIds")] public HashSet<ulong> StarrerUserIds { get; init; } = [];
 
     [BsonElement("starCount")] public int StarCount { get; set; } = 0;
 

@@ -31,9 +31,8 @@ public class RequireBotOwnerAttribute : PreconditionAttribute
             return Task.FromResult(
                 PreconditionResult.FromError(ErrorMessage ?? "Bot owner ID is not configured or is invalid."));
 
-        if (context.User.Id == ownerId.Value) return Task.FromResult(PreconditionResult.FromSuccess());
-
-        return Task.FromResult(
-            PreconditionResult.FromError(ErrorMessage ?? "This command can only be run by the bot owner."));
+        return Task.FromResult(context.User.Id == ownerId.Value
+            ? PreconditionResult.FromSuccess()
+            : PreconditionResult.FromError(ErrorMessage ?? "This command can only be run by the bot owner."));
     }
 }

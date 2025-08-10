@@ -22,7 +22,7 @@ public class QueueInteractionModule(
         bool ephemeral = false)
     {
         var (components, error) =
-            musicService.BuildQueueComponents(player, currentPage, interactionMessageId, Context.User.Id);
+            MusicService.BuildQueueComponents(player, currentPage, interactionMessageId, Context.User.Id);
 
         if (error != null)
         {

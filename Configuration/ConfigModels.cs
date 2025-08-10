@@ -74,7 +74,7 @@ public record MongoConfig
         {
             var colonBeforeAt = addressPart.LastIndexOf(':', atSymbolIndex - 1);
             if (colonBeforeAt != -1 && colonBeforeAt < atSymbolIndex)
-                addressPart = addressPart.Substring(atSymbolIndex + 1);
+                addressPart = addressPart[(atSymbolIndex + 1)..];
         }
 
         var escapedUsername = Uri.EscapeDataString(Username);

@@ -4,11 +4,11 @@ namespace Assistant.Net.Models.Playlist;
 
 public class PlaylistModel
 {
-    [BsonId] public PlaylistIdKey Id { get; set; }
+    [BsonId] public PlaylistIdKey Id { get; init; }
 
-    [BsonElement("name")] [BsonRequired] public string Name { get; set; } = null!;
+    [BsonElement("name")] [BsonRequired] public string Name { get; init; } = null!;
 
-    [BsonElement("songs")] public List<SongModel> Songs { get; set; } = new();
+    [BsonElement("songs")] public List<SongModel> Songs { get; set; } = [];
 
     [BsonElement("createdAt")]
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
@@ -16,5 +16,5 @@ public class PlaylistModel
 
     [BsonElement("updatedAt")]
     [BsonDateTimeOptions(Kind = DateTimeKind.Utc)]
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; init; } = DateTime.UtcNow;
 }

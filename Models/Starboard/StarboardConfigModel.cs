@@ -4,7 +4,7 @@ namespace Assistant.Net.Models.Starboard;
 
 public class StarboardConfigModel
 {
-    [BsonId] public ulong GuildId { get; set; }
+    [BsonId] public ulong GuildId { get; init; }
 
     [BsonElement("isEnabled")] public bool IsEnabled { get; set; }
 

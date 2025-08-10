@@ -362,10 +362,6 @@ public class StarboardService
     {
         var components = BuildStarboardComponents(originalMessage, entry.StarCount, config.StarEmoji);
 
-        async Task<IUserMessage?> CreateAction(ITextChannel channel) =>
-            await channel.SendMessageAsync(components: components, allowedMentions: AllowedMentions.None,
-                flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-
         var (success, sentMessage) =
             await ExecuteStarboardActionAsync(config, entry, CreateAction, null!, null!, "CreateStarboardPost", true)
                 .ConfigureAwait(false);
@@ -385,6 +381,12 @@ public class StarboardService
                 "[CreateStarboardPost] Failed to send starboard message for {OriginalMessageId} in guild {GuildId}.",
                 entry.Id.OriginalMessageId, config.GuildId);
         }
+
+        return;
+
+        async Task<IUserMessage?> CreateAction(ITextChannel channel) =>
+            await channel.SendMessageAsync(components: components, allowedMentions: AllowedMentions.None,
+                flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
     private async Task UpdateStarboardPostAsync(StarredMessageModel entry, StarboardConfigModel config,
@@ -531,7 +533,7 @@ public class StarboardService
                     {
                         Id = new StarredMessageIdKey { GuildId = guildId, OriginalMessageId = originalMessage.Id },
                         OriginalChannelId = guildChannel.Id,
-                        StarrerUserIds = new HashSet<ulong>()
+                        StarrerUserIds = []
                     };
 
         if (entry.StarrerUserIds.Add(reaction.UserId))

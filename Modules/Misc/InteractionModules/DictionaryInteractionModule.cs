@@ -46,7 +46,7 @@ public class DictionaryInteractionModule(
         await FollowupAsync(components: responseComponent, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
-    private static MessageComponent BuildDefinitionResponse(IReadOnlyList<UrbanDictionaryEntry> results, int pageIndex,
+    private static MessageComponent BuildDefinitionResponse(List<UrbanDictionaryEntry> results, int pageIndex,
         ulong requesterId, string searchTerm)
     {
         var totalPages = results.Count;
@@ -74,25 +74,23 @@ public class DictionaryInteractionModule(
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder($"{entry.ThumbsUp} 👍  •  {entry.ThumbsDown} 👎"));
 
-        if (totalPages > 1)
+        if (totalPages <= 1) return new ComponentBuilderV2().WithContainer(container).Build();
+        // Encode search term to safely include in custom ID
+        var encodedSearchTerm =
+            Convert.ToBase64String(Encoding.UTF8.GetBytes(searchTerm)).Replace('+', '-').Replace('/', '_');
+
+        var footerText = $"Definition {currentPage + 1} of {totalPages}";
+        container.WithTextDisplay(new TextDisplayBuilder(footerText));
+
+        container.WithActionRow(row =>
         {
-            // Encode search term to safely include in custom ID
-            var encodedSearchTerm =
-                Convert.ToBase64String(Encoding.UTF8.GetBytes(searchTerm)).Replace('+', '-').Replace('/', '_');
-
-            var footerText = $"Definition {currentPage + 1} of {totalPages}";
-            container.WithTextDisplay(new TextDisplayBuilder(footerText));
-
-            container.WithActionRow(row =>
-            {
-                row.WithButton("Previous",
-                    $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:prev",
-                    ButtonStyle.Secondary, disabled: currentPage == 0);
-                row.WithButton("Next",
-                    $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:next",
-                    ButtonStyle.Secondary, disabled: currentPage == totalPages - 1);
-            });
-        }
+            row.WithButton("Previous",
+                $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:prev",
+                ButtonStyle.Secondary, disabled: currentPage == 0);
+            row.WithButton("Next",
+                $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:next",
+                ButtonStyle.Secondary, disabled: currentPage == totalPages - 1);
+        });
 
         return new ComponentBuilderV2().WithContainer(container).Build();
     }

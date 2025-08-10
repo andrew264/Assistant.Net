@@ -1,35 +1,27 @@
-using Assistant.Net.Modules.Music.Logic;
+using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Services.Music;
 using Discord;
 using Discord.Commands;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
+using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Music.PrefixModules;
 
 [Group("queue")]
 [Alias("q")]
 [Summary("Manage the song queue.")]
-public class QueueModule(
-    MusicService musicService)
-    : ModuleBase<SocketCommandContext>
+public class QueueModule(MusicService musicService, ILogger<QueueModule> logger)
+    : MusicPrefixModuleBase(musicService, logger)
 {
     [Command]
     [Alias("view", "list", "show", "np", "nowplaying")]
     [Summary("View the current song queue.")]
     public async Task ViewQueueAsync()
     {
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
+        var (player, isError) = await GetVerifiedPlayerAsync().ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
         if (player.CurrentTrack is null && player.Queue.IsEmpty)
         {
@@ -39,7 +31,7 @@ public class QueueModule(
 
         var reply = await ReplyAsync("Loading Queue...").ConfigureAwait(false);
 
-        var (components, _) = musicService.BuildQueueComponents(player, 0, reply.Id, Context.User.Id);
+        var (components, _) = MusicService.BuildQueueComponents(player, 0, reply.Id, Context.User.Id);
         await reply.ModifyAsync(props =>
         {
             props.Content = "";
@@ -54,19 +46,13 @@ public class QueueModule(
     [Summary("Remove a song from the queue by its 1-based index.")]
     public async Task RemoveAsync([Summary("The index of the song to remove.")] int index)
     {
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
+        var (player, isError) =
+            await GetVerifiedPlayerAsync(PlayerChannelBehavior.None, MemberVoiceStateBehavior.RequireSame)
+                .ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
-        var (_, _, message) = await musicService.RemoveFromQueueAsync(player, index).ConfigureAwait(false);
+        var (_, _, message) = await MusicService.RemoveFromQueueAsync(player, index).ConfigureAwait(false);
         await ReplyAsync(message, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
@@ -75,19 +61,13 @@ public class QueueModule(
     [Summary("Clear the entire song queue.")]
     public async Task ClearAsync()
     {
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
+        var (player, isError) =
+            await GetVerifiedPlayerAsync(PlayerChannelBehavior.None, MemberVoiceStateBehavior.RequireSame)
+                .ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
-        var (success, message) = await musicService.ClearQueueAsync(player).ConfigureAwait(false);
+        var (success, message) = await MusicService.ClearQueueAsync(player).ConfigureAwait(false);
         await ReplyAsync(message, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         if (success) await Context.Message.AddReactionAsync(new Emoji("✅")).ConfigureAwait(false);
     }
@@ -97,24 +77,18 @@ public class QueueModule(
     [Summary("Shuffle the songs in the queue.")]
     public async Task ShuffleAsync()
     {
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
+        var (player, isError) =
+            await GetVerifiedPlayerAsync(PlayerChannelBehavior.None, MemberVoiceStateBehavior.RequireSame)
+                .ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
-        var (success, message) = await musicService.ShuffleQueueAsync(player).ConfigureAwait(false);
+        var (success, message) = await MusicService.ShuffleQueueAsync(player).ConfigureAwait(false);
         var reply = await ReplyAsync(message, allowedMentions: AllowedMentions.None, flags: MessageFlags.ComponentsV2)
             .ConfigureAwait(false);
         if (success) await Context.Message.AddReactionAsync(new Emoji("🔀")).ConfigureAwait(false);
 
-        var (components, _) = musicService.BuildQueueComponents(player, 0, reply.Id, Context.User.Id);
+        var (components, _) = MusicService.BuildQueueComponents(player, 0, reply.Id, Context.User.Id);
         await Task.Delay(2000).ConfigureAwait(false);
         await reply.ModifyAsync(props =>
         {
@@ -133,19 +107,13 @@ public class QueueModule(
         [Summary("The new 1-based index for the song.")]
         int toIndex)
     {
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
+        var (player, isError) =
+            await GetVerifiedPlayerAsync(PlayerChannelBehavior.None, MemberVoiceStateBehavior.RequireSame)
+                .ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
-        var (_, _, message) = await musicService.MoveInQueueAsync(player, fromIndex, toIndex).ConfigureAwait(false);
+        var (_, _, message) = await MusicService.MoveInQueueAsync(player, fromIndex, toIndex).ConfigureAwait(false);
         await ReplyAsync(message, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
@@ -153,19 +121,13 @@ public class QueueModule(
     [Summary("Toggle looping for the entire queue.")]
     public async Task LoopQueueAsync()
     {
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
+        var (player, isError) =
+            await GetVerifiedPlayerAsync(PlayerChannelBehavior.None, MemberVoiceStateBehavior.RequireSame)
+                .ConfigureAwait(false);
 
-        if (player is null)
-        {
-            var errorMessage = MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus);
-            await ReplyAsync(errorMessage, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-            return;
-        }
+        if (isError || player is null) return;
 
-        var (_, message) = musicService.ToggleQueueLoop(player);
+        var (_, message) = MusicService.ToggleQueueLoop(player);
         await ReplyAsync(message, allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 }

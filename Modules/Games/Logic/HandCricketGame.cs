@@ -42,16 +42,15 @@ public class HandCricketGame
     private GameNumberChoices CurrentTurnChoices { get; set; } = new();
     private int CurrentInning { get; set; }
 
-    public bool SetTossEvenOddPreference(IUser chooser, EvenOddChoice choice)
+    public void SetTossEvenOddPreference(IUser chooser, EvenOddChoice choice)
     {
-        if (CurrentPhase != HandCricketPhase.TossSelectEvenOdd) return false;
+        if (CurrentPhase != HandCricketPhase.TossSelectEvenOdd) return;
 
         CurrentTossChoices.Player1ChoicePreference = chooser.Id == Player1.Id ? choice :
             choice == EvenOddChoice.Even ? EvenOddChoice.Odd : EvenOddChoice.Even;
         CurrentPhase = HandCricketPhase.TossSelectNumber;
         _logger.LogDebug("[HC {GameId}] User {Chooser} set toss pref; P1 pref: {P1Pref}. Phase -> {Phase}", GameId,
             chooser.Username, CurrentTossChoices.Player1ChoicePreference, CurrentPhase);
-        return true;
     }
 
     public bool SetTossNumber(IUser chooser, int number)
@@ -76,11 +75,12 @@ public class HandCricketGame
         return updated;
     }
 
-    public bool ResolveToss()
+    public void ResolveToss()
     {
         if (CurrentPhase != HandCricketPhase.TossSelectNumber ||
             CurrentTossChoices.Player1Number == null ||
-            CurrentTossChoices.Player2Number == null) return false;
+            CurrentTossChoices.Player2Number == null)
+            return;
 
         var sum = CurrentTossChoices.Player1Number.Value + CurrentTossChoices.Player2Number.Value;
         var isSumEven = sum % 2 == 0;
@@ -97,12 +97,11 @@ public class HandCricketGame
 
         _logger.LogInformation("[HC {GameId}] Toss resolved. Winner: {Winner}. Phase -> {Phase}", GameId,
             TossWinner.Username, CurrentPhase);
-        return true;
     }
 
-    public bool SetBatOrBowlChoice(IUser chooser, bool choseBat)
+    public void SetBatOrBowlChoice(IUser chooser, bool choseBat)
     {
-        if (CurrentPhase != HandCricketPhase.TossSelectBatBowl || chooser.Id != TossWinner?.Id) return false;
+        if (CurrentPhase != HandCricketPhase.TossSelectBatBowl || chooser.Id != TossWinner?.Id) return;
 
         if (choseBat)
         {
@@ -119,7 +118,6 @@ public class HandCricketGame
         CurrentInning = 0;
         _logger.LogInformation("[HC {GameId}] User {Chooser} chose to {Choice}. Batter: {Batter}. Phase -> {Phase}",
             GameId, chooser.Username, choseBat ? "Bat" : "Bowl", CurrentBatter.Username, CurrentPhase);
-        return true;
     }
 
     public bool SetGameNumber(IUser chooser, int number)
@@ -209,30 +207,26 @@ public class HandCricketGame
         return (CurrentBatter.Id == Player1.Id ? Player2Score : Player1Score) + 1;
     }
 
-    public async Task<string> GetResultStringAndRecordStats(ulong guildId)
+    public async Task GetResultStringAndRecordStats(ulong guildId)
     {
-        if (CurrentPhase != HandCricketPhase.GameOver) return "Game not over.";
+        if (CurrentPhase != HandCricketPhase.GameOver) return;
 
-        string resultMessage;
         ulong? winnerId;
         ulong? loserId;
         var isTie = false;
 
         if (Player1Score > Player2Score)
         {
-            resultMessage = $"{Player1.Mention} wins!";
             winnerId = Player1.Id;
             loserId = Player2.Id;
         }
         else if (Player2Score > Player1Score)
         {
-            resultMessage = $"{Player2.Mention} wins!";
             winnerId = Player2.Id;
             loserId = Player1.Id;
         }
         else
         {
-            resultMessage = "It's a tie!";
             winnerId = Player1.Id;
             loserId = Player2.Id;
             isTie = true;
@@ -253,8 +247,6 @@ public class HandCricketGame
             }
         else if (_gameStatsService == null)
             _logger.LogWarning("[HC {GameId}] GameStatsService not available, skipping stat recording.", GameId);
-
-        return resultMessage;
     }
 
     private string GetHumanPhaseName()
@@ -394,7 +386,7 @@ public class HandCricketGame
         return rows;
     }
 
-    private IEnumerable<ActionRowBuilder> CreateNumberButtonRows(IEnumerable<int> numbers, string action)
+    private List<ActionRowBuilder> CreateNumberButtonRows(IEnumerable<int> numbers, string action)
     {
         var actionRows = new List<ActionRowBuilder>();
         var currentRow = new ActionRowBuilder();

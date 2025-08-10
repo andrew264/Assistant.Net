@@ -3,11 +3,11 @@ using MongoDB.Bson.Serialization.Attributes;
 namespace Assistant.Net.Models.Playlist;
 
 // Represents the compound primary key for PlaylistModel
-public struct PlaylistIdKey : IEquatable<PlaylistIdKey>
+public readonly struct PlaylistIdKey : IEquatable<PlaylistIdKey>
 {
-    [BsonElement("uid")] public ulong UserId { get; set; }
+    [BsonElement("uid")] public ulong UserId { get; init; }
 
-    [BsonElement("gid")] public ulong GuildId { get; set; }
+    [BsonElement("gid")] public ulong GuildId { get; init; }
 
     public bool Equals(PlaylistIdKey other) => UserId == other.UserId && GuildId == other.GuildId;
 

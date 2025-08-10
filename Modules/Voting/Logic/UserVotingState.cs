@@ -8,7 +8,7 @@ public class UserVotingState(ulong userId, ulong channelId, List<(string Candida
     public ulong UserId { get; } = userId;
     public ulong ChannelId { get; } = channelId;
     public List<(string Candidate1, string Candidate2)> ShuffledPairs { get; } = shuffledPairs;
-    public int CurrentPairIndex { get; set; } = 0;
+    public int CurrentPairIndex { get; set; }
 
     public bool IsVotingComplete => CurrentPairIndex >= ShuffledPairs.Count;
 

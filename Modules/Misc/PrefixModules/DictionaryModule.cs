@@ -41,7 +41,7 @@ public class DictionaryModule(UrbanDictionaryService urbanService)
             allowedMentions: AllowedMentions.None).ConfigureAwait(false);
     }
 
-    private static MessageComponent BuildDefinitionResponse(IReadOnlyList<UrbanDictionaryEntry> results, int pageIndex,
+    private static MessageComponent BuildDefinitionResponse(List<UrbanDictionaryEntry> results, int pageIndex,
         ulong requesterId, string searchTerm)
     {
         var totalPages = results.Count;

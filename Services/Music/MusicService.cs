@@ -163,16 +163,12 @@ public class MusicService(
             return TrackLoadResultInfo.FromSuccess(lavalinkResult.Track, query);
         }
 
-        if (lavalinkResult.Exception is not null)
-        {
-            logger.LogError(
-                "[MusicService:{GuildId}] Track loading failed for query '{Query}'. Reason: {Reason}, Severity: {Severity}, Cause: {Cause}",
-                player.GuildId, query, lavalinkResult.Exception?.Message, lavalinkResult.Exception?.Severity,
-                lavalinkResult.Exception?.Cause);
-            return TrackLoadResultInfo.FromError(lavalinkResult.Exception?.Message ?? "Unknown error", query);
-        }
-
-        return TrackLoadResultInfo.FromNoMatches(query);
+        if (lavalinkResult.Exception is null) return TrackLoadResultInfo.FromNoMatches(query);
+        logger.LogError(
+            "[MusicService:{GuildId}] Track loading failed for query '{Query}'. Reason: {Reason}, Severity: {Severity}, Cause: {Cause}",
+            player.GuildId, query, lavalinkResult.Exception?.Message, lavalinkResult.Exception?.Severity,
+            lavalinkResult.Exception?.Cause);
+        return TrackLoadResultInfo.FromError(lavalinkResult.Exception?.Message ?? "Unknown error", query);
     }
 
     public async Task<LavalinkTrack?> GetTrackFromSearchSelectionAsync(string uri)
@@ -200,32 +196,36 @@ public class MusicService(
         LavalinkTrack? trackToReport;
         string actionMessage;
 
-        if (index == 0) // Skip current track
+        switch (index)
         {
-            trackToReport = player.CurrentTrack;
-            await player.SkipAsync().ConfigureAwait(false);
-            actionMessage = $"Skipping {trackToReport.Title.AsMarkdownLink(trackToReport.Uri?.ToString())}";
-            logger.LogInformation("[MusicService:{GuildId}] Skipped current track '{TrackTitle}' by {User}",
-                player.GuildId, trackToReport.Title, requester.Username);
-        }
-        else if (index > 0 && index <= player.Queue.Count) // Skip a track in the queue
-        {
-            var queuedTrackItem = player.Queue[index - 1];
-            if (queuedTrackItem.Track is null)
-                return (false, null, "Invalid track at the specified index in the queue.");
-            trackToReport = queuedTrackItem.Track;
-            await player.Queue.RemoveAtAsync(index - 1).ConfigureAwait(false);
-            actionMessage = $"Removed from queue: {trackToReport.Title.AsMarkdownLink(trackToReport.Uri?.ToString())}";
-            logger.LogInformation(
-                "[MusicService:{GuildId}] Removed track '{TrackTitle}' from queue at index {Index} by {User}",
-                player.GuildId, trackToReport.Title, index, requester.Username);
+            // Skip current track
+            case 0:
+                trackToReport = player.CurrentTrack;
+                await player.SkipAsync().ConfigureAwait(false);
+                actionMessage = $"Skipping {trackToReport.Title.AsMarkdownLink(trackToReport.Uri?.ToString())}";
+                logger.LogInformation("[MusicService:{GuildId}] Skipped current track '{TrackTitle}' by {User}",
+                    player.GuildId, trackToReport.Title, requester.Username);
+                break;
+            // Skip a track in the queue
+            case > 0 when index <= player.Queue.Count:
+            {
+                var queuedTrackItem = player.Queue[index - 1];
+                if (queuedTrackItem.Track is null)
+                    return (false, null, "Invalid track at the specified index in the queue.");
+                trackToReport = queuedTrackItem.Track;
+                await player.Queue.RemoveAtAsync(index - 1).ConfigureAwait(false);
+                actionMessage =
+                    $"Removed from queue: {trackToReport.Title.AsMarkdownLink(trackToReport.Uri?.ToString())}";
+                logger.LogInformation(
+                    "[MusicService:{GuildId}] Removed track '{TrackTitle}' from queue at index {Index} by {User}",
+                    player.GuildId, trackToReport.Title, index, requester.Username);
 
-            if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null) // Check after removal
-                await QueueEmptied.Invoke(player.GuildId, player).ConfigureAwait(false);
-        }
-        else
-        {
-            return (false, null, "Invalid index. The queue is not that long.");
+                if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null) // Check after removal
+                    await QueueEmptied.Invoke(player.GuildId, player).ConfigureAwait(false);
+                break;
+            }
+            default:
+                return (false, null, "Invalid index. The queue is not that long.");
         }
 
         return (true, trackToReport, actionMessage);
@@ -278,7 +278,7 @@ public class MusicService(
         return (true, $"Volume set to `{volumePercentage}%`");
     }
 
-    public float GetCurrentVolumePercent(CustomPlayer player) => player.Volume * 100f;
+    public static float GetCurrentVolumePercent(CustomPlayer player) => player.Volume * 100f;
 
 
     public async Task StopPlaybackAsync(CustomPlayer player, IUser requester)
@@ -364,13 +364,15 @@ public class MusicService(
                     requester.Username);
                 return (true,
                     $"Resumed: {player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}");
+            case PlayerState.Destroyed:
+            case PlayerState.NotPlaying:
             default:
                 return (false, "Cannot pause or resume in the current state.");
         }
     }
 
     // --- Queue Specific Methods ---
-    public (MessageComponent? Components, string? ErrorMessage) BuildQueueComponents(
+    public static (MessageComponent? Components, string? ErrorMessage) BuildQueueComponents(
         CustomPlayer player,
         int currentPage, // 1-based from caller
         ulong interactionMessageId,

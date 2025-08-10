@@ -1,5 +1,6 @@
 using System.Globalization;
 using Assistant.Net.Models.Lyrics;
+using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
@@ -14,8 +15,7 @@ namespace Assistant.Net.Modules.Music.InteractionModules;
 public class LyricsInteractionModule(
     MusicService musicService,
     GeniusLyricsService geniusLyricsService,
-    ILogger<LyricsInteractionModule> logger)
-    : InteractionModuleBase<SocketInteractionContext>
+    ILogger<LyricsInteractionModule> logger) : MusicInteractionModuleBase(musicService, logger)
 {
     private const string LyricsPageButtonPrefix = "assistant:lyrics_page";
 
@@ -31,12 +31,8 @@ public class LyricsInteractionModule(
 
         if (string.IsNullOrWhiteSpace(query))
         {
-            var (player, _) = await musicService.GetPlayerForContextAsync(
-                Context.Guild,
-                Context.User,
-                Context.Channel,
-                PlayerChannelBehavior.None,
-                MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
+            var (player, _) = await MusicService.GetPlayerForContextAsync(Context.Guild, Context.User, Context.Channel,
+                PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
 
             if (player?.CurrentTrack != null)
             {
@@ -49,7 +45,7 @@ public class LyricsInteractionModule(
                 {
                     searchTitle = spotifyActivity.TrackTitle;
                     searchArtist = spotifyActivity.Artists.First();
-                    logger.LogInformation(
+                    Logger.LogInformation(
                         "Lyrics: No bot track, using User {UserId}'s Spotify: {TrackTitle} by {TrackArtist}",
                         Context.User.Id, searchTitle, searchArtist);
                 }
@@ -67,7 +63,7 @@ public class LyricsInteractionModule(
             searchTitle = query;
         }
 
-        logger.LogInformation("Searching lyrics for Title: '{SearchTitle}', Artist: '{SearchArtist}'", searchTitle,
+        Logger.LogInformation("Searching lyrics for Title: '{SearchTitle}', Artist: '{SearchArtist}'", searchTitle,
             searchArtist ?? "N/A");
 
         var geniusSongs = await geniusLyricsService.SearchSongsAsync(searchTitle, searchArtist).ConfigureAwait(false);
@@ -89,7 +85,7 @@ public class LyricsInteractionModule(
             return;
         }
 
-        logger.LogInformation(
+        Logger.LogInformation(
             "Genius song found for query '{Query}': {FullTitle} by {ArtistNames}, Path: {Path}, ID: {Id}",
             query ?? "(current song)", bestMatch.FullTitle, bestMatch.ArtistNames, bestMatch.Path, bestMatch.Id);
         var lyrics = await geniusLyricsService.GetLyricsFromPathAsync(bestMatch.Id, bestMatch.Path)
@@ -107,7 +103,7 @@ public class LyricsInteractionModule(
             .ConfigureAwait(false);
     }
 
-    private static MessageComponent BuildLyricsPage(GeniusSong song, IReadOnlyList<string> lyricsChunks,
+    private static MessageComponent BuildLyricsPage(GeniusSong song, List<string> lyricsChunks,
         int currentPage)
     {
         var totalPages = lyricsChunks.Count;

@@ -343,15 +343,18 @@ public class PlaylistService
         {
             Id = new PlaylistIdKey { UserId = recipientId, GuildId = guildId },
             Name = originalPlaylist.Name,
-            Songs = new List<SongModel>(originalPlaylist.Songs.Select(s => new SongModel // Deep copy songs
-            {
-                Title = s.Title,
-                Artist = s.Artist,
-                Uri = s.Uri,
-                Duration = s.Duration,
-                Thumbnail = s.Thumbnail,
-                Source = s.Source
-            })),
+            Songs =
+            [
+                ..originalPlaylist.Songs.Select(s => new SongModel
+                {
+                    Title = s.Title,
+                    Artist = s.Artist,
+                    Uri = s.Uri,
+                    Duration = s.Duration,
+                    Thumbnail = s.Thumbnail,
+                    Source = s.Source
+                })
+            ],
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };

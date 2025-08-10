@@ -2,23 +2,53 @@ using System.Text;
 using Assistant.Net.Services.User;
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Utilities;
 
 public static class UserUtils
 {
     // Get the top role color of a user
-    public static Color? GetTopRoleColor(SocketUser user)
+    public static Color? GetTopRoleColor(SocketUser? user)
     {
         if (user is not SocketGuildUser guildUser)
             return null;
 
         var topRole = guildUser.Roles
-            .Where(role => role.IsEveryone == false && role.Color != Color.Default)
+            .Where(role => !role.IsEveryone && role.Color != Color.Default)
             .OrderByDescending(role => role.Position)
             .FirstOrDefault();
 
         return topRole?.Color;
+    }
+
+    public static async Task<(MessageComponent? Components, FileAttachment? Attachment, string? ErrorMessage)>
+        GenerateAvatarComponentsAsync(IUser targetUser, IHttpClientFactory httpClientFactory, ILogger logger)
+    {
+        var avatarUrl = targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl();
+
+        if (string.IsNullOrEmpty(avatarUrl))
+            return (null, null, "Could not retrieve avatar URL for this user.");
+
+        var displayUserName = (targetUser as IGuildUser)?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
+
+        var fileAttachment = await AttachmentUtils
+            .DownloadFileAsAttachmentAsync(avatarUrl, "avatar.png", httpClientFactory, logger).ConfigureAwait(false);
+
+        if (fileAttachment == null)
+            return (null, null, $"Could not download avatar for {displayUserName}.");
+
+        var userColor = GetTopRoleColor(targetUser as SocketUser);
+
+        var container = new ContainerBuilder()
+            .WithAccentColor(userColor)
+            .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
+            .WithMediaGallery(["attachment://avatar.png"])
+            .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
+
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        return (components, fileAttachment, null);
     }
 
     public static async Task<MessageComponent> GenerateUserInfoV2Async(IUser targetUser, bool showSensitiveInfo,
@@ -43,9 +73,6 @@ public static class UserUtils
                     mainContainer.WithAccentColor(GetTopRoleColor(guildUser));
             }
         }
-
-        if (mainContainer.AccentColor == null)
-            mainContainer.WithAccentColor(Color.Default);
 
         var userModel = await userService.GetUserAsync(targetUser.Id).ConfigureAwait(false);
 

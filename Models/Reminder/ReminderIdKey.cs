@@ -2,11 +2,11 @@ using MongoDB.Bson.Serialization.Attributes;
 
 namespace Assistant.Net.Models.Reminder;
 
-public struct ReminderIdKey : IEquatable<ReminderIdKey>
+public readonly struct ReminderIdKey : IEquatable<ReminderIdKey>
 {
-    [BsonElement("uid")] public ulong UserId { get; set; }
+    [BsonElement("uid")] public ulong UserId { get; init; }
 
-    [BsonElement("seq")] public int SequenceNumber { get; set; }
+    [BsonElement("seq")] public int SequenceNumber { get; init; }
 
     public bool Equals(ReminderIdKey other) => UserId == other.UserId && SequenceNumber == other.SequenceNumber;
 

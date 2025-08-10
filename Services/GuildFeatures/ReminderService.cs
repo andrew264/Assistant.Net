@@ -500,7 +500,7 @@ public class ReminderService : IHostedService, IDisposable
         try
         {
             existingReminder = await _reminderCollection.Find(filter).FirstOrDefaultAsync().ConfigureAwait(false);
-            if (existingReminder == null || !existingReminder.IsActive)
+            if (existingReminder is not { IsActive: true })
             {
                 _logger.LogWarning("Attempted to edit non-existent or inactive reminder (ID: {UserId}/{Seq}).", userId,
                     sequenceNumber);

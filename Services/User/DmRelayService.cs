@@ -274,18 +274,17 @@ public class DmRelayService
             .OfType<SocketTextChannel>()
             .FirstOrDefault(c => c.Topic == userTopic);
 
-        if (targetChannel == null)
-        {
-            targetChannel = await CreateRelayChannelAsync(user, categoryChannel, guild, botGuildUser, userTopic)
-                .ConfigureAwait(false);
-            if (targetChannel == null) return null; // Failed to create channel
-        }
+        if (targetChannel != null)
+            return await _webhookService.GetOrCreateWebhookClientAsync(targetChannel.Id).ConfigureAwait(false);
+        targetChannel = await CreateRelayChannelAsync(user, categoryChannel, guild, botGuildUser, userTopic)
+            .ConfigureAwait(false);
+        if (targetChannel == null) return null; // Failed to create channel
 
         return await _webhookService.GetOrCreateWebhookClientAsync(targetChannel.Id).ConfigureAwait(false);
     }
 
     private async Task<SocketTextChannel?> CreateRelayChannelAsync(IUser user, SocketCategoryChannel categoryChannel,
-        SocketGuild guild, IGuildUser botGuildUser, string userTopic)
+        SocketGuild guild, SocketGuildUser botGuildUser, string userTopic)
     {
         if (!botGuildUser.GuildPermissions.ManageChannels)
         {
@@ -355,7 +354,7 @@ public class DmRelayService
     }
     // --- Helper Methods for Building Message Content ---
 
-    private string BuildEditedMessageContent(IMessage? before, SocketMessage after)
+    private static string BuildEditedMessageContent(IMessage? before, SocketMessage after)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"{MessageIdPrefix}{after.Id}");

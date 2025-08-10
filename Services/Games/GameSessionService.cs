@@ -88,7 +88,7 @@ public class GameSessionService(
         cts.Dispose();
     }
 
-    public MessageComponent GetRpsTimeoutDisplay()
+    public static MessageComponent GetRpsTimeoutDisplay()
     {
         var container = new ContainerBuilder()
             .WithTextDisplay(new TextDisplayBuilder("# Rock Paper Scissors"))
@@ -101,7 +101,7 @@ public class GameSessionService(
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    public MessageComponent GetTicTacToeTimeoutDisplay()
+    public static MessageComponent GetTicTacToeTimeoutDisplay()
     {
         var container = new ContainerBuilder()
             .WithTextDisplay(new TextDisplayBuilder("# Tic Tac Toe"))
@@ -119,7 +119,7 @@ public class GameSessionService(
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    public MessageComponent GetHandCricketTimeoutDisplay(HandCricketGame game)
+    public static MessageComponent GetHandCricketTimeoutDisplay(HandCricketGame game)
     {
         var container = new ContainerBuilder()
             .WithTextDisplay(new TextDisplayBuilder("# Hand Cricket"))
@@ -217,13 +217,10 @@ public class GameSessionService(
 
         var messageId = ulong.Parse(gameKey);
 
-        if (game.BothPlayersChosen)
-        {
-            await ProcessRpsEndOfGame(gameKey, game, guildId).ConfigureAwait(false);
-            return new GameUpdateResult(GameUpdateStatus.GameOver, game.BuildGameComponent(messageId));
-        }
-
-        return new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent(messageId));
+        if (!game.BothPlayersChosen)
+            return new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent(messageId));
+        await ProcessRpsEndOfGame(gameKey, game, guildId).ConfigureAwait(false);
+        return new GameUpdateResult(GameUpdateStatus.GameOver, game.BuildGameComponent(messageId));
     }
 
     public bool IsRpsGameActive(string gameKey) => _activeRpsGames.ContainsKey(gameKey);
@@ -301,20 +298,16 @@ public class GameSessionService(
 
         var component = game.BuildGameComponent(); // Get updated components
 
-        if (game.IsGameOver)
-        {
-            if (guildId != 0) await game.RecordStatsIfApplicable(guildId).ConfigureAwait(false);
-            else if (!game.Player1.IsBot && !game.Player2.IsBot)
-                logger.LogWarning("[TTT] Cannot record stats for game {GameId} (no valid GuildId).", game.GameId);
+        if (!game.IsGameOver) return new GameUpdateResult(GameUpdateStatus.Success, component);
+        if (guildId != 0) await game.RecordStatsIfApplicable(guildId).ConfigureAwait(false);
+        else if (!game.Player1.IsBot && !game.Player2.IsBot)
+            logger.LogWarning("[TTT] Cannot record stats for game {GameId} (no valid GuildId).", game.GameId);
 
-            _activeTicTacToeGames.TryRemove(game.GameId, out _);
-            CancelTimeoutTask(game.GameId);
-            logger.LogInformation("[TTT] Game {GameId} ended. Result: {Result}", game.GameId, game.Result);
+        _activeTicTacToeGames.TryRemove(game.GameId, out _);
+        CancelTimeoutTask(game.GameId);
+        logger.LogInformation("[TTT] Game {GameId} ended. Result: {Result}", game.GameId, game.Result);
 
-            return new GameUpdateResult(GameUpdateStatus.GameOver, component);
-        }
-
-        return new GameUpdateResult(GameUpdateStatus.Success, component);
+        return new GameUpdateResult(GameUpdateStatus.GameOver, component);
     }
 
     public bool IsTicTacToeGameActive(string gameKey) => _activeTicTacToeGames.ContainsKey(gameKey);
@@ -427,8 +420,7 @@ public class GameSessionService(
 
                 break;
             case "play_num":
-                if (game.CurrentPhase == HandCricketPhase.Inning1Batting ||
-                    game.CurrentPhase == HandCricketPhase.Inning2Batting)
+                if (game.CurrentPhase is HandCricketPhase.Inning1Batting or HandCricketPhase.Inning2Batting)
                 {
                     if (int.TryParse(data, out var gameNum))
                     {
@@ -471,10 +463,9 @@ public class GameSessionService(
                 break;
         }
 
-        if (!string.IsNullOrEmpty(userVisibleErrorMessage))
-            return new GameUpdateResult(GameUpdateStatus.Error, ErrorMessage: userVisibleErrorMessage);
-
-        return new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent());
+        return !string.IsNullOrEmpty(userVisibleErrorMessage)
+            ? new GameUpdateResult(GameUpdateStatus.Error, ErrorMessage: userVisibleErrorMessage)
+            : new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent());
     }
 
     public bool IsHandCricketGameActive(string gameKey) => _activeHandCricketGames.ContainsKey(gameKey);

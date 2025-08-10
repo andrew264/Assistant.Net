@@ -158,7 +158,8 @@ public class PurgeModule(ILogger<PurgeModule> logger, Config config)
                     catch (HttpException exHttp) when (exHttp.HttpCode == HttpStatusCode.NotFound)
                     {
                         logger.LogWarning(
-                            $"[PURGE] Older message {message.Id} already deleted or too old for single delete API access.");
+                            "[PURGE] Older message {MessageId} already deleted or too old for single delete API access.",
+                            message.Id);
                     }
                     catch (Exception exSingle)
                     {

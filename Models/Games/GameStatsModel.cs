@@ -3,7 +3,7 @@ using MongoDB.Bson.Serialization.Options;
 
 namespace Assistant.Net.Models.Games;
 
-public class GameStatsModel
+public abstract class GameStatsModel
 {
     [BsonId] public GameStatsIdKey Id { get; set; }
 

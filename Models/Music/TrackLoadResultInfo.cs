@@ -14,12 +14,12 @@ public enum TrackLoadStatus
 
 public record TrackLoadResultInfo
 {
-    public TrackLoadStatus Status { get; init; }
-    public LavalinkTrack? LoadedTrack { get; init; }
-    public IReadOnlyList<LavalinkTrack> Tracks { get; init; } = [];
-    public PlaylistInformation? PlaylistInformation { get; init; }
-    public string? ErrorMessage { get; init; }
-    public string OriginalQuery { get; init; } = string.Empty;
+    public TrackLoadStatus Status { get; private init; }
+    public LavalinkTrack? LoadedTrack { get; private init; }
+    public IReadOnlyList<LavalinkTrack> Tracks { get; private init; } = [];
+    public PlaylistInformation? PlaylistInformation { get; private init; }
+    public string? ErrorMessage { get; private init; }
+    public string OriginalQuery { get; private init; } = string.Empty;
 
     public static TrackLoadResultInfo FromSuccess(LavalinkTrack track, string query) => new()
         { Status = TrackLoadStatus.TrackLoaded, LoadedTrack = track, Tracks = [track], OriginalQuery = query };

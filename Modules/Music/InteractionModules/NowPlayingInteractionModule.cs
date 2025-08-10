@@ -1,12 +1,11 @@
 using Assistant.Net.Configuration;
+using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Modules.Music.Logic;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
 using Discord;
-using Discord.Commands;
 using Discord.Interactions;
 using Lavalink4NET.Clients;
-using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
 using Microsoft.Extensions.Logging;
 
@@ -17,22 +16,20 @@ public class NowPlayingInteractionModule(
     NowPlayingService nowPlayingService,
     MusicService musicService,
     Config config,
-    ILogger<NowPlayingInteractionModule> logger)
-    : InteractionModuleBase<SocketInteractionContext>
+    ILogger<NowPlayingInteractionModule> logger) : MusicInteractionModuleBase(musicService, logger)
 {
     [SlashCommand("nowplaying", "Displays the interactive Now Playing message.")]
-    [Alias("np")]
     public async Task NowPlayingCommand()
     {
         await DeferAsync(true).ConfigureAwait(false);
 
-        var (player, _) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
+        var (player, isError) = await GetVerifiedPlayerAsync(memberBehavior: MemberVoiceStateBehavior.Ignore)
+            .ConfigureAwait(false);
 
-        if (player == null || player.CurrentTrack == null)
+        if (isError || player == null || player.CurrentTrack == null)
         {
-            await FollowupAsync("I am not playing anything right now.", ephemeral: true).ConfigureAwait(false);
+            if (!isError)
+                await FollowupAsync("I am not playing anything right now.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
@@ -52,7 +49,7 @@ public class NowPlayingInteractionModule(
         {
             await RespondAsync("Button interaction guild mismatch. This shouldn't happen.", ephemeral: true)
                 .ConfigureAwait(false);
-            logger.LogWarning(
+            Logger.LogWarning(
                 "NP Interaction guild mismatch. Context Guild: {ContextGuildId}, Param Guild: {ParamGuildId}, Action: {Action}, User: {UserId}",
                 Context.Guild?.Id, guildIdParam, action, Context.User.Id);
             return;
@@ -60,14 +57,14 @@ public class NowPlayingInteractionModule(
 
         await DeferAsync().ConfigureAwait(false);
 
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None, MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
+        var (player, isError) = await GetVerifiedPlayerAsync(memberBehavior: MemberVoiceStateBehavior.RequireSame)
+            .ConfigureAwait(false);
 
-        if (player == null)
+        if (isError || player == null)
         {
-            await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus), ephemeral: true)
-                .ConfigureAwait(false);
+            if (!isError)
+                await FollowupAsync(MusicModuleHelpers.GetPlayerRetrieveErrorMessage(0), ephemeral: true)
+                    .ConfigureAwait(false);
             await nowPlayingService.RemoveNowPlayingMessageAsync(guildIdParam).ConfigureAwait(false);
             return;
         }
@@ -80,7 +77,7 @@ public class NowPlayingInteractionModule(
                 if (player.CurrentTrack != null)
                 {
                     await player.SeekAsync(TimeSpan.Zero).ConfigureAwait(false);
-                    logger.LogInformation("[NP Button] User {User} restarted track in Guild {GuildId}",
+                    Logger.LogInformation("[NP Button] User {User} restarted track in Guild {GuildId}",
                         Context.User.Username, guildIdParam);
                 }
 
@@ -91,13 +88,13 @@ public class NowPlayingInteractionModule(
                     var newPosition = player.Position.Value.Position - TimeSpan.FromSeconds(10);
                     if (newPosition < TimeSpan.Zero) newPosition = TimeSpan.Zero;
                     await player.SeekAsync(newPosition).ConfigureAwait(false);
-                    logger.LogInformation("[NP Button] User {User} rewound track in Guild {GuildId}",
+                    Logger.LogInformation("[NP Button] User {User} rewound track in Guild {GuildId}",
                         Context.User.Username, guildIdParam);
                 }
 
                 break;
             case "pause_resume":
-                await musicService.PauseOrResumeAsync(player, Context.User).ConfigureAwait(false);
+                await MusicService.PauseOrResumeAsync(player, Context.User).ConfigureAwait(false);
                 break;
             case "forward":
                 if (player.CurrentTrack != null && player.Position != null)
@@ -106,17 +103,17 @@ public class NowPlayingInteractionModule(
                         await player.SeekAsync(player.Position.Value.Position + TimeSpan.FromSeconds(10))
                             .ConfigureAwait(false);
                     else
-                        await musicService.SkipTrackAsync(player, Context.User).ConfigureAwait(false);
-                    logger.LogInformation("[NP Button] User {User} forwarded track in Guild {GuildId}",
+                        await MusicService.SkipTrackAsync(player, Context.User).ConfigureAwait(false);
+                    Logger.LogInformation("[NP Button] User {User} forwarded track in Guild {GuildId}",
                         Context.User.Username, guildIdParam);
                 }
 
                 break;
             case "skip":
-                await musicService.SkipTrackAsync(player, Context.User).ConfigureAwait(false);
+                await MusicService.SkipTrackAsync(player, Context.User).ConfigureAwait(false);
                 break;
             case "stop":
-                await musicService.StopPlaybackAsync(player, Context.User).ConfigureAwait(false);
+                await MusicService.StopPlaybackAsync(player, Context.User).ConfigureAwait(false);
                 await FollowupAsync("Playback stopped and queue cleared.", ephemeral: true).ConfigureAwait(false);
                 return;
             case "loop":
@@ -141,21 +138,21 @@ public class NowPlayingInteractionModule(
                 }
 
                 player.RepeatMode = newMode;
-                logger.LogInformation("[NP Button] User {User} set loop mode to {LoopMode} in Guild {GuildId}",
+                Logger.LogInformation("[NP Button] User {User} set loop mode to {LoopMode} in Guild {GuildId}",
                     Context.User.Username, newMode, guildIdParam);
                 break;
             case "vol_down":
                 var currentVolDown = player.Volume;
                 var newVolDown = Math.Max(0f, currentVolDown - 0.10f);
-                await musicService.SetVolumeAsync(player, Context.User, (int)(newVolDown * 100)).ConfigureAwait(false);
+                await MusicService.SetVolumeAsync(player, Context.User, (int)(newVolDown * 100)).ConfigureAwait(false);
                 break;
             case "vol_up":
                 var currentVolUp = player.Volume;
                 var newVolUp = Math.Min(config.Music.MaxPlayerVolumePercent / 100f, currentVolUp + 0.10f);
-                await musicService.SetVolumeAsync(player, Context.User, (int)(newVolUp * 100)).ConfigureAwait(false);
+                await MusicService.SetVolumeAsync(player, Context.User, (int)(newVolUp * 100)).ConfigureAwait(false);
                 break;
             default:
-                logger.LogWarning("Unhandled NP action: {Action} for Guild {GuildId} by User {User}", action,
+                Logger.LogWarning("Unhandled NP action: {Action} for Guild {GuildId} by User {User}", action,
                     guildIdParam, Context.User.Id);
                 await FollowupAsync("Unknown action.", ephemeral: true).ConfigureAwait(false);
                 return;

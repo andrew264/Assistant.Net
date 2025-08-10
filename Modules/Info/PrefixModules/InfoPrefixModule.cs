@@ -20,42 +20,21 @@ public class InfoPrefixModule(
     public async Task AvatarPrefixAsync([Summary("The user to get the avatar from.")] IUser? user = null)
     {
         var targetUser = user ?? Context.User;
-        var avatarUrl = targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl();
-
-        if (string.IsNullOrEmpty(avatarUrl))
-        {
-            await ReplyAsync("Could not retrieve avatar URL for this user.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
-
-        var displayUserName =
-            (targetUser as SocketGuildUser)?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
 
         FileAttachment? fileAttachment = null;
         try
         {
-            fileAttachment = await AttachmentUtils
-                .DownloadFileAsAttachmentAsync(avatarUrl, "avatar.png", httpClientFactory, logger)
-                .ConfigureAwait(false);
+            var (components, attachment, errorMessage) =
+                await UserUtils.GenerateAvatarComponentsAsync(targetUser, httpClientFactory, logger)
+                    .ConfigureAwait(false);
+            fileAttachment = attachment;
 
-            if (fileAttachment == null)
+            if (errorMessage != null || components == null || !fileAttachment.HasValue)
             {
-                await ReplyAsync($"Could not download avatar for {displayUserName}.",
+                await ReplyAsync(errorMessage ?? "An unknown error occurred while fetching the avatar.",
                     allowedMentions: AllowedMentions.None).ConfigureAwait(false);
                 return;
             }
-
-            var userColor = UserUtils.GetTopRoleColor(targetUser as SocketUser ??
-                                                      Context.Guild.GetUser(targetUser.Id));
-
-            var container = new ContainerBuilder()
-                .WithAccentColor(userColor)
-                .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
-                .WithMediaGallery(["attachment://avatar.png"])
-                .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
-
-            var components = new ComponentBuilderV2().WithContainer(container).Build();
 
             await Context.Channel.SendFileAsync(
                 fileAttachment.Value,
@@ -65,17 +44,10 @@ public class InfoPrefixModule(
                 messageReference: new MessageReference(Context.Message.Id)
             ).ConfigureAwait(false);
         }
-        catch (HttpRequestException ex)
-        {
-            logger.LogError(ex, "Failed to download avatar for {User} (URL: {AvatarUrl}) in prefix command",
-                targetUser.Username, avatarUrl);
-            await ReplyAsync($"Failed to download the avatar for {displayUserName}.",
-                allowedMentions: AllowedMentions.None).ConfigureAwait(false);
-        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error sending avatar for {User} in prefix command", targetUser.Username);
-            await ReplyAsync($"An error occurred while fetching the avatar for {displayUserName}.",
+            await ReplyAsync($"An error occurred while fetching the avatar for {targetUser.Username}.",
                 allowedMentions: AllowedMentions.None).ConfigureAwait(false);
         }
         finally

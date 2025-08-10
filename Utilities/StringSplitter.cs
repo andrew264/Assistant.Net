@@ -2,7 +2,7 @@ using Discord;
 
 namespace Assistant.Net.Utilities;
 
-public class StringSplitter
+public static class StringSplitter
 {
     private const int MaxChunkSize = DiscordConfig.MaxMessageSize;
 

@@ -126,57 +126,30 @@ public class InfoModule(
         IUser? user = null)
     {
         await DeferAsync().ConfigureAwait(false);
-
         var targetUser = user ?? Context.User;
-        var avatarUrl = targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl();
-
-        if (string.IsNullOrEmpty(avatarUrl))
-        {
-            await FollowupAsync("Could not retrieve avatar URL for this user.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        var displayUserName =
-            (targetUser as SocketGuildUser)?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
 
         FileAttachment? fileAttachment = null;
         try
         {
-            fileAttachment = await AttachmentUtils
-                .DownloadFileAsAttachmentAsync(avatarUrl, "avatar.png", httpClientFactory, logger)
-                .ConfigureAwait(false);
-
-            if (fileAttachment == null)
-            {
-                await FollowupAsync($"Could not download avatar for {displayUserName}.", ephemeral: true)
+            var (components, attachment, errorMessage) =
+                await UserUtils.GenerateAvatarComponentsAsync(targetUser, httpClientFactory, logger)
                     .ConfigureAwait(false);
+            fileAttachment = attachment;
+
+            if (errorMessage != null || components == null || !fileAttachment.HasValue)
+            {
+                await FollowupAsync(errorMessage ?? "An unknown error occurred while fetching the avatar.",
+                    ephemeral: true).ConfigureAwait(false);
                 return;
             }
-
-            var userColor = UserUtils.GetTopRoleColor(targetUser as SocketUser ?? Context.Guild.GetUser(targetUser.Id));
-
-            var container = new ContainerBuilder()
-                .WithAccentColor(userColor)
-                .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
-                .WithMediaGallery(["attachment://avatar.png"])
-                .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
-
-            var components = new ComponentBuilderV2().WithContainer(container).Build();
 
             await FollowupWithFileAsync(fileAttachment.Value, components: components,
                 flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
         }
-        catch (HttpRequestException ex)
-        {
-            logger.LogError(ex, "Failed to download avatar for {User} (URL: {AvatarUrl}) in slash command",
-                targetUser.Username, avatarUrl);
-            await FollowupAsync($"Failed to download the avatar for {displayUserName}.", ephemeral: true)
-                .ConfigureAwait(false);
-        }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error sending avatar for {User} in slash command", targetUser.Username);
-            await FollowupAsync($"An error occurred while fetching the avatar for {displayUserName}.", ephemeral: true)
+            logger.LogError(ex, "Error executing avatar slash command for {User}", targetUser.Username);
+            await FollowupAsync("An unexpected error occurred while fetching the avatar.", ephemeral: true)
                 .ConfigureAwait(false);
         }
         finally

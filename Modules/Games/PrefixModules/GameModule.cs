@@ -85,7 +85,7 @@ public class GameModule(
         var player1User = Context.User;
         var player2User = opponent;
 
-        if (Context.Guild != null && player2User != null && !player2User.IsBot)
+        if (Context.Guild != null && player2User is { IsBot: false })
         {
             var guildUser = Context.Guild.GetUser(player2User.Id);
             if (guildUser == null)

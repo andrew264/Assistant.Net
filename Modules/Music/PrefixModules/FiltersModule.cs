@@ -1,4 +1,4 @@
-using Assistant.Net.Modules.Music.Logic;
+using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Modules.Music.Logic.Player;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities.Filters;
@@ -6,7 +6,6 @@ using Discord;
 using Discord.Commands;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Filters;
-using Lavalink4NET.Players;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Music.PrefixModules;
@@ -15,20 +14,21 @@ namespace Assistant.Net.Modules.Music.PrefixModules;
 [Alias("filter", "fx")]
 [Summary("Change the audio filters of the player.")]
 [RequireContext(ContextType.Guild)]
-public class FiltersModule(MusicService musicService, ILogger<FiltersModule> logger) : ModuleBase<SocketCommandContext>
+public class FiltersModule(MusicService musicService, ILogger<FiltersModule> logger)
+    : MusicPrefixModuleBase(musicService, logger)
 {
     private const float InitialTimescaleStep = 0.1f;
 
-    private async Task<(CustomPlayer? Player, string? ErrorMessage)> GetPlayerForFilterCommandAsync()
+    private async Task<(CustomPlayer? Player, bool IsError)> GetPlayerForFilterCommandAsync()
     {
-        var (player, retrieveStatus) = await musicService.GetPlayerForContextAsync(
-            Context.Guild, Context.User, Context.Channel,
-            PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame).ConfigureAwait(false);
+        var (player, isError) = await GetVerifiedPlayerAsync(memberBehavior: MemberVoiceStateBehavior.RequireSame)
+            .ConfigureAwait(false);
+        if (isError || player is null) return (null, true);
 
-        if (player is null) return (null, MusicModuleHelpers.GetPlayerRetrieveErrorMessage(retrieveStatus));
-        if (player.CurrentTrack is null) return (null, "No music is currently playing to apply filters to.");
-        return (player, null);
+        if (player.CurrentTrack is not null) return (player, false);
+        await ReplyAsync("No music is currently playing to apply filters to.", allowedMentions: AllowedMentions.None)
+            .ConfigureAwait(false);
+        return (null, true);
     }
 
     [Command("nightcore")]
@@ -36,13 +36,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Enable/Disable the nightcore filter.")]
     public async Task NightcoreAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
-        if (player is null)
-        {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
 
         var isCurrentlyEnabled = FilterOperations.IsNightcoreActive(player.Filters.Timescale);
         var enable = !isCurrentlyEnabled;
@@ -50,8 +45,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         player.Filters.Timescale = FilterOperations.GetNightcoreSettings(enable);
 
         var components = FilterUiBuilder.BuildNightcoreConfirmation(enable);
-        logger.LogInformation("[FILTERS CMD] User {User} {Action} nightcore in {GuildName}",
-            Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
+        logger.LogInformation("[FILTERS CMD] User {User} {Action} nightcore in {GuildName}", Context.User.Username,
+            enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
         await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
@@ -63,17 +58,10 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Enable/Disable the vaporwave filter.")]
     public async Task VaporwaveAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
-        if (player is null)
-        {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
 
-        var isCurrentlyEnabled = FilterOperations.IsVaporwaveActive(
-            player.Filters.Timescale,
-            player.Filters.Tremolo,
+        var isCurrentlyEnabled = FilterOperations.IsVaporwaveActive(player.Filters.Timescale, player.Filters.Tremolo,
             player.Filters.Equalizer?.Equalizer);
         var enable = !isCurrentlyEnabled;
 
@@ -85,8 +73,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         player.Filters.Equalizer = new EqualizerFilterOptions(eqSettings);
 
         var components = FilterUiBuilder.BuildVaporwaveConfirmation(enable);
-        logger.LogInformation("[FILTERS CMD] User {User} {Action} vaporwave in {GuildName}",
-            Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
+        logger.LogInformation("[FILTERS CMD] User {User} {Action} vaporwave in {GuildName}", Context.User.Username,
+            enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
         await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
@@ -97,13 +85,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Enable/Disable the 8D audio filter.")]
     public async Task EightDAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
-        if (player is null)
-        {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
 
         var isCurrentlyEnabled = FilterOperations.Is8DActive(player.Filters.Rotation);
         var enable = !isCurrentlyEnabled;
@@ -111,8 +94,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
         player.Filters.Rotation = FilterOperations.Get8DSettings(enable);
 
         var components = FilterUiBuilder.Build8DConfirmation(enable);
-        logger.LogInformation("[FILTERS CMD] User {User} {Action} 8D audio in {GuildName}",
-            Context.User.Username, enable ? "enabled" : "disabled", Context.Guild.Name);
+        logger.LogInformation("[FILTERS CMD] User {User} {Action} 8D audio in {GuildName}", Context.User.Username,
+            enable ? "enabled" : "disabled", Context.Guild.Name);
 
         await player.Filters.CommitAsync().ConfigureAwait(false);
         await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
@@ -124,13 +107,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Reset all audio filters to default.")]
     public async Task ResetFiltersAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
-        if (player is null)
-        {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
 
         player.Filters.Clear();
         var components = FilterUiBuilder.BuildResetConfirmation();
@@ -147,13 +125,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Adjust the bass boost filter.")]
     public async Task BassBoostAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
-        if (player is null)
-        {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
 
         var components = FilterUiBuilder.BuildBassBoostDisplay(player, Context.User.Id);
         var msg = await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
@@ -178,13 +151,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Adjust the treble boost filter.")]
     public async Task TrebleBoostAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
-        if (player is null)
-        {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
 
         var components = FilterUiBuilder.BuildTrebleBoostDisplay(player, Context.User.Id);
         var msg = await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
@@ -209,13 +177,8 @@ public class FiltersModule(MusicService musicService, ILogger<FiltersModule> log
     [Summary("Adjust playback speed, pitch, and rate.")]
     public async Task TimescaleAsync()
     {
-        var (player, errorMessage) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
-        if (player is null)
-        {
-            await ReplyAsync(errorMessage ?? "Player not available.", allowedMentions: AllowedMentions.None)
-                .ConfigureAwait(false);
-            return;
-        }
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
 
         var components = FilterUiBuilder.BuildTimescaleDisplay(player, Context.User.Id, InitialTimescaleStep);
         var msg = await ReplyAsync(components: components, allowedMentions: AllowedMentions.None,
