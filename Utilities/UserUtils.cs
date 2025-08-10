@@ -8,17 +8,17 @@ namespace Assistant.Net.Utilities;
 public static class UserUtils
 {
     // Get the top role color of a user
-    public static Color GetTopRoleColor(SocketUser user)
+    public static Color? GetTopRoleColor(SocketUser user)
     {
         if (user is not SocketGuildUser guildUser)
-            return Color.Default;
+            return null;
 
         var topRole = guildUser.Roles
-            .Where(role => role.IsEveryone == false)
+            .Where(role => role.IsEveryone == false && role.Color != Color.Default)
             .OrderByDescending(role => role.Position)
             .FirstOrDefault();
 
-        return topRole?.Color ?? Color.Default;
+        return topRole?.Color;
     }
 
     public static async Task<MessageComponent> GenerateUserInfoV2Async(IUser targetUser, bool showSensitiveInfo,
