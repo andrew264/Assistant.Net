@@ -174,19 +174,24 @@ public class GameInteractionModule(
             var game = gameSessionService.GetTicTacToeGame(creationResult.GameKey);
             if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
             {
-                var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
-                    game.CurrentPlayer, 1, 1,
-                    Context.Guild?.Id ?? 0).ConfigureAwait(false); // TODO: make the first choice random
-
-                if (updateResult.Status != GameUpdateStatus.Error)
+                var botMove = await game.GetBestMoveAsync().ConfigureAwait(false);
+                if (botMove.HasValue)
                 {
-                    var originalResponse = await GetOriginalResponseAsync().ConfigureAwait(false);
-                    await originalResponse.ModifyAsync(props =>
+                    var (row, col) = botMove.Value;
+                    var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
+                        game.CurrentPlayer, row, col,
+                        Context.Guild?.Id ?? 0).ConfigureAwait(false);
+
+                    if (updateResult.Status != GameUpdateStatus.Error)
                     {
-                        props.Content = "";
-                        props.Components = updateResult.Component;
-                        props.Flags = MessageFlags.ComponentsV2;
-                    }).ConfigureAwait(false);
+                        var originalResponse = await GetOriginalResponseAsync().ConfigureAwait(false);
+                        await originalResponse.ModifyAsync(props =>
+                        {
+                            props.Content = "";
+                            props.Components = updateResult.Component;
+                            props.Flags = MessageFlags.ComponentsV2;
+                        }).ConfigureAwait(false);
+                    }
                 }
             }
         }

@@ -95,26 +95,26 @@ public class Program
                 services.AddMemoryCache();
 
                 // --- Lavalink ---
-                services.AddLavalink();
-                services.ConfigureLavalink(options =>
-                {
-                    var config = services.BuildServiceProvider().GetRequiredService<ConfigService>().Config;
-                    var logger = services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+                services.AddLavalink()
+                    .ConfigureLavalink(options =>
+                    {
+                        var config = services.BuildServiceProvider().GetRequiredService<ConfigService>().Config;
+                        var logger = services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
 
-                    if (config.Lavalink.IsValid && !string.IsNullOrEmpty(config.Lavalink.Uri) &&
-                        !string.IsNullOrEmpty(config.Lavalink.Password))
-                    {
-                        options.BaseAddress = new Uri(config.Lavalink.Uri);
-                        options.Passphrase = config.Lavalink.Password;
-                        options.ReadyTimeout = TimeSpan.FromSeconds(600);
-                        logger.LogInformation("Lavalink configured: Uri={Uri}", options.BaseAddress);
-                    }
-                    else
-                    {
-                        logger.LogWarning(
-                            "Lavalink configuration is invalid or incomplete. Music features may not work.");
-                    }
-                });
+                        if (config.Lavalink.IsValid && !string.IsNullOrEmpty(config.Lavalink.Uri) &&
+                            !string.IsNullOrEmpty(config.Lavalink.Password))
+                        {
+                            options.BaseAddress = new Uri(config.Lavalink.Uri);
+                            options.Passphrase = config.Lavalink.Password;
+                            options.ReadyTimeout = TimeSpan.FromSeconds(600);
+                            logger.LogInformation("Lavalink configured: Uri={Uri}", options.BaseAddress);
+                        }
+                        else
+                        {
+                            logger.LogWarning(
+                                "Lavalink configuration is invalid or incomplete. Music features may not work.");
+                        }
+                    });
                 services.AddInactivityTracking();
                 services.ConfigureInactivityTracking(options =>
                 {

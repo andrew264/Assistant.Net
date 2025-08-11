@@ -115,15 +115,20 @@ public class GameModule(
             var game = gameSessionService.GetTicTacToeGame(creationResult.GameKey);
             if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
             {
-                var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
-                    game.CurrentPlayer, 1, 1, Context.Guild?.Id ?? 0).ConfigureAwait(false); // TODO: make it random
-                if (updateResult.Status != GameUpdateStatus.Error)
-                    await responseMessage.ModifyAsync(props =>
-                    {
-                        props.Content = "";
-                        props.Components = updateResult.Component;
-                        props.Flags = MessageFlags.ComponentsV2;
-                    }).ConfigureAwait(false);
+                var botMove = await game.GetBestMoveAsync().ConfigureAwait(false);
+                if (botMove.HasValue)
+                {
+                    var (row, col) = botMove.Value;
+                    var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
+                        game.CurrentPlayer, row, col, Context.Guild?.Id ?? 0).ConfigureAwait(false);
+                    if (updateResult.Status != GameUpdateStatus.Error)
+                        await responseMessage.ModifyAsync(props =>
+                        {
+                            props.Content = "";
+                            props.Components = updateResult.Component;
+                            props.Flags = MessageFlags.ComponentsV2;
+                        }).ConfigureAwait(false);
+                }
             }
         }
     }
