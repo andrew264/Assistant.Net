@@ -13,7 +13,6 @@ using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
-using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Microsoft.Extensions.Logging;
 
@@ -534,7 +533,8 @@ public class PlaylistInteractionModule(
         if (isError || player is null) return;
 
         await player.Queue.ClearAsync().ConfigureAwait(false);
-        var (addedCount, failedTracks) = await QueuePlaylistSongsAsync(player, playlist).ConfigureAwait(false);
+        var (addedCount, failedTracks) = await QueuePlaylistSongsAsync(player, playlist, requesterId)
+            .ConfigureAwait(false);
 
         if (addedCount == 0)
         {
@@ -586,7 +586,8 @@ public class PlaylistInteractionModule(
         if (isError || player is null) return;
 
         await player.Queue.ClearAsync().ConfigureAwait(false);
-        var (addedCount, failedTracks) = await QueuePlaylistSongsAsync(player, playlist).ConfigureAwait(false);
+        var (addedCount, failedTracks) =
+            await QueuePlaylistSongsAsync(player, playlist, Context.User.Id).ConfigureAwait(false);
 
 
         if (addedCount == 0)
@@ -612,7 +613,7 @@ public class PlaylistInteractionModule(
     }
 
     private async Task<(int AddedCount, List<string> FailedTracks)> QueuePlaylistSongsAsync(CustomPlayer player,
-        PlaylistModel playlist)
+        PlaylistModel playlist, ulong requesterId)
     {
         var addedCount = 0;
         var failedTracks = new List<string>();
@@ -633,7 +634,8 @@ public class PlaylistInteractionModule(
                     .ConfigureAwait(false);
                 if (trackLoadResult.Track != null)
                 {
-                    await player.Queue.AddAsync(new TrackQueueItem(trackLoadResult.Track)).ConfigureAwait(false);
+                    await player.Queue.AddAsync(new CustomTrackQueueItem(trackLoadResult.Track, requesterId))
+                        .ConfigureAwait(false);
                     addedCount++;
                 }
                 else
@@ -730,7 +732,7 @@ public class PlaylistInteractionModule(
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Failed to send public share confirmation message for playlist '{PlaylistName}'",
+                logger.LogError(ex, "Failed to send public share confirmation message for playlist '{PlaylistName}'",
                     playlistName);
             }
     }

@@ -49,12 +49,21 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
             return;
         }
 
+        var requesterId = 0UL;
+        var customQueueItem = queueItem.As<CustomTrackQueueItem>();
+        if (customQueueItem is not null)
+            requesterId = customQueueItem.RequesterId;
+        else
+            _logger.LogWarning(
+                "Could not determine requester for track '{TrackTitle}' in guild {GuildId}. The queue item was not a CustomTrackQueueItem.",
+                queueItem.Track.Title, GuildId);
+
         var historyEntry = new SongHistoryEntry
         {
             Title = queueItem.Track.Title,
             Uri = queueItem.Track.Uri.ToString(),
             PlayedAt = DateTime.UtcNow,
-            PlayedBy = 0, // TODO: Need a better way to track requester
+            RequestedBy = requesterId,
             Duration = queueItem.Track.Duration,
             ThumbnailUrl = queueItem.Track.ArtworkUri?.ToString(),
             Artist = queueItem.Track.Author

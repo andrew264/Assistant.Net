@@ -35,9 +35,7 @@ public class MusicQueryAutocompleteProvider : AutocompleteHandler
         {
             if (suggestions.Count >= 25) break;
             if (entry.Uri != userInput)
-                suggestions.Add(new AutocompleteResult(
-                    entry.Title.Truncate(90),
-                    entry.Uri));
+                suggestions.Add(new AutocompleteResult(entry.Title.Truncate(90), entry.Uri));
         }
 
         return AutocompletionResult.FromSuccess(suggestions.Take(25));

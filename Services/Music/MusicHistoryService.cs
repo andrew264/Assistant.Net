@@ -134,31 +134,31 @@ public class MusicHistoryService
         var jaroWinkler = new JaroWinkler(0.4);
         var lowerSearchTerm = searchTerm.ToLowerInvariant();
 
-        var matchedSongs = new List<(SongHistoryEntry Song, double Score)>();
+        return settings.Songs
+            .Select(song =>
+            {
+                var titleScore = string.IsNullOrEmpty(song.Title)
+                    ? 0
+                    : jaroWinkler.Similarity(song.Title.ToLowerInvariant(), lowerSearchTerm);
+                var uriScore = string.IsNullOrEmpty(song.Uri)
+                    ? 0
+                    : jaroWinkler.Similarity(song.Uri.ToLowerInvariant(), lowerSearchTerm);
+                var artistScore = string.IsNullOrEmpty(song.Artist)
+                    ? 0
+                    : jaroWinkler.Similarity(song.Artist.ToLowerInvariant(), lowerSearchTerm);
 
-        foreach (var song in settings.Songs)
-        {
-            double titleScore = 0;
-            if (!string.IsNullOrEmpty(song.Title))
-                titleScore = jaroWinkler.Similarity(song.Title.ToLowerInvariant(), lowerSearchTerm);
+                var combinedScore = Math.Max(Math.Max(titleScore, uriScore), artistScore);
 
-            double uriScore = 0;
-            if (!string.IsNullOrEmpty(song.Uri))
-                // URI similarity might not always be meaningful with JaroWinkler if structure is very different.
-                // For now, we include it as requested.
-                uriScore = jaroWinkler.Similarity(song.Uri.ToLowerInvariant(), lowerSearchTerm);
+                var matches = titleScore >= _musicConfig.TitleSimilarityCutoff ||
+                              uriScore >= _musicConfig.UriSimilarityCutoff ||
+                              artistScore >= _musicConfig.ArtistSimilarityCutoff;
 
-            if (!(titleScore >= _musicConfig.TitleSimilarityCutoff) &&
-                !(uriScore >= _musicConfig.UriSimilarityCutoff)) continue;
-
-            var combinedScore = Math.Max(titleScore, uriScore);
-            matchedSongs.Add((song, combinedScore));
-        }
-
-        return matchedSongs
-            .OrderByDescending(s => s.Score)
-            .Select(s => new SongHistoryEntryInfo(s.Song.Title, s.Song.Uri))
-            .Distinct() // Ensure we return distinct title/uri pairs if multiple entries had same info but different scores somehow
+                return (Song: song, Score: combinedScore, Matches: matches);
+            })
+            .Where(x => x.Matches)
+            .OrderByDescending(x => x.Score)
+            .Select(x => new SongHistoryEntryInfo(x.Song.Title, x.Song.Uri))
+            .Distinct()
             .Take(24);
     }
 

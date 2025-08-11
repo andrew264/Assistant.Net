@@ -148,7 +148,7 @@ public class MusicService(
                 return TrackLoadResultInfo.FromError($"Playlist '{playlist.Name}' is empty or could not be loaded.",
                     query);
 
-            var trackItems = tracks.Select(t => new TrackQueueItem(t)).ToList();
+            var trackItems = tracks.Select(t => new CustomTrackQueueItem(t, requester.Id)).ToList();
             await player.Queue.AddRangeAsync(trackItems).ConfigureAwait(false);
             return TrackLoadResultInfo.FromPlaylist(tracks, playlist, query);
         }
@@ -159,7 +159,8 @@ public class MusicService(
 
         if (lavalinkResult.Track is not null)
         {
-            await player.Queue.AddAsync(new TrackQueueItem(lavalinkResult.Track)).ConfigureAwait(false);
+            await player.Queue.AddAsync(new CustomTrackQueueItem(lavalinkResult.Track, requester.Id))
+                .ConfigureAwait(false);
             return TrackLoadResultInfo.FromSuccess(lavalinkResult.Track, query);
         }
 
@@ -383,83 +384,98 @@ public class MusicService(
         var componentBuilder = new ComponentBuilderV2();
         var container = new ContainerBuilder();
 
+        // --- Now Playing Section ---
         if (player.CurrentTrack is not null)
         {
-            var nowPlayingSection = new SectionBuilder();
-
-            var trackInfoText =
-                $"**Now Playing**\n{player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}";
-            nowPlayingSection.AddComponent(new TextDisplayBuilder(trackInfoText));
+            var title = $"## {player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}";
+            var customCurrentItem = player.CurrentItem?.As<CustomTrackQueueItem>();
+            if (customCurrentItem != null) title += $"\nAdded by <@{customCurrentItem.RequesterId}>";
 
             if (player.CurrentTrack.ArtworkUri is not null)
-                nowPlayingSection.WithAccessory(new ThumbnailBuilder
+                container.WithSection(section =>
                 {
-                    Media = new UnfurledMediaItemProperties { Url = player.CurrentTrack.ArtworkUri.ToString() }
+                    section.AddComponent(new TextDisplayBuilder(title));
+                    section.WithAccessory(new ThumbnailBuilder
+                    {
+                        Media = new UnfurledMediaItemProperties { Url = player.CurrentTrack.ArtworkUri.ToString() }
+                    });
                 });
-
-            container.AddComponent(nowPlayingSection);
+            else
+                container.WithTextDisplay(new TextDisplayBuilder(title));
         }
         else
         {
-            container.AddComponent(new TextDisplayBuilder("**Queue**\n*Nothing is currently playing.*"));
+            container.WithTextDisplay(new TextDisplayBuilder("**Queue**\n*Nothing is currently playing.*"));
         }
 
+        // --- Queue Listing Section ---
         var queueCount = player.Queue.Count;
-        int totalPages;
-
+        container.WithSeparator();
         if (queueCount > 0)
         {
-            totalPages = (int)Math.Ceiling((double)queueCount / QueueItemsPerPage);
-            if (currentPage < 1) currentPage = 1;
-            if (currentPage > totalPages) currentPage = totalPages;
+            var totalPages = (int)Math.Ceiling((double)queueCount / QueueItemsPerPage);
+            currentPage = Math.Clamp(currentPage, 1, totalPages);
 
-            container.AddComponent(new SeparatorBuilder());
-
-            var queueHeader = new TextDisplayBuilder($"**Next Up ({currentPage}/{totalPages})**");
-            container.AddComponent(queueHeader);
+            container.WithTextDisplay(new TextDisplayBuilder($"## Next Up ({currentPage}/{totalPages})"));
 
             var firstIndex = (currentPage - 1) * QueueItemsPerPage;
             var lastIndex = Math.Min(firstIndex + QueueItemsPerPage, queueCount);
 
-            var sb = new StringBuilder();
+            // Build the queue list as a single formatted string to avoid the Section accessory requirement
+            var queueListBuilder = new StringBuilder();
             for (var i = firstIndex; i < lastIndex; i++)
             {
                 var trackItem = player.Queue[i];
-                if (trackItem.Track is not null)
-                    sb.AppendLine(
-                        $"{i + 1}. {trackItem.Track.Title.AsMarkdownLink(trackItem.Track.Uri?.ToString())}");
+                if (trackItem.Track is null) continue;
+
+                var trackTitle =
+                    $"{i + 1}. {trackItem.Track.Title.Truncate(100).AsMarkdownLink(trackItem.Track.Uri?.ToString())}";
+                queueListBuilder.AppendLine(trackTitle);
+
+                var customItem = trackItem.As<CustomTrackQueueItem>();
+                var requesterInfo = customItem is not null
+                    ? $"Added by <@{customItem.RequesterId}>"
+                    : "Unknown Requester";
+                var durationInfo = trackItem.Track.Duration.FormatPlayerTime();
+
+                queueListBuilder.AppendLine($"   └ {requesterInfo} | `{durationInfo}`");
             }
 
-            if (sb.Length > 0) container.AddComponent(new TextDisplayBuilder(sb.ToString()));
+            if (queueListBuilder.Length > 0)
+                container.WithTextDisplay(new TextDisplayBuilder(queueListBuilder.ToString()));
+
+            // --- Pagination and Footer Section ---
+            container.WithSeparator();
+
+            if (totalPages > 1)
+                container.WithActionRow(row => row
+                    .WithButton("◀ Previous",
+                        $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev",
+                        ButtonStyle.Secondary, disabled: currentPage == 1)
+                    .WithButton("Next ▶",
+                        $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next",
+                        ButtonStyle.Secondary, disabled: currentPage == totalPages)
+                );
+
+            var loopStatus = player.RepeatMode switch
+            {
+                TrackRepeatMode.Queue => "🔁 Looping Queue",
+                TrackRepeatMode.Track => "🔂 Looping Track",
+                _ => "➡️ Loop Disabled"
+            };
+            var totalSongsInQueueSystem = (player.CurrentTrack != null ? 1 : 0) + queueCount;
+
+            container.WithTextDisplay(
+                new TextDisplayBuilder(
+                    $"Page {currentPage}/{totalPages} • {totalSongsInQueueSystem} Song(s) • {loopStatus}"));
         }
-        else
+        else // Queue is empty, but a song is playing
         {
-            totalPages = 1;
+            var loopStatus = player.RepeatMode == TrackRepeatMode.Track ? "🔂 Looping Track" : "➡️ Loop Disabled";
+            container.WithTextDisplay(new TextDisplayBuilder($"Queue is empty • {loopStatus}"));
         }
 
-        if (totalPages > 1)
-        {
-            var paginationControls = new ActionRowBuilder()
-                .WithButton("◀",
-                    $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev")
-                .WithButton("▶",
-                    $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next");
-            container.AddComponent(paginationControls);
-        }
-
-        container.AddComponent(new SeparatorBuilder());
-
-        var loopStatus = player.RepeatMode switch
-        {
-            TrackRepeatMode.Queue => "Looping Queue",
-            TrackRepeatMode.Track => "Looping Track",
-            _ => "Loop Disabled"
-        };
-        var totalSongsInQueueSystem = (player.CurrentTrack != null ? 1 : 0) + queueCount;
-        container.AddComponent(new TextDisplayBuilder(
-            $"{loopStatus} | {totalSongsInQueueSystem} Song{(totalSongsInQueueSystem != 1 ? "s" : "")} in Queue"));
-
-        componentBuilder.AddComponent(container);
+        componentBuilder.WithContainer(container);
         return (componentBuilder.Build(), null);
     }
 

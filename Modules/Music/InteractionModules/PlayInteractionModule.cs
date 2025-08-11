@@ -7,7 +7,6 @@ using Discord;
 using Discord.Interactions;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
-using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.Logging;
 
@@ -138,7 +137,7 @@ public class PlayInteractionModule(MusicService musicService, ILogger<PlayIntera
 
         if (track is not null)
         {
-            await player.Queue.AddAsync(new TrackQueueItem(track)).ConfigureAwait(false);
+            await player.Queue.AddAsync(new CustomTrackQueueItem(track, requesterId)).ConfigureAwait(false);
 
             var confirmationContainer = new ContainerBuilder()
                 .WithTextDisplay(

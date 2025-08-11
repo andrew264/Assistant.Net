@@ -24,8 +24,7 @@ public class PlaylistNameAutocompleteProvider : AutocompleteHandler
 
         var choices = playlists
             .Where(p => p.Name.Contains(currentInput, StringComparison.OrdinalIgnoreCase))
-            .Select(p =>
-                new AutocompleteResult(p.Name.Truncate(100), p.Name))
+            .Select(p => new AutocompleteResult(p.Name.Truncate(100), p.Name))
             .Take(25);
 
         return AutocompletionResult.FromSuccess(choices);

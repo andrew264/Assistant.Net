@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using Assistant.Net.Configuration;
+using Assistant.Net.Models.Music;
 using Assistant.Net.Modules.Music.Logic.Player;
 using Assistant.Net.Utilities;
 using Discord;
@@ -327,7 +328,6 @@ public class NowPlayingService : IDisposable
     private MessageComponent BuildNowPlayingDisplay(CustomPlayer player, ulong guildId)
     {
         var builder = new ComponentBuilderV2();
-
         var container = new ContainerBuilder();
 
         var currentTrack = player.CurrentTrack;
@@ -335,29 +335,34 @@ public class NowPlayingService : IDisposable
 
         if (currentTrack != null)
         {
-            var mainSection = new SectionBuilder();
+            // --- Title, Author, Thumbnail Section ---
+            container.WithSection(section =>
+            {
+                var titleAndAuthor =
+                    $"## {currentTrack.Title.AsMarkdownLink(currentTrack.Uri?.ToString())}\nby {currentTrack.Author}";
+                section.AddComponent(new TextDisplayBuilder(titleAndAuthor));
 
-            if (currentTrack.ArtworkUri != null)
-                mainSection.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties { Url = currentTrack.ArtworkUri.ToString() }
-                });
+                if (currentTrack.ArtworkUri != null)
+                    section.WithAccessory(new ThumbnailBuilder
+                    {
+                        Media = new UnfurledMediaItemProperties { Url = currentTrack.ArtworkUri.ToString() }
+                    });
+            });
 
-            var titleText =
-                new TextDisplayBuilder($"**{currentTrack.Title.AsMarkdownLink(currentTrack.Uri?.ToString())}**");
-            mainSection.AddComponent(titleText);
+            // --- Requester Info ---
+            var customItem = player.CurrentItem?.As<CustomTrackQueueItem>();
+            if (customItem != null)
+                container.WithTextDisplay(new TextDisplayBuilder($"Added by: **<@{customItem.RequesterId}>**"));
 
+            // --- Progress Bar ---
             if (player.Position?.Position != null)
             {
                 var position = player.Position.Value.Position;
-                var progressBar = MusicUtils.CreateProgressBar(position, currentTrack.Duration);
+                var progressBar = MusicUtils.CreateProgressBar(position, currentTrack.Duration, 18);
                 var currentTime = position.FormatPlayerTime();
                 var totalTime = currentTrack.Duration.FormatPlayerTime();
-                mainSection.AddComponent(
-                    new TextDisplayBuilder($"`{currentTime}` {progressBar} `{totalTime}`"));
+                container.WithTextDisplay(new TextDisplayBuilder($"`{currentTime}` {progressBar} `{totalTime}`"));
             }
-
-            container.AddComponent(mainSection);
         }
         else
         {
@@ -365,9 +370,12 @@ public class NowPlayingService : IDisposable
                 $"**No song currently playing**\nUse `/play` to add songs. `{_config.Client.Prefix}play` also works."));
         }
 
+        // --- Add a small space ---
+        if (currentTrack != null)
+            container.WithSeparator(isDivider: false, spacing: SeparatorSpacingSize.Small);
+
         // --- Controls ---
         var controlsDisabled = currentTrack == null;
-        var volumeControlsDisabled = currentTrack == null;
 
         // Row 0: Playback Controls
         var playbackRow = new ActionRowBuilder()
@@ -382,22 +390,9 @@ public class NowPlayingService : IDisposable
                 disabled: controlsDisabled)
             .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:skip", ButtonStyle.Primary, Emoji.Parse("⏭️"),
                 disabled: controlsDisabled);
-        container.AddComponent(playbackRow);
-        container.AddComponent(new SeparatorBuilder());
+        container.WithActionRow(playbackRow);
 
-        // Row 1: Player/Queue Controls
-        var loopEmoji = player.RepeatMode switch
-        {
-            TrackRepeatMode.Track => Emoji.Parse("🔂"),
-            TrackRepeatMode.Queue => Emoji.Parse("🔁"),
-            _ => Emoji.Parse("➡️")
-        };
-        var utilityRow = new ActionRowBuilder()
-            .WithButton("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger, Emoji.Parse("⏹️"),
-                disabled: controlsDisabled)
-            .WithButton("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary, loopEmoji,
-                disabled: controlsDisabled);
-        container.AddComponent(utilityRow);
+        container.AddComponent(new SeparatorBuilder());
 
         // --- Footer Info ---
         var footerText = new StringBuilder();
@@ -427,24 +422,41 @@ public class NowPlayingService : IDisposable
                 break;
         }
 
-        if (footerText.Length > 0) container.WithTextDisplay(new TextDisplayBuilder(footerText.ToString()));
+        if (footerText.Length > 0)
+        {
+            container.WithSeparator(isDivider: false, spacing: SeparatorSpacingSize.Small);
+            container.WithTextDisplay(new TextDisplayBuilder(footerText.ToString()));
+        }
+
+        // Row 1: Player/Queue Controls
+        var loopEmoji = player.RepeatMode switch
+        {
+            TrackRepeatMode.Track => Emoji.Parse("🔂"),
+            TrackRepeatMode.Queue => Emoji.Parse("🔁"),
+            _ => Emoji.Parse("➡️")
+        };
+        var utilityRow = new ActionRowBuilder()
+            .WithButton("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger, Emoji.Parse("⏹️"),
+                disabled: controlsDisabled)
+            .WithButton("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary, loopEmoji,
+                disabled: controlsDisabled);
+        container.WithActionRow(utilityRow);
 
         container.AddComponent(new SeparatorBuilder());
 
-        // Row 2: Volume Controls
+        // --- Volume Controls ---
         var currentVolumePercent = (int)(player.Volume * 100);
         var maxVolume = _config.Music.MaxPlayerVolumePercent;
         var volumeRow = new ActionRowBuilder()
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success, Emoji.Parse("➖"),
-                disabled: volumeControlsDisabled || currentVolumePercent <= 0)
+            .WithButton("➖", $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success,
+                disabled: controlsDisabled || currentVolumePercent <= 0)
             .WithButton($"🔊 {currentVolumePercent}%", $"{NpCustomIdPrefix}:{guildId}:vol_display",
                 ButtonStyle.Secondary, disabled: true)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success, Emoji.Parse("➕"),
-                disabled: volumeControlsDisabled || currentVolumePercent >= maxVolume);
-        container.AddComponent(volumeRow);
+            .WithButton("➕", $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success,
+                disabled: controlsDisabled || currentVolumePercent >= maxVolume);
+        container.WithActionRow(volumeRow);
 
-
-        builder.AddComponent(container);
+        builder.WithContainer(container);
         return builder.Build();
     }
 

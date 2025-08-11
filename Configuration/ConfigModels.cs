@@ -122,4 +122,5 @@ public record MusicConfig
     public int MaxPlayerVolumePercent { get; init; } = 100; // 100%
     public float TitleSimilarityCutoff { get; init; } = 0.80f; // 80%
     public float UriSimilarityCutoff { get; init; } = 0.70f; // 70%
+    public float ArtistSimilarityCutoff { get; init; } = 0.80f; // 80%
 }
