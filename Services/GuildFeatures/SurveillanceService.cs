@@ -575,8 +575,8 @@ public class SurveillanceService
         {
             var msgId = await webhookClient.SendMessageAsync(
                 components: components,
-                username: user.Username,
-                avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
+                username: member.DisplayName,
+                avatarUrl: member.GetDisplayAvatarUrl() ?? member.GetDefaultAvatarUrl(),
                 allowedMentions: AllowedMentions.None,
                 flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
@@ -587,7 +587,7 @@ public class SurveillanceService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send voice state update log via webhook for User {UserId}.", user.Id);
+            _logger.LogError(ex, "Failed to send voice state update log via webhook for User {UserId}.", member.Id);
         }
     }
 

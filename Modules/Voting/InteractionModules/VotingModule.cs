@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using Assistant.Net.Modules.Voting.Logic;
+using Assistant.Net.Services.Voting;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -8,13 +8,11 @@ using Microsoft.Extensions.Logging;
 namespace Assistant.Net.Modules.Voting.InteractionModules;
 
 [Group("poll", "Commands for creating and participating in Elo-based polls.")]
-public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<SocketInteractionContext>
+public class VotingModule(ILogger<VotingModule> logger, PollService pollService)
+    : InteractionModuleBase<SocketInteractionContext>
 {
     private const string VoteButtonPrefix = "assistant:poll:vote:";
     private const string SkipButtonPrefix = "assistant:poll:skip:";
-
-    private static readonly ConcurrentDictionary<ulong, EloRatingSystem> ActivePolls = new();
-    private static readonly ConcurrentDictionary<ulong, UserVotingState> UserVotingStates = new();
 
     [SlashCommand("create", "Set up the candidates for an Elo poll in this channel.")]
     [RequireContext(ContextType.Guild)]
@@ -31,14 +29,6 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (ActivePolls.TryGetValue(guildChannel.Id, out var existingPoll))
-        {
-            await RespondAsync(
-                $"There is already an active poll ('{existingPoll.Title}') in this channel, created by <@{existingPoll.CreatorId}>. Use `/poll results` to finish it first.",
-                ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
         var candidateList = candidates.Split(',')
             .Select(c => c.Trim())
             .Where(c => !string.IsNullOrWhiteSpace(c))
@@ -52,44 +42,27 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        try
+        if (!pollService.CreatePoll(guildChannel.Id, Context.User.Id, title, candidateList, out _,
+                out var errorMessage))
         {
-            var eloSystem = new EloRatingSystem(candidateList, Context.User.Id, title);
-
-            if (!ActivePolls.TryAdd(guildChannel.Id, eloSystem))
-            {
-                await RespondAsync("Failed to create poll due to a conflict. Please try again.", ephemeral: true)
-                    .ConfigureAwait(false);
-                logger.LogWarning("Failed to add poll for Channel {ChannelId} due to race condition.",
-                    guildChannel.Id);
-                return;
-            }
-
-            var container = new ContainerBuilder()
-                .WithTextDisplay(new TextDisplayBuilder($"# 📊 New Poll Created: {title}"))
-                .WithTextDisplay(new TextDisplayBuilder($"Created by {Context.User.Mention}"))
-                .WithSeparator()
-                .WithTextDisplay(new TextDisplayBuilder(
-                    $"**Candidates:**\n{string.Join("\n", candidateList.Select(c => $"- {c}"))}"))
-                .WithSeparator()
-                .WithTextDisplay(new TextDisplayBuilder("*Use `/poll vote` to cast your votes!*"));
-
-            var components = new ComponentBuilderV2().WithContainer(container).Build();
-
-            await RespondAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-            logger.LogInformation("Created Elo poll '{Title}' in Channel {ChannelId} by User {UserId}", title,
-                guildChannel.Id, Context.User.Id);
+            await RespondAsync(errorMessage, ephemeral: true).ConfigureAwait(false);
+            return;
         }
-        catch (ArgumentException ex)
-        {
-            await RespondAsync($"Error creating poll: {ex.Message}", ephemeral: true).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error creating poll '{Title}' in Channel {ChannelId}", title, guildChannel.Id);
-            await RespondAsync("An unexpected error occurred while creating the poll.", ephemeral: true)
-                .ConfigureAwait(false);
-        }
+
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder($"# 📊 New Poll Created: {title}"))
+            .WithTextDisplay(new TextDisplayBuilder($"Created by {Context.User.Mention}"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"**Candidates:**\n{string.Join("\n", candidateList.Select(c => $"- {c}"))}"))
+            .WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder("*Use `/poll vote` to cast your votes!*"));
+
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+
+        await RespondAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+        logger.LogInformation("Created Elo poll '{Title}' in Channel {ChannelId} by User {UserId}", title,
+            guildChannel.Id, Context.User.Id);
     }
 
     [SlashCommand("vote", "Cast your votes in the active poll for this channel.")]
@@ -103,7 +76,7 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (!ActivePolls.TryGetValue(guildChannel.Id, out var eloSystem))
+        if (!pollService.TryGetPoll(guildChannel.Id, out var eloSystem) || eloSystem == null)
         {
             await RespondAsync("There is no active poll in this channel.", ephemeral: true).ConfigureAwait(false);
             return;
@@ -116,7 +89,7 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (UserVotingStates.ContainsKey(Context.User.Id))
+        if (pollService.HasActiveVotingSession(Context.User.Id))
         {
             await RespondAsync(
                 "You seem to have an ongoing voting session. Please complete or wait for it to time out.",
@@ -124,28 +97,12 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        var shuffledPairs = eloSystem.GetShuffledCandidatePairings();
-        if (shuffledPairs.Count == 0)
-        {
-            await RespondAsync("No candidate pairs could be generated for this poll (this shouldn't happen!).",
-                ephemeral: true).ConfigureAwait(false);
-            logger.LogWarning("No pairs generated for poll in channel {ChannelId}", guildChannel.Id);
-            return;
-        }
-
-        var userState = new UserVotingState(Context.User.Id, guildChannel.Id, shuffledPairs);
-
-        if (UserVotingStates.TryAdd(Context.User.Id, userState))
-        {
+        var userState = pollService.StartVotingSession(Context.User.Id, guildChannel.Id, eloSystem);
+        if (userState != null)
             await RespondEphemeralVotePromptAsync(eloSystem, userState).ConfigureAwait(false);
-        }
         else
-        {
-            await RespondAsync("Could not start your voting session due to a conflict. Please try again.",
-                ephemeral: true).ConfigureAwait(false);
-            logger.LogWarning("Failed to add user voting state for User {UserId} due to race condition.",
-                Context.User.Id);
-        }
+            await RespondAsync("Could not start your voting session. Please try again.", ephemeral: true)
+                .ConfigureAwait(false);
     }
 
     [SlashCommand("results", "End the current poll in this channel and display the results.")]
@@ -159,7 +116,7 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (!ActivePolls.TryGetValue(guildChannel.Id, out var eloSystem))
+        if (!pollService.TryGetPoll(guildChannel.Id, out var eloSystem) || eloSystem == null)
         {
             await RespondAsync("There is no active poll in this channel.", ephemeral: true).ConfigureAwait(false);
             return;
@@ -174,20 +131,12 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (ActivePolls.TryRemove(guildChannel.Id, out _))
+        if (pollService.TryEndPoll(guildChannel.Id, out var endedPoll) && endedPoll != null)
         {
-            var userKeysToRemove = UserVotingStates
-                .Where(kvp => kvp.Value.ChannelId == guildChannel.Id)
-                .Select(kvp => kvp.Key)
-                .ToList();
-            foreach (var key in userKeysToRemove) UserVotingStates.TryRemove(key, out _);
-
-            var resultsComponent = eloSystem.GenerateResultsComponent();
-
+            var resultsComponent = endedPoll.GenerateResultsComponent();
             await RespondAsync(components: resultsComponent, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-
-            logger.LogInformation("Ended Elo poll '{Title}' in Channel {ChannelId} by User {UserId}", eloSystem.Title,
-                guildChannel.Id, Context.User.Id);
+            logger.LogInformation("Ended Elo poll '{Title}' in Channel {ChannelId} by User {UserId}",
+                endedPoll.Title, guildChannel.Id, Context.User.Id);
         }
         else
         {
@@ -231,7 +180,7 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (!UserVotingStates.TryGetValue(Context.User.Id, out var userState))
+        if (!pollService.TryGetUserVotingState(Context.User.Id, out var userState) || userState == null)
         {
             await component.RespondAsync(
                     "Your voting session seems to have expired or is invalid. Try `/poll vote` again.", ephemeral: true)
@@ -240,10 +189,10 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (!ActivePolls.TryGetValue(userState.ChannelId, out var eloSystem))
+        if (!pollService.TryGetPoll(userState.ChannelId, out var eloSystem) || eloSystem == null)
         {
             await component.RespondAsync("The poll has ended.", ephemeral: true).ConfigureAwait(false);
-            UserVotingStates.TryRemove(Context.User.Id, out _);
+            pollService.EndVotingSession(Context.User.Id);
             await TryRemoveComponents(component).ConfigureAwait(false);
             return;
         }
@@ -276,7 +225,7 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (!UserVotingStates.TryGetValue(Context.User.Id, out var userState))
+        if (!pollService.TryGetUserVotingState(Context.User.Id, out var userState) || userState == null)
         {
             await component.RespondAsync(
                     "Your voting session seems to have expired or is invalid. Try `/poll vote` again.", ephemeral: true)
@@ -285,10 +234,10 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
             return;
         }
 
-        if (!ActivePolls.TryGetValue(userState.ChannelId, out var eloSystem))
+        if (!pollService.TryGetPoll(userState.ChannelId, out var eloSystem) || eloSystem == null)
         {
             await component.RespondAsync("The poll has ended.", ephemeral: true).ConfigureAwait(false);
-            UserVotingStates.TryRemove(Context.User.Id, out _);
+            pollService.EndVotingSession(Context.User.Id);
             await TryRemoveComponents(component).ConfigureAwait(false);
             return;
         }
@@ -308,7 +257,7 @@ public class VotingModule(ILogger<VotingModule> logger) : InteractionModuleBase<
         if (currentPair == null)
         {
             eloSystem.AddVoter(userState.UserId);
-            UserVotingStates.TryRemove(userState.UserId, out _);
+            pollService.EndVotingSession(userState.UserId);
 
             var completionContainer = new ContainerBuilder()
                 .WithTextDisplay(new TextDisplayBuilder("✅ **Voting Complete!**"))

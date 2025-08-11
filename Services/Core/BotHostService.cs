@@ -25,14 +25,12 @@ public class BotHostService(
     IAudioService audioService,
     SurveillanceService surveillanceService,
     UserActivityTrackingService userActivityTrackingService,
-    StarboardConfigService starboardConfigService,
     StarboardService starboardService)
     : IHostedService
 {
     // ReSharper disable UnusedMember.Local
     private readonly SurveillanceService _surveillanceService = surveillanceService;
     private readonly UserActivityTrackingService _userActivityTrackingService = userActivityTrackingService;
-    private readonly StarboardConfigService _starboardConfigService = starboardConfigService;
     private readonly StarboardService _starboardService = starboardService;
 
     public async Task StartAsync(CancellationToken cancellationToken)

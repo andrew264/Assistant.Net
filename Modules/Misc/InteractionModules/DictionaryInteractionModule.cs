@@ -1,5 +1,4 @@
 using System.Text;
-using Assistant.Net.Models.UrbanDictionary;
 using Assistant.Net.Services.ExternalApis;
 using Assistant.Net.Utilities;
 using Discord;
@@ -13,8 +12,6 @@ public class DictionaryInteractionModule(
     ILogger<DictionaryInteractionModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private const string CustomIdPrefix = "assistant:ud_page";
-
     [SlashCommand("define", "Define a word using Urban Dictionary.")]
     public async Task DefineSlashAsync(
         [Summary("word", "The word to define (optional, gets random if empty)")]
@@ -41,61 +38,12 @@ public class DictionaryInteractionModule(
         }
 
         var responseComponent =
-            BuildDefinitionResponse(results, 0, Context.User.Id, word ?? "_RANDOM_");
+            DictionaryUtils.BuildDefinitionResponse(results, 0, Context.User.Id, word ?? "_RANDOM_");
 
         await FollowupAsync(components: responseComponent, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
-    private static MessageComponent BuildDefinitionResponse(List<UrbanDictionaryEntry> results, int pageIndex,
-        ulong requesterId, string searchTerm)
-    {
-        var totalPages = results.Count;
-        var currentPage = Math.Clamp(pageIndex, 0, totalPages - 1);
-        var entry = results[currentPage];
-
-        var container = new ContainerBuilder()
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"# {entry.Word}"));
-                section.AddComponent(new TextDisplayBuilder($"*by {entry.Author}*"));
-                section.WithAccessory(new ButtonBuilder("View on UD", style: ButtonStyle.Link, url: entry.Permalink));
-            })
-            .WithSeparator();
-
-        container.WithTextDisplay(new TextDisplayBuilder(entry.FormattedDefinition.Truncate(1024)));
-
-        if (!string.IsNullOrWhiteSpace(entry.FormattedExample))
-            container
-                .WithSeparator()
-                .WithTextDisplay(new TextDisplayBuilder(
-                    $"*Example:*\n{entry.FormattedExample.Truncate(1024)}"));
-
-        container
-            .WithSeparator()
-            .WithTextDisplay(new TextDisplayBuilder($"{entry.ThumbsUp} 👍  •  {entry.ThumbsDown} 👎"));
-
-        if (totalPages <= 1) return new ComponentBuilderV2().WithContainer(container).Build();
-        // Encode search term to safely include in custom ID
-        var encodedSearchTerm =
-            Convert.ToBase64String(Encoding.UTF8.GetBytes(searchTerm)).Replace('+', '-').Replace('/', '_');
-
-        var footerText = $"Definition {currentPage + 1} of {totalPages}";
-        container.WithTextDisplay(new TextDisplayBuilder(footerText));
-
-        container.WithActionRow(row =>
-        {
-            row.WithButton("Previous",
-                $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:prev",
-                ButtonStyle.Secondary, disabled: currentPage == 0);
-            row.WithButton("Next",
-                $"{CustomIdPrefix}:{requesterId}:{encodedSearchTerm}:{currentPage}:next",
-                ButtonStyle.Secondary, disabled: currentPage == totalPages - 1);
-        });
-
-        return new ComponentBuilderV2().WithContainer(container).Build();
-    }
-
-    [ComponentInteraction("assistant:ud_page:*:*:*:*", true)]
+    [ComponentInteraction(DictionaryUtils.CustomIdPrefix + ":*:*:*:*", true)]
     public async Task HandlePageButtonAsync(ulong requesterId, string encodedSearchTerm, int currentPage,
         string action)
     {
@@ -147,7 +95,8 @@ public class DictionaryInteractionModule(
             _ => currentPage
         };
 
-        var newComponent = BuildDefinitionResponse(results, newPage, requesterId, searchTerm ?? "_RANDOM_");
+        var newComponent =
+            DictionaryUtils.BuildDefinitionResponse(results, newPage, requesterId, searchTerm ?? "_RANDOM_");
 
         await ModifyOriginalResponseAsync(props =>
         {

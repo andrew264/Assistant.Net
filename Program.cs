@@ -7,6 +7,7 @@ using Assistant.Net.Services.GuildFeatures;
 using Assistant.Net.Services.GuildFeatures.Starboard;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Services.User;
+using Assistant.Net.Services.Voting;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;
@@ -176,6 +177,9 @@ public class Program
                 // --- Game Stats Service ---
                 services.AddSingleton<GameStatsService>();
                 services.AddSingleton<GameSessionService>();
+
+                // --- Voting Service ---
+                services.AddSingleton<PollService>();
 
                 // --- Urban Dictionary Service ---
                 services.AddSingleton<UrbanDictionaryService>();
