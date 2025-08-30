@@ -81,7 +81,6 @@ public class EloRatingSystem
         var sortedRatings = Ratings.OrderByDescending(pair => pair.Value).ToList();
 
         var container = new ContainerBuilder()
-            .WithAccentColor(Color.Gold)
             .WithTextDisplay(new TextDisplayBuilder($"# {Title.Truncate(250)} | Final Results"))
             .WithTextDisplay(new TextDisplayBuilder($"Poll by <@{CreatorId}>"))
             .WithSeparator();

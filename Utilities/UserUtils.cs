@@ -51,6 +51,71 @@ public static class UserUtils
         return (components, fileAttachment, null);
     }
 
+    public static async Task<(MessageComponent Components, List<FileAttachment> Attachments)>
+        BuildUserProfileUpdateComponentAsync(
+            SocketUser before,
+            SocketUser after,
+            IHttpClientFactory httpClientFactory,
+            ILogger logger)
+    {
+        var attachments = new List<FileAttachment>();
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder("# User Profile Updated"));
+                section.AddComponent(new TextDisplayBuilder($"{after.Mention}"));
+                section.WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties
+                        { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
+                });
+            })
+            .WithSeparator();
+
+        if (before.Username != after.Username)
+            container.WithTextDisplay(
+                new TextDisplayBuilder($"**Username:** `{before.Username}` → `{after.Username}`"));
+
+        var beforeAvatarUrl = before.GetDisplayAvatarUrl(size: 1024) ?? before.GetDefaultAvatarUrl();
+        var afterAvatarUrl = after.GetDisplayAvatarUrl(size: 1024) ?? after.GetDefaultAvatarUrl();
+
+        if (beforeAvatarUrl != afterAvatarUrl)
+        {
+            container.WithTextDisplay(new TextDisplayBuilder("**New Avatar**"));
+            var mediaGalleryUrls = new List<string>();
+
+            var afterAttachment = await AttachmentUtils.DownloadFileAsAttachmentAsync(
+                afterAvatarUrl, "avatar_after.png", httpClientFactory, logger).ConfigureAwait(false);
+
+            if (afterAttachment.HasValue)
+            {
+                attachments.Add(afterAttachment.Value);
+                mediaGalleryUrls.Add("attachment://avatar_after.png");
+            }
+            else
+            {
+                // If download fails, fall back to URLs.
+                afterAttachment?.Dispose();
+                mediaGalleryUrls.Add(afterAvatarUrl);
+                logger.LogWarning(
+                    "Failed to download avatar for user update {UserId}. Falling back to URLs.",
+                    after.Id);
+            }
+
+            container.WithMediaGallery(mediaGalleryUrls);
+        }
+
+
+        container
+            .WithSeparator()
+            .WithTextDisplay(
+                new TextDisplayBuilder(
+                    $"User ID: {after.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
+
+        var components = new ComponentBuilderV2().WithContainer(container).Build();
+        return (components, attachments);
+    }
+
     public static async Task<MessageComponent> GenerateUserInfoV2Async(IUser targetUser, bool showSensitiveInfo,
         UserService userService, DiscordSocketClient client)
     {

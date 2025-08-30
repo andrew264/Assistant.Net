@@ -52,7 +52,7 @@ public class GameStatsModule(
                 .WithSection(section =>
                 {
                     section.AddComponent(
-                        new TextDisplayBuilder($"# 🏆 {gameName.CapitalizeFirstLetter()} Leaderboard"));
+                        new TextDisplayBuilder($"# {gameName.CapitalizeFirstLetter()} Leaderboard"));
                     section.AddComponent(new TextDisplayBuilder($"Top players in {Context.Guild.Name}"));
                     section.WithAccessory(new ThumbnailBuilder
                         { Media = new UnfurledMediaItemProperties { Url = TrophyEmojiUrl } });

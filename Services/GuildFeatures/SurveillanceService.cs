@@ -13,6 +13,7 @@ public class SurveillanceService
     private const int DeleteDelay = 24 * 60 * 60 * 1000; // one day
     private readonly DiscordSocketClient _client;
     private readonly Config _config;
+    private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<SurveillanceService> _logger;
     private readonly WebhookService _webhookService;
 
@@ -20,12 +21,14 @@ public class SurveillanceService
         DiscordSocketClient client,
         Config config,
         ILogger<SurveillanceService> logger,
-        WebhookService webhookService)
+        WebhookService webhookService,
+        IHttpClientFactory httpClientFactory)
     {
         _client = client;
         _config = config;
         _logger = logger;
         _webhookService = webhookService;
+        _httpClientFactory = httpClientFactory;
 
         _client.MessageUpdated += HandleMessageUpdatedAsync;
         _client.MessageDeleted += HandleMessageDeletedAsync;
@@ -128,41 +131,6 @@ public class SurveillanceService
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder($"**Before:** `{before.DisplayName}`"))
             .WithTextDisplay(new TextDisplayBuilder($"**After:** `{after.DisplayName}`"))
-            .WithSeparator()
-            .WithTextDisplay(new TextDisplayBuilder(
-                $"User ID: {after.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
-
-        return new ComponentBuilderV2().WithContainer(container).Build();
-    }
-
-    private static MessageComponent BuildUserProfileUpdateComponent(SocketUser before, SocketUser after)
-    {
-        var container = new ContainerBuilder()
-            .WithAccentColor(Color.Blue)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder("# User Profile Updated"));
-                section.AddComponent(new TextDisplayBuilder($"{after.Mention}"));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
-                });
-            })
-            .WithSeparator();
-
-        if (before.Username != after.Username)
-            container.WithTextDisplay(
-                new TextDisplayBuilder($"**Username:** `{before.Username}` → `{after.Username}`"));
-
-        if (before.GetDisplayAvatarUrl() != after.GetDisplayAvatarUrl())
-            container.WithMediaGallery(new List<string>
-            {
-                before.GetDisplayAvatarUrl() ?? before.GetDefaultAvatarUrl(),
-                after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl()
-            });
-
-        container
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder(
                 $"User ID: {after.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
@@ -353,7 +321,7 @@ public class SurveillanceService
     private async Task HandleGuildMemberUpdatedAsync(Cacheable<SocketGuildUser, ulong> beforeCache,
         SocketGuildUser after)
     {
-        if (after.IsBot || (_config.Client.OwnerId.HasValue && after.Id == _config.Client.OwnerId.Value)) return;
+        if (after.IsBot) return;
 
         var before = beforeCache.HasValue ? beforeCache.Value : null;
         if (before == null || before.DisplayName == after.DisplayName) return;
@@ -389,7 +357,7 @@ public class SurveillanceService
 
     private async Task HandleUserUpdatedAsync(SocketUser before, SocketUser after)
     {
-        if (after.IsBot || (_config.Client.OwnerId.HasValue && after.Id == _config.Client.OwnerId.Value)) return;
+        if (after.IsBot) return;
         if (before.Username == after.Username &&
             before.GetDisplayAvatarUrl() == after.GetDisplayAvatarUrl()) return;
 
@@ -402,14 +370,18 @@ public class SurveillanceService
                 .ConfigureAwait(false);
             if (webhookClient == null) continue;
 
-            var components = BuildUserProfileUpdateComponent(before, after);
+            var (components, attachments) = await UserUtils
+                .BuildUserProfileUpdateComponentAsync(before, after, _httpClientFactory, _logger)
+                .ConfigureAwait(false);
 
             try
             {
-                var msgId = await webhookClient.SendMessageAsync(
-                    components: components,
+                var msgId = await webhookClient.SendFilesAsync(
+                    attachments,
+                    "",
                     username: _client.CurrentUser.GlobalName,
                     avatarUrl: _client.CurrentUser.GetDisplayAvatarUrl() ?? _client.CurrentUser.GetDefaultAvatarUrl(),
+                    components: components,
                     flags: MessageFlags.ComponentsV2
                 ).ConfigureAwait(false);
                 _logger.LogInformation("[UPDATE] User Profile {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
@@ -422,6 +394,10 @@ public class SurveillanceService
                 _logger.LogError(ex,
                     "Failed to send user profile update log via webhook for User {UserId} in Guild {GuildId}.",
                     after.Id, guild.Id);
+            }
+            finally
+            {
+                AttachmentUtils.DisposeFileAttachments(attachments);
             }
         }
     }

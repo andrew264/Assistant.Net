@@ -215,7 +215,6 @@ public class StarboardModule(
                 $"{(config.DeleteIfUnStarred ? "✅" : "❌")} Delete if Unstarred";
 
             var container = new ContainerBuilder()
-                .WithAccentColor(Color.Gold)
                 .WithSection(section =>
                 {
                     section.AddComponent(new TextDisplayBuilder("# ⭐ Starboard Settings"));

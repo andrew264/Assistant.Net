@@ -180,11 +180,9 @@ public class StarboardService
             .DeleteManyAsync(Builders<StarredMessageModel>.Filter.In(m => m.Id, compositeIds)).ConfigureAwait(false);
     }
 
-    private static MessageComponent BuildStarboardComponents(IMessage originalMessage, int starCount,
-        string starEmoji)
+    private static MessageComponent BuildStarboardComponents(IMessage originalMessage, int starCount, string starEmoji)
     {
-        var container = new ContainerBuilder()
-            .WithAccentColor(Color.Gold);
+        var container = new ContainerBuilder();
 
         // --- Header Section with Author and Content ---
         var hasContent = !string.IsNullOrWhiteSpace(originalMessage.Content);
@@ -232,7 +230,7 @@ public class StarboardService
         // --- Metadata and Footer Section ---
         container.WithSeparator();
 
-        // Star count, channel name, and timestamp are secondary
+        // Star count, channel name, and timestamp
         var starText = $"{starEmoji} **{starCount}** in {MentionUtils.MentionChannel(originalMessage.Channel.Id)}";
         var timeText =
             $"{TimestampTag.FormatFromDateTimeOffset(originalMessage.CreatedAt, TimestampTagStyles.Relative)}";
