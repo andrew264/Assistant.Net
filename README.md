@@ -99,6 +99,16 @@ To run your own instance of Assistant.Net, you'll need to follow these steps.
    dotnet run
    ```
 
+### Building
+
+```
+dotnet publish -r linux-x64 -c Release \
+  -p:PublishSingleFile=true \
+  -p:SelfContained=true \
+  -p:PublishAot=false \
+  -p:InvariantGlobalization=false
+```
+
 ## Configuration
 
 The bot's behavior is controlled by the `Configuration/config.yaml` file. Here are the main sections you'"'"'ll need to
@@ -117,10 +127,10 @@ set up:
 
 ## Technology Stack
 
-* **Framework:** .NET 9
+* **Framework:** .NET 10
 * **Discord API Wrapper:** [Discord.Net](https://github.com/discord-net/Discord.Net)
 * **Music:** [Lavalink](https://github.com/lavalink-devs/Lavalink)
-* **Database:** [MongoDB](https://www.mongodb.com/) with the official C# driver.
+* **Database:** [MongoDB](https://www.mongodb.com/)
 
 ## Contributing
 
