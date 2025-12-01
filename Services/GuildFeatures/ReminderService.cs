@@ -152,23 +152,19 @@ public class ReminderService : IHostedService, IDisposable
                             _logger.LogWarning(
                                 "Cannot send DM reminder to User {TargetUserId} (User {UserId}/{Seq}). Sending to original channel.",
                                 targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
-                            await SendToChannelFallback(reminder, components,
-                                    $"Hey <@{reminder.Id.UserId}>, I couldn't DM you! Here's your reminder:")
-                                .ConfigureAwait(false);
+                            await SendToChannelFallback(reminder, components).ConfigureAwait(false);
                         }
                     }
                     else
                     {
                         _logger.LogWarning("Could not find user {TargetUserId} for DM reminder (ID: {UserId}/{Seq}).",
                             targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
-                        await SendToChannelFallback(reminder, components,
-                                $"Hey <@{reminder.Id.UserId}>, couldn't find the target user {targetId}! Here's your reminder:")
-                            .ConfigureAwait(false);
+                        await SendToChannelFallback(reminder, components).ConfigureAwait(false);
                     }
                 }
                 else
                 {
-                    await SendToChannel(reminder, components, $"<@{targetId}>").ConfigureAwait(false);
+                    await SendToChannel(reminder, components).ConfigureAwait(false);
                 }
             }
             catch (Exception ex)
@@ -193,7 +189,7 @@ public class ReminderService : IHostedService, IDisposable
             .WithTextDisplay(new TextDisplayBuilder(reminder.Message))
             .WithSeparator();
 
-        var creatorInfo = creator != null ? creator.Mention : $"User ID {reminder.Id.UserId}";
+        var creatorInfo = creator != null ? creator.Mention : $"<@{reminder.Id.UserId}>";
         container.WithTextDisplay(
             new TextDisplayBuilder(
                 $"**Set by:** {creatorInfo} | **Set at:** {reminder.CreationTime.GetRelativeTime()}"));
@@ -204,12 +200,12 @@ public class ReminderService : IHostedService, IDisposable
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private async Task SendToChannel(ReminderModel reminder, MessageComponent components, string mention)
+    private async Task SendToChannel(ReminderModel reminder, MessageComponent components)
     {
         if (_client.GetChannel(reminder.ChannelId) is ITextChannel channel)
             try
             {
-                await channel.SendMessageAsync(mention, components: components, allowedMentions: AllowedMentions.All,
+                await channel.SendMessageAsync(components: components, allowedMentions: AllowedMentions.All,
                     flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
                 _logger.LogInformation(
                     "Sent channel reminder (ID: {UserId}/{Seq}) to Channel {ChannelId} for User {TargetUserId}",
@@ -226,12 +222,12 @@ public class ReminderService : IHostedService, IDisposable
                 reminder.ChannelId, reminder.Id.UserId, reminder.Id.SequenceNumber);
     }
 
-    private async Task SendToChannelFallback(ReminderModel reminder, MessageComponent components, string prefixMessage)
+    private async Task SendToChannelFallback(ReminderModel reminder, MessageComponent components)
     {
         if (_client.GetChannel(reminder.ChannelId) is ITextChannel channel)
             try
             {
-                await channel.SendMessageAsync(prefixMessage, components: components,
+                await channel.SendMessageAsync(components: components,
                     allowedMentions: AllowedMentions.All, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
             }
             catch (Exception ex)

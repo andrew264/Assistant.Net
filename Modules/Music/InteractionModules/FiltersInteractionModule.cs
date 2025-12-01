@@ -352,7 +352,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
             player.Filters.Timescale = new TimescaleFilterOptions
                 { Pitch = newPitch, Rate = newRate, Speed = newSpeed };
 
-        Logger.LogInformation(
+        Logger.LogDebug(
             "[FILTERS] User {User} action '{Action}' (BtnStep {BtnStep}%), Guild {Guild}. New S:{S:F2} P:{P:F2} R:{R:F2}",
             Context.User.Username, logMessageAction, buttonStepValue * 100, Context.Guild.Name, newSpeed, newPitch,
             newRate);

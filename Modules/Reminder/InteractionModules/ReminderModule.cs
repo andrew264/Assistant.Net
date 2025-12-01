@@ -212,13 +212,10 @@ public class ReminderModule(ReminderService reminderService)
                 : $"in <#{reminder.ChannelId}>";
             var recurrenceStr = reminder.Recurrence != null ? $" (Repeats {reminder.Recurrence})" : "";
 
-            container.WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder(titleText));
-                section.AddComponent(new TextDisplayBuilder($"> {reminder.Message.Truncate(500)}"));
-                section.AddComponent(new TextDisplayBuilder(
-                    $"Triggers {reminder.TriggerTime.GetRelativeTime()} in {targetStr}{recurrenceStr}"));
-            });
+            container.WithTextDisplay(new TextDisplayBuilder(titleText));
+            container.WithTextDisplay(new TextDisplayBuilder($"> {reminder.Message.Truncate(50)}"));
+            container.WithTextDisplay(new TextDisplayBuilder(
+                $"Triggers {reminder.TriggerTime.GetRelativeTime()} in {targetStr}{recurrenceStr}"));
             count++;
         }
 

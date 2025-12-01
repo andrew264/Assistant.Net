@@ -214,11 +214,21 @@ public static class UserUtils
                         if (richGame.Timestamps?.Start is { } startTime)
                             richGameText.AppendLine(
                                 $"\nElapsed: {TimestampTag.FromDateTimeOffset(startTime, TimestampTagStyles.Relative)}");
-                        activitySection.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
-                        if (richGame.LargeAsset?.GetImageUrl() is { } largeAssetUrl)
+
+                        var largeAssetUrl = richGame.LargeAsset?.GetImageUrl();
+
+                        if (!string.IsNullOrWhiteSpace(largeAssetUrl))
+                        {
+                            activitySection.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
                             activitySection.WithAccessory(new ThumbnailBuilder
                                 { Media = new UnfurledMediaItemProperties { Url = largeAssetUrl } });
-                        mainContainer.AddComponent(activitySection);
+                            mainContainer.AddComponent(activitySection);
+                        }
+                        else
+                        {
+                            mainContainer.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
+                        }
+
                         break;
                     case StreamingGame streamingGame:
                         activitySection.AddComponent(
@@ -237,6 +247,9 @@ public static class UserUtils
                         if (customStatusContent.Length > 0)
                             mainContainer.AddComponent(
                                 new TextDisplayBuilder($"**Custom Status:** {customStatusContent}"));
+                        break;
+                    case Game game:
+                        mainContainer.AddComponent(new TextDisplayBuilder($"{game.Type} {game.Name}"));
                         break;
                 }
             }
