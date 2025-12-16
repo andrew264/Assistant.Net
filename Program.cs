@@ -12,7 +12,9 @@ using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
-using Lavalink4NET.Extensions;
+using Lavalink4NET.Cluster.Extensions;
+using Lavalink4NET.Cluster.Nodes;
+using Lavalink4NET.DiscordNet;
 using Lavalink4NET.InactivityTracking;
 using Lavalink4NET.InactivityTracking.Extensions;
 using Lavalink4NET.InactivityTracking.Trackers.Users;
@@ -95,31 +97,31 @@ public class Program
                 services.AddMemoryCache();
 
                 // --- Lavalink ---
-                services.AddLavalink()
-                    .ConfigureLavalink(options =>
-                    {
-                        var config = services.BuildServiceProvider().GetRequiredService<ConfigService>().Config;
-                        var logger = services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+                services.AddLavalinkCluster<DiscordClientWrapper>();
+                services.ConfigureLavalinkCluster(options =>
+                {
+                    var config = services.BuildServiceProvider().GetRequiredService<ConfigService>().Config;
+                    var logger = services.BuildServiceProvider().GetRequiredService<ILogger<Program>>();
+                    var nodesList = new List<LavalinkClusterNodeOptions>();
 
-                        if (config.Lavalink.IsValid && !string.IsNullOrEmpty(config.Lavalink.Uri) &&
-                            !string.IsNullOrEmpty(config.Lavalink.Password))
-                        {
-                            options.BaseAddress = new Uri(config.Lavalink.Uri);
-                            options.Passphrase = config.Lavalink.Password;
-                            options.ReadyTimeout = TimeSpan.FromSeconds(600);
-                            logger.LogInformation("Lavalink configured: Uri={Uri}", options.BaseAddress);
-                        }
-                        else
-                        {
-                            logger.LogWarning(
-                                "Lavalink configuration is invalid or incomplete. Music features may not work.");
-                        }
-                    });
+                    if (config.Lavalink.IsValid)
+                    {
+                        nodesList.AddRange(config.Lavalink.Nodes.Select(node => new LavalinkClusterNodeOptions
+                            { BaseAddress = new Uri(node.Uri), Passphrase = node.Password, Label = node.Name }));
+                        options.Nodes = [..nodesList];
+                        options.ReadyTimeout = TimeSpan.FromSeconds(60);
+                    }
+                    else
+                    {
+                        logger.LogWarning(
+                            "Lavalink configuration is invalid or incomplete. Music features may not work.");
+                    }
+                });
                 services.AddInactivityTracking();
                 services.ConfigureInactivityTracking(options =>
                 {
                     options.InactivityBehavior = PlayerInactivityBehavior.None;
-                    options.DefaultPollInterval = TimeSpan.FromSeconds(10);
+                    options.DefaultPollInterval = TimeSpan.FromSeconds(600);
                 });
                 services.Configure<UsersInactivityTrackerOptions>(options =>
                 {

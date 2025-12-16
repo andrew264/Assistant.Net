@@ -133,7 +133,7 @@ public class PlayInteractionModule(MusicService musicService, ILogger<PlayIntera
 
         if (isError || player is null) return;
 
-        var track = await MusicService.GetTrackFromSearchSelectionAsync(uri).ConfigureAwait(false);
+        var track = await MusicService.GetTrackFromSearchSelectionAsync(player, uri).ConfigureAwait(false);
 
         if (track is not null)
         {

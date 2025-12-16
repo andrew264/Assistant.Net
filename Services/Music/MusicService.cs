@@ -9,6 +9,7 @@ using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
+using Lavalink4NET.Rest;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.Logging;
@@ -128,10 +129,12 @@ public class MusicService(
         var isUrl = Uri.TryCreate(query, UriKind.Absolute, out _);
         var searchMode = isUrl ? TrackSearchMode.None : TrackSearchMode.YouTube;
         TrackLoadResult lavalinkResult;
+        var resolutionScope = new LavalinkApiResolutionScope(player.ApiClient);
 
         try
         {
-            lavalinkResult = await audioService.Tracks.LoadTracksAsync(query, searchMode).ConfigureAwait(false);
+            lavalinkResult = await audioService.Tracks.LoadTracksAsync(query, searchMode, resolutionScope)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -172,11 +175,13 @@ public class MusicService(
         return TrackLoadResultInfo.FromError(lavalinkResult.Exception?.Message ?? "Unknown error", query);
     }
 
-    public async Task<LavalinkTrack?> GetTrackFromSearchSelectionAsync(string uri)
+    public async Task<LavalinkTrack?> GetTrackFromSearchSelectionAsync(CustomPlayer player, string uri)
     {
+        var resolutionScope = new LavalinkApiResolutionScope(player.ApiClient);
         try
         {
-            var result = await audioService.Tracks.LoadTracksAsync(uri, TrackSearchMode.None).ConfigureAwait(false);
+            var result = await audioService.Tracks.LoadTracksAsync(uri, TrackSearchMode.None, resolutionScope)
+                .ConfigureAwait(false);
             return result.Track; // Will be null if not found or error
         }
         catch (Exception ex)

@@ -13,6 +13,7 @@ using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
+using Lavalink4NET.Rest;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Microsoft.Extensions.Logging;
 
@@ -617,6 +618,7 @@ public class PlaylistInteractionModule(
     {
         var addedCount = 0;
         var failedTracks = new List<string>();
+        var resolutionScope = new LavalinkApiResolutionScope(player.ApiClient);
 
         foreach (var song in playlist.Songs)
         {
@@ -630,7 +632,8 @@ public class PlaylistInteractionModule(
 
             try
             {
-                var trackLoadResult = await audioService.Tracks.LoadTracksAsync(song.Uri, TrackSearchMode.None)
+                var trackLoadResult = await audioService.Tracks
+                    .LoadTracksAsync(song.Uri, TrackSearchMode.None, resolutionScope)
                     .ConfigureAwait(false);
                 if (trackLoadResult.Track != null)
                 {

@@ -102,10 +102,16 @@ public record RedditConfig
 
 public record LavalinkConfig
 {
-    public string? Uri { get; init; }
-    public string? Password { get; init; }
+    public List<LavalinkNodeConfig> Nodes { get; init; } = [];
 
-    public bool IsValid => !string.IsNullOrWhiteSpace(Uri) && !string.IsNullOrWhiteSpace(Password);
+    public bool IsValid => Nodes.Count > 0;
+}
+
+public record LavalinkNodeConfig
+{
+    public string Name { get; init; } = "Lavalink Node";
+    public required string Uri { get; init; }
+    public required string Password { get; init; }
 }
 
 public record LoggingGuildConfig
