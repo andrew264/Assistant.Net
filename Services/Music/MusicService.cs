@@ -24,8 +24,9 @@ public class MusicService(
     ILogger<MusicService> logger)
 {
     private const int QueueItemsPerPage = 10;
+    private const int MaxRetryAttempts = 2;
+    private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(500);
 
-    // --- Events for NowPlayingService ---
     public event Func<ulong, Task>? PlayerStopped;
     public event Func<ulong, CustomPlayer, Task>? QueueEmptied;
 
@@ -36,6 +37,12 @@ public class MusicService(
         PlayerChannelBehavior channelBehavior,
         MemberVoiceStateBehavior memberBehavior)
     {
+        if (channelBehavior == PlayerChannelBehavior.Join && userVoiceChannelId is null)
+        {
+            logger.LogDebug("GetPlayerAsync: Attempted to join voice channel but userVoiceChannelId is null for Guild {GuildId}.", guildId);
+            return (null, PlayerRetrieveStatus.UserNotInVoiceChannel);
+        }
+
         var playerOptions = new CustomPlayerOptions
         {
             TextChannel = targetTextChannel,
@@ -46,27 +53,77 @@ public class MusicService(
 
         var retrieveOptions = new PlayerRetrieveOptions(channelBehavior, memberBehavior);
 
-        var result = await audioService.Players.RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
-            guildId,
-            userVoiceChannelId,
-            static (props, ct) =>
+        for (int attempt = 0; attempt < MaxRetryAttempts; attempt++)
+        {
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                return ValueTask.FromResult(new CustomPlayer(props));
-            },
-            playerOptions,
-            retrieveOptions).ConfigureAwait(false);
+                var result = await audioService.Players.RetrieveAsync<CustomPlayer, CustomPlayerOptions>(
+                    guildId,
+                    userVoiceChannelId,
+                    static (props, ct) =>
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        return ValueTask.FromResult(new CustomPlayer(props));
+                    },
+                    playerOptions,
+                    retrieveOptions).ConfigureAwait(false);
 
-        if (!result.IsSuccess)
-            logger.LogWarning(
-                "Failed to retrieve player for Guild {GuildId}. Status: {Status}. VoiceChannelId: {VoiceChannelId}, ChannelBehavior: {ChannelBehavior}, MemberBehavior: {MemberBehavior}",
-                guildId, result.Status, userVoiceChannelId, channelBehavior, memberBehavior);
-        else if (result.Player != null)
-            logger.LogTrace(
-                "Successfully retrieved player for Guild {GuildId}. Status: {Status}. VoiceChannelId: {VoiceChannelId}, ChannelBehavior: {ChannelBehavior}, MemberBehavior: {MemberBehavior}",
-                guildId, result.Status, userVoiceChannelId, channelBehavior, memberBehavior);
+                if (!result.IsSuccess)
+                {
+                    logger.LogWarning(
+                        "Failed to retrieve player for Guild {GuildId} on attempt {Attempt}/{MaxAttempts}. Status: {Status}. VoiceChannelId: {VoiceChannelId}",
+                        guildId, attempt + 1, MaxRetryAttempts, result.Status, userVoiceChannelId);
 
-        return (result.Player, result.Status);
+                    if (attempt >= MaxRetryAttempts - 1) return (result.Player, result.Status);
+                    var delay = InitialRetryDelay * Math.Pow(2, attempt);
+                    logger.LogInformation(
+                        "Retrying player retrieval for Guild {GuildId} after {Delay}ms (attempt {NextAttempt}/{MaxAttempts})",
+                        guildId, delay.TotalMilliseconds, attempt + 2, MaxRetryAttempts);
+                    await Task.Delay(delay).ConfigureAwait(false);
+                    continue;
+
+                }
+
+                if (result.Player != null)
+                {
+                    logger.LogTrace(
+                        "Successfully retrieved player for Guild {GuildId} on attempt {Attempt}/{MaxAttempts}. Status: {Status}.",
+                        guildId, attempt + 1, MaxRetryAttempts, result.Status);
+                }
+
+                return (result.Player, result.Status);
+            }
+            catch (TimeoutException ex)
+            {
+                logger.LogWarning(ex,
+                    "TimeoutException retrieving player for Guild {GuildId} on attempt {Attempt}/{MaxAttempts}. VoiceChannelId: {VoiceChannelId}",
+                    guildId, attempt + 1, MaxRetryAttempts, userVoiceChannelId);
+
+                if (attempt >= MaxRetryAttempts - 1)
+                {
+                    logger.LogError(
+                        "All {MaxAttempts} attempts to retrieve player for Guild {GuildId} failed due to timeout.",
+                        MaxRetryAttempts, guildId);
+                    return (null, PlayerRetrieveStatus.PreconditionFailed);
+                }
+
+                var delay = InitialRetryDelay * Math.Pow(2, attempt);
+                logger.LogInformation(
+                    "Retrying player retrieval for Guild {GuildId} after {Delay}ms due to timeout (attempt {NextAttempt}/{MaxAttempts})",
+                    guildId, delay.TotalMilliseconds, attempt + 2, MaxRetryAttempts);
+                await Task.Delay(delay).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex,
+                    "Unexpected exception retrieving player for Guild {GuildId} on attempt {Attempt}/{MaxAttempts}",
+                    guildId, attempt + 1, MaxRetryAttempts);
+                
+                return (null, PlayerRetrieveStatus.PreconditionFailed);
+            }
+        }
+        logger.LogError("Unexpectedly exhausted all retry attempts for Guild {GuildId}", guildId);
+        return (null, PlayerRetrieveStatus.PreconditionFailed);
     }
 
 
@@ -94,7 +151,7 @@ public class MusicService(
 
         logger.LogError("GetPlayerForContextAsync called from non-text channel {ChannelId} ({ChannelName})",
             channel.Id, channel.Name);
-        return (null, PlayerRetrieveStatus.UserNotInVoiceChannel); // Or a more appropriate status
+        return (null, PlayerRetrieveStatus.UserNotInVoiceChannel); 
     }
 
 
@@ -114,7 +171,7 @@ public class MusicService(
                 logger.LogDebug(
                     "[MusicService:{GuildId}] Tried to start playback, but queue is empty or dequeued track is null.",
                     player.GuildId);
-                // If queue is truly empty now, and player was not playing.
+                
                 if (player.Queue.IsEmpty && player.State == PlayerState.NotPlaying && QueueEmptied != null)
                     await QueueEmptied.Invoke(player.GuildId, player).ConfigureAwait(false);
             }
@@ -145,7 +202,7 @@ public class MusicService(
 
         if (lavalinkResult.IsPlaylist)
         {
-            var playlist = lavalinkResult.Playlist!; // Not null if IsPlaylist is true
+            var playlist = lavalinkResult.Playlist!; 
             var tracks = lavalinkResult.Tracks;
             if (tracks.IsEmpty)
                 return TrackLoadResultInfo.FromError($"Playlist '{playlist.Name}' is empty or could not be loaded.",
@@ -157,7 +214,7 @@ public class MusicService(
         }
 
         if (searchMode != TrackSearchMode.None && !lavalinkResult.Tracks.IsEmpty)
-            // Return search results for the module to handle UI
+            
             return TrackLoadResultInfo.FromSearchResults(lavalinkResult.Tracks, query);
 
         if (lavalinkResult.Track is not null)
@@ -182,7 +239,7 @@ public class MusicService(
         {
             var result = await audioService.Tracks.LoadTracksAsync(uri, TrackSearchMode.None, resolutionScope)
                 .ConfigureAwait(false);
-            return result.Track; // Will be null if not found or error
+            return result.Track; 
         }
         catch (Exception ex)
         {
@@ -204,7 +261,7 @@ public class MusicService(
 
         switch (index)
         {
-            // Skip current track
+            
             case 0:
                 trackToReport = player.CurrentTrack;
                 await player.SkipAsync().ConfigureAwait(false);
@@ -212,7 +269,7 @@ public class MusicService(
                 logger.LogInformation("[MusicService:{GuildId}] Skipped current track '{TrackTitle}' by {User}",
                     player.GuildId, trackToReport.Title, requester.Username);
                 break;
-            // Skip a track in the queue
+            
             case > 0 when index <= player.Queue.Count:
             {
                 var queuedTrackItem = player.Queue[index - 1];
@@ -226,7 +283,7 @@ public class MusicService(
                     "[MusicService:{GuildId}] Removed track '{TrackTitle}' from queue at index {Index} by {User}",
                     player.GuildId, trackToReport.Title, index, requester.Username);
 
-                if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null) // Check after removal
+                if (player.Queue.IsEmpty && player.CurrentTrack == null && QueueEmptied != null) 
                     await QueueEmptied.Invoke(player.GuildId, player).ConfigureAwait(false);
                 break;
             }
@@ -289,7 +346,7 @@ public class MusicService(
 
     public async Task StopPlaybackAsync(CustomPlayer player, IUser requester)
     {
-        var guildId = player.GuildId; // Capture before player might be disposed
+        var guildId = player.GuildId; 
         await player.Queue.ClearAsync().ConfigureAwait(false);
         await player.StopAsync().ConfigureAwait(false);
         await player.DisconnectAsync().ConfigureAwait(false);
@@ -327,7 +384,7 @@ public class MusicService(
 
         var currentTrack = player.CurrentTrack;
 
-        if (index == 0) // Restart current track
+        if (index == 0) 
         {
             await player.SeekAsync(TimeSpan.Zero).ConfigureAwait(false);
             logger.LogInformation("[MusicService:{GuildId}] Restarted track '{TrackTitle}' by {User}",
@@ -341,10 +398,10 @@ public class MusicService(
         var trackToPlayItem = player.Queue[index - 1];
         if (trackToPlayItem.Track is null) return (false, "Invalid track data at the specified queue index.");
 
-        // Remove tracks before the target index
+        
         for (var i = 0; i < index - 1; i++) await player.Queue.TryDequeueAsync().ConfigureAwait(false);
 
-        // The target track is now at the front. SkipAsync will play it.
+        
         await player.SkipAsync().ConfigureAwait(false);
         logger.LogInformation("[MusicService:{GuildId}] Skipped to track '{TrackTitle}' (from index {Index}) by {User}",
             player.GuildId, trackToPlayItem.Track.Title, index, requester.Username);
@@ -377,10 +434,10 @@ public class MusicService(
         }
     }
 
-    // --- Queue Specific Methods ---
+    
     public static (MessageComponent? Components, string? ErrorMessage) BuildQueueComponents(
         CustomPlayer player,
-        int currentPage, // 1-based from caller
+        int currentPage, 
         ulong interactionMessageId,
         ulong requesterId)
     {
@@ -389,7 +446,7 @@ public class MusicService(
         var componentBuilder = new ComponentBuilderV2();
         var container = new ContainerBuilder();
 
-        // --- Now Playing Section ---
+        
         if (player.CurrentTrack is not null)
         {
             var title = $"## {player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}";
@@ -413,7 +470,7 @@ public class MusicService(
             container.WithTextDisplay(new TextDisplayBuilder("**Queue**\n*Nothing is currently playing.*"));
         }
 
-        // --- Queue Listing Section ---
+        
         var queueCount = player.Queue.Count;
         container.WithSeparator();
         if (queueCount > 0)
@@ -426,7 +483,7 @@ public class MusicService(
             var firstIndex = (currentPage - 1) * QueueItemsPerPage;
             var lastIndex = Math.Min(firstIndex + QueueItemsPerPage, queueCount);
 
-            // Build the queue list as a single formatted string to avoid the Section accessory requirement
+            
             var queueListBuilder = new StringBuilder();
             for (var i = firstIndex; i < lastIndex; i++)
             {
@@ -449,7 +506,7 @@ public class MusicService(
             if (queueListBuilder.Length > 0)
                 container.WithTextDisplay(new TextDisplayBuilder(queueListBuilder.ToString()));
 
-            // --- Pagination and Footer Section ---
+            
             container.WithSeparator();
 
             if (totalPages > 1)
@@ -474,7 +531,7 @@ public class MusicService(
                 new TextDisplayBuilder(
                     $"Page {currentPage}/{totalPages} • {totalSongsInQueueSystem} Song(s) • {loopStatus}"));
         }
-        else // Queue is empty, but a song is playing
+        else 
         {
             var loopStatus = player.RepeatMode == TrackRepeatMode.Track ? "🔂 Looping Track" : "➡️ Loop Disabled";
             container.WithTextDisplay(new TextDisplayBuilder($"Queue is empty • {loopStatus}"));
