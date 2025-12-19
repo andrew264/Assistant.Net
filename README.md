@@ -73,7 +73,7 @@ To run your own instance of Assistant.Net, you'll need to follow these steps.
 
 ### Prerequisites
 
-* .NET 9 SDK (or the version specified in `Assistant.Net.csproj`)
+* .NET 10 SDK (or the version specified in `Assistant.Net.csproj`)
 * A running Lavalink server for music functionality.
 * A MongoDB database for storing data.
 * A Discord Bot Token and various API keys.
