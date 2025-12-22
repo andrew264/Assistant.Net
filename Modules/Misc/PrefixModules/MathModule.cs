@@ -7,7 +7,6 @@ public class MathModule : ModuleBase<SocketCommandContext>
 {
     [Command("calc", RunMode = RunMode.Async)]
     [Alias("math", "calculate", "eval")]
-    [Summary("Evaluates a mathematical expression safely.")]
     public async Task CalculateAsync([Remainder] string? expression = null)
     {
         if (string.IsNullOrWhiteSpace(expression))
@@ -33,15 +32,19 @@ public class MathModule : ModuleBase<SocketCommandContext>
         }
         catch (DivideByZeroException)
         {
-            await ReplyAsync("Cannot divide by zero.");
+            await ReplyAsync("Error: Cannot divide by zero.");
         }
         catch (ArgumentException ex)
         {
             await ReplyAsync($"Syntax Error: {ex.Message}");
         }
+        catch (InvalidOperationException ex)
+        {
+            await ReplyAsync($"Evaluation Error: {ex.Message}");
+        }
         catch (Exception)
         {
-            await ReplyAsync("An error occurred while evaluating the expression.");
+            await ReplyAsync("An unexpected error occurred while evaluating the expression.");
         }
     }
 }

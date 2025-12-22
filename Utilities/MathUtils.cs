@@ -5,17 +5,74 @@ namespace Assistant.Net.Utilities;
 
 public static class MathUtils
 {
+    private static readonly Dictionary<string, OperatorInfo> Operators = new()
+    {
+        { "+", new OperatorInfo(2, false) },
+        { "-", new OperatorInfo(2, false) },
+        { "*", new OperatorInfo(3, false) },
+        { "/", new OperatorInfo(3, false) },
+        { "%", new OperatorInfo(3, false) },
+        { "^", new OperatorInfo(4, true) }
+    };
+
+    private static readonly Dictionary<string, double> Constants = new()
+    {
+        { "pi", Math.PI },
+        { "e", Math.E }
+    };
+
+    private static readonly Dictionary<string, FunctionInfo> Functions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Unary
+        { "sqrt", new FunctionInfo(1, args => Math.Sqrt(ValidatePos(args[0], "sqrt"))) },
+        { "abs", new FunctionInfo(1, args => Math.Abs(args[0])) },
+        { "floor", new FunctionInfo(1, args => Math.Floor(args[0])) },
+        { "ceil", new FunctionInfo(1, args => Math.Ceiling(args[0])) },
+        { "round", new FunctionInfo(1, args => Math.Round(args[0])) },
+        { "exp", new FunctionInfo(1, args => Math.Exp(args[0])) },
+
+        // Logarithms
+        { "ln", new FunctionInfo(1, args => Math.Log(ValidatePos(args[0], "ln"))) }, // Natural log
+        { "log", new FunctionInfo(1, args => Math.Log10(ValidatePos(args[0], "log"))) }, // Base 10
+        { "log2", new FunctionInfo(1, args => Math.Log2(ValidatePos(args[0], "log2"))) }, // Base 2
+
+        // Trig (Radians)
+        { "sin", new FunctionInfo(1, args => Math.Sin(args[0])) },
+        { "cos", new FunctionInfo(1, args => Math.Cos(args[0])) },
+        { "tan", new FunctionInfo(1, args => Math.Tan(args[0])) },
+        { "asin", new FunctionInfo(1, args => Math.Asin(args[0])) },
+        { "acos", new FunctionInfo(1, args => Math.Acos(args[0])) },
+        { "atan", new FunctionInfo(1, args => Math.Atan(args[0])) },
+
+        // Trig (Degrees)
+        { "sind", new FunctionInfo(1, args => Math.Sin(args[0] * (Math.PI / 180.0))) },
+        { "cosd", new FunctionInfo(1, args => Math.Cos(args[0] * (Math.PI / 180.0))) },
+        { "tand", new FunctionInfo(1, args => Math.Tan(args[0] * (Math.PI / 180.0))) },
+
+        // Binary
+        { "min", new FunctionInfo(2, args => Math.Min(args[0], args[1])) },
+        { "max", new FunctionInfo(2, args => Math.Max(args[0], args[1])) },
+        { "pow", new FunctionInfo(2, args => Math.Pow(args[0], args[1])) },
+        { "atan2", new FunctionInfo(2, args => Math.Atan2(args[0], args[1])) }
+    };
+
+    private static double ValidatePos(double val, string funcName)
+    {
+        if (val < 0) throw new ArgumentException($"Argument for '{funcName}' must be non-negative.");
+        return val;
+    }
+
     public static double Evaluate(string expression)
     {
         var tokens = Tokenize(expression);
-        var processedTokens = AddImplicitMultiplication(tokens);
-        var rpn = ShuntingYard(processedTokens);
+        var implicitTokens = AddImplicitMultiplication(tokens);
+        var rpn = ShuntingYard(implicitTokens);
         return EvaluateRpn(rpn);
     }
 
-    private static List<string> Tokenize(string expression)
+    private static List<Token> Tokenize(string expression)
     {
-        var tokens = new List<string>();
+        var tokens = new List<Token>();
         var sb = new StringBuilder();
 
         for (var i = 0; i < expression.Length; i++)
@@ -26,44 +83,87 @@ public static class MathUtils
 
             if (char.IsDigit(c) || c == '.')
             {
-                sb.Append(c);
-                while (i + 1 < expression.Length && (char.IsDigit(expression[i + 1]) || expression[i + 1] == '.'))
-                    sb.Append(expression[++i]);
-                tokens.Add(sb.ToString());
                 sb.Clear();
+                var dotCount = 0;
+
+                if (c == '.') dotCount++;
+                sb.Append(c);
+
+                while (i + 1 < expression.Length)
+                {
+                    var next = expression[i + 1];
+                    if (char.IsDigit(next))
+                    {
+                        sb.Append(next);
+                        i++;
+                    }
+                    else if (next == '.')
+                    {
+                        dotCount++;
+                        if (dotCount > 1)
+                            throw new ArgumentException($"Invalid number format: multiple dots in '{sb}.'");
+                        sb.Append(next);
+                        i++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
+                if (sb.ToString() == ".") throw new ArgumentException("Invalid token: standalone '.'");
+                tokens.Add(new Token(sb.ToString(), TokenType.Number));
             }
             else if (char.IsLetter(c))
             {
+                sb.Clear();
                 sb.Append(c);
                 while (i + 1 < expression.Length && char.IsLetter(expression[i + 1])) sb.Append(expression[++i]);
-                tokens.Add(sb.ToString().ToLowerInvariant());
-                sb.Clear();
-            }
-            else if (IsOperator(c.ToString()) || c == '(' || c == ')' || c == ',')
-            {
-                if (c == '-' && (tokens.Count == 0 || IsOperator(tokens.Last()) || tokens.Last() == "(" ||
-                                 tokens.Last() == ","))
-                {
-                    tokens.Add("0");
-                    tokens.Add("-");
-                }
+
+                var identifier = sb.ToString().ToLowerInvariant();
+                if (Constants.ContainsKey(identifier))
+                    tokens.Add(new Token(identifier, TokenType.Constant));
+                else if (Functions.ContainsKey(identifier))
+                    tokens.Add(new Token(identifier, TokenType.Function));
                 else
-                {
-                    tokens.Add(c.ToString());
-                }
+                    throw new ArgumentException($"Unknown identifier: '{identifier}'");
             }
             else
             {
-                throw new ArgumentException($"Invalid character encountered: {c}");
+                var s = c.ToString();
+                if (Operators.ContainsKey(s))
+                {
+                    if (s == "-" && (tokens.Count == 0 || IsUnarySource(tokens.Last())))
+                    {
+                        tokens.Add(new Token("0", TokenType.Number));
+                        tokens.Add(new Token("-", TokenType.Operator));
+                    }
+                    else
+                    {
+                        tokens.Add(new Token(s, TokenType.Operator));
+                    }
+                }
+                else if (s is "(" or ")" or ",")
+                {
+                    tokens.Add(new Token(s, TokenType.Separator));
+                }
+                else
+                {
+                    throw new ArgumentException($"Invalid character encountered: {c}");
+                }
             }
         }
 
         return tokens;
     }
 
-    private static List<string> AddImplicitMultiplication(List<string> tokens)
+    private static bool IsUnarySource(Token t) =>
+        t.Type == TokenType.Operator ||
+        t is { Type: TokenType.Separator, Value: "(" or "," };
+
+    private static List<Token> AddImplicitMultiplication(List<Token> tokens)
     {
-        var result = new List<string>();
+        var result = new List<Token>();
 
         for (var i = 0; i < tokens.Count; i++)
         {
@@ -73,22 +173,13 @@ public static class MathUtils
             {
                 var prev = tokens[i - 1];
 
-                var prevIsOperand = IsNumber(prev) || IsConstant(prev) || (!IsOperator(prev) && !IsFunction(prev) &&
-                                                                           prev != "(" && prev != "," && prev != ")");
-                var prevIsCloseParen = prev == ")";
+                var isPrevOperand = prev.Type == TokenType.Number || prev.Type == TokenType.Constant ||
+                                    prev is { Type: TokenType.Separator, Value: ")" };
+                var isCurrOperand = token.Type == TokenType.Number || token.Type == TokenType.Constant ||
+                                    token.Type == TokenType.Function ||
+                                    token is { Type: TokenType.Separator, Value: "(" };
 
-                var currIsOperand = IsNumber(token) || IsConstant(token) || (!IsOperator(token) && !IsFunction(token) &&
-                                                                             token != "(" && token != "," &&
-                                                                             token != ")");
-                var currIsOpenParen = token == "(";
-                var currIsFunc = IsFunction(token);
-
-                var insert = false;
-
-                if ((prevIsOperand || prevIsCloseParen) && (currIsOpenParen || currIsFunc || currIsOperand))
-                    insert = true;
-
-                if (insert) result.Add("*");
+                if (isPrevOperand && isCurrOperand) result.Add(new Token("*", TokenType.Operator));
             }
 
             result.Add(token);
@@ -97,89 +188,101 @@ public static class MathUtils
         return result;
     }
 
-    private static Queue<string> ShuntingYard(List<string> tokens)
+    private static Queue<Token> ShuntingYard(List<Token> tokens)
     {
-        var outputQueue = new Queue<string>();
-        var operatorStack = new Stack<string>();
+        var outputQueue = new Queue<Token>();
+        var operatorStack = new Stack<Token>();
 
         foreach (var token in tokens)
-            if (IsNumber(token) || IsConstant(token))
+            switch (token.Type)
             {
-                outputQueue.Enqueue(token);
-            }
-            else if (IsFunction(token))
-            {
-                operatorStack.Push(token);
-            }
-            else if (token == ",")
-            {
-                var foundParen = false;
-                while (operatorStack.Count > 0)
-                {
-                    if (operatorStack.Peek() == "(")
+                case TokenType.Number:
+                case TokenType.Constant:
+                    outputQueue.Enqueue(token);
+                    break;
+
+                case TokenType.Function:
+                    operatorStack.Push(token);
+                    break;
+
+                case TokenType.Separator:
+                    if (token.Value == ",")
                     {
-                        foundParen = true;
-                        break;
+                        var foundParen = false;
+                        while (operatorStack.Count > 0)
+                        {
+                            if (operatorStack.Peek().Value == "(")
+                            {
+                                foundParen = true;
+                                break;
+                            }
+
+                            outputQueue.Enqueue(operatorStack.Pop());
+                        }
+
+                        if (!foundParen) throw new ArgumentException("Misplaced comma or mismatched parentheses.");
+                    }
+                    else if (token.Value == "(")
+                    {
+                        operatorStack.Push(token);
+                    }
+                    else if (token.Value == ")")
+                    {
+                        var foundOpen = false;
+                        while (operatorStack.Count > 0)
+                        {
+                            if (operatorStack.Peek().Value == "(")
+                            {
+                                foundOpen = true;
+                                break;
+                            }
+
+                            outputQueue.Enqueue(operatorStack.Pop());
+                        }
+
+                        if (!foundOpen)
+                            throw new ArgumentException("Mismatched parentheses: too many closing parentheses.");
+
+                        operatorStack.Pop();
+
+                        if (operatorStack.Count > 0 && operatorStack.Peek().Type == TokenType.Function)
+                            outputQueue.Enqueue(operatorStack.Pop());
                     }
 
-                    outputQueue.Enqueue(operatorStack.Pop());
-                }
+                    break;
 
-                if (!foundParen) throw new ArgumentException("Misplaced comma or mismatched parentheses.");
-            }
-            else if (IsOperator(token))
-            {
-                while (operatorStack.Count > 0 && IsOperator(operatorStack.Peek()))
-                {
-                    var o1 = token;
-                    var o2 = operatorStack.Peek();
-
-                    if ((GetAssociation(o1) == "Left" && GetPrecedence(o1) <= GetPrecedence(o2)) ||
-                        (GetAssociation(o1) == "Right" && GetPrecedence(o1) < GetPrecedence(o2)))
-                        outputQueue.Enqueue(operatorStack.Pop());
-                    else
-                        break;
-                }
-
-                operatorStack.Push(token);
-            }
-            else if (token == "(")
-            {
-                operatorStack.Push(token);
-            }
-            else if (token == ")")
-            {
-                var foundOpen = false;
-                while (operatorStack.Count > 0)
-                {
-                    if (operatorStack.Peek() == "(")
+                case TokenType.Operator:
+                    while (operatorStack.Count > 0 && operatorStack.Peek().Type == TokenType.Operator)
                     {
-                        foundOpen = true;
-                        break;
+                        var o1 = token.Value;
+                        var o2Token = operatorStack.Peek();
+                        var o2 = o2Token.Value;
+
+                        var op1Info = Operators[o1];
+                        var op2Info = Operators[o2];
+
+                        if ((!op1Info.RightAssociative && op1Info.Precedence <= op2Info.Precedence) ||
+                            (op1Info.RightAssociative && op1Info.Precedence < op2Info.Precedence))
+                            outputQueue.Enqueue(operatorStack.Pop());
+                        else
+                            break;
                     }
 
-                    outputQueue.Enqueue(operatorStack.Pop());
-                }
-
-                if (!foundOpen) throw new ArgumentException("Mismatched parentheses: too many closing parentheses.");
-
-                operatorStack.Pop();
-
-                if (operatorStack.Count > 0 && IsFunction(operatorStack.Peek()))
-                    outputQueue.Enqueue(operatorStack.Pop());
+                    operatorStack.Push(token);
+                    break;
             }
 
         while (operatorStack.Count > 0)
         {
             var op = operatorStack.Pop();
-            if (op is "(" or ")") throw new ArgumentException("Mismatched parentheses: too many opening parentheses.");
+            if (op.Value is "(" or ")") throw new ArgumentException("Mismatched parentheses.");
             outputQueue.Enqueue(op);
         }
 
         return outputQueue;
     }
 
-    private static double EvaluateRpn(Queue<string> rpnQueue)
+    private static double EvaluateRpn(Queue<Token> rpnQueue)
     {
         var stack = new Stack<double>();
 
@@ -187,65 +290,54 @@ public static class MathUtils
         {
             var token = rpnQueue.Dequeue();
 
-            if (double.TryParse(token, NumberStyles.Any, CultureInfo.InvariantCulture, out var number))
+            switch (token.Type)
             {
-                stack.Push(number);
-            }
-            else if (token == "pi")
-            {
-                stack.Push(Math.PI);
-            }
-            else if (token == "e")
-            {
-                stack.Push(Math.E);
-            }
-            else if (IsOperator(token))
-            {
-                if (stack.Count < 2)
-                    throw new ArgumentException($"Invalid expression: missing operands for operator '{token}'.");
-                var right = stack.Pop();
-                var left = stack.Pop();
+                case TokenType.Number when double.TryParse(token.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var val):
+                    stack.Push(val);
+                    break;
+                case TokenType.Number:
+                    throw new ArgumentException($"Failed to parse number: {token.Value}");
+                case TokenType.Constant:
+                    stack.Push(Constants[token.Value]);
+                    break;
+                case TokenType.Operator when stack.Count < 2:
+                    throw new ArgumentException($"Missing operands for operator '{token.Value}'.");
+                case TokenType.Operator:
+                {
+                    var right = stack.Pop();
+                    var left = stack.Pop();
+                    var result = 0.0;
 
-                switch (token)
-                {
-                    case "+": stack.Push(left + right); break;
-                    case "-": stack.Push(left - right); break;
-                    case "*": stack.Push(left * right); break;
-                    case "/":
-                        if (Math.Abs(right) < 1e-15) throw new DivideByZeroException();
-                        stack.Push(left / right);
-                        break;
-                    case "%": stack.Push(left % right); break;
-                    case "^": stack.Push(Math.Pow(left, right)); break;
+                    switch (token.Value)
+                    {
+                        case "+": result = left + right; break;
+                        case "-": result = left - right; break;
+                        case "*": result = left * right; break;
+                        case "/":
+                            if (Math.Abs(right) < 1e-15) throw new DivideByZeroException();
+                            result = left / right;
+                            break;
+                        case "%": result = left % right; break;
+                        case "^": result = Math.Pow(left, right); break;
+                    }
+
+                    stack.Push(result);
+                    break;
                 }
-            }
-            else if (IsFunction(token))
-            {
-                if (stack.Count < 1)
-                    throw new ArgumentException($"Invalid expression: missing argument for function '{token}'.");
-                var val = stack.Pop();
-                switch (token.ToLowerInvariant())
+                case TokenType.Function:
                 {
-                    case "sqrt":
-                        if (val < 0) throw new ArgumentException("Cannot calculate square root of a negative number.");
-                        stack.Push(Math.Sqrt(val));
-                        break;
-                    case "sin": stack.Push(Math.Sin(val)); break;
-                    case "cos": stack.Push(Math.Cos(val)); break;
-                    case "tan": stack.Push(Math.Tan(val)); break;
-                    case "abs": stack.Push(Math.Abs(val)); break;
-                    case "floor": stack.Push(Math.Floor(val)); break;
-                    case "ceil": stack.Push(Math.Ceiling(val)); break;
-                    case "round": stack.Push(Math.Round(val)); break;
-                    case "log":
-                        if (val <= 0) throw new ArgumentException("Logarithm argument must be positive.");
-                        stack.Push(Math.Log10(val));
-                        break;
-                    case "ln":
-                        if (val <= 0) throw new ArgumentException("Logarithm argument must be positive.");
-                        stack.Push(Math.Log(val));
-                        break;
-                    case "exp": stack.Push(Math.Exp(val)); break;
+                    var funcName = token.Value;
+                    if (!Functions.TryGetValue(funcName, out var funcInfo))
+                        throw new ArgumentException($"Unknown function '{funcName}'.");
+
+                    if (stack.Count < funcInfo.Arity)
+                        throw new ArgumentException($"Function '{funcName}' requires {funcInfo.Arity} arguments.");
+
+                    var args = new double[funcInfo.Arity];
+                    for (var i = funcInfo.Arity - 1; i >= 0; i--) args[i] = stack.Pop();
+
+                    stack.Push(funcInfo.Evaluator(args));
+                    break;
                 }
             }
         }
@@ -254,24 +346,30 @@ public static class MathUtils
         return stack.Pop();
     }
 
-    private static bool IsNumber(string token) =>
-        double.TryParse(token, NumberStyles.Any, CultureInfo.InvariantCulture, out _);
-
-    private static bool IsConstant(string token) => token is "pi" or "e";
-
-    private static bool IsOperator(string token) => "+-*/%^".Contains(token) && token.Length == 1;
-
-    private static bool IsFunction(string token) =>
-        new[] { "sqrt", "sin", "cos", "tan", "abs", "floor", "ceil", "round", "log", "ln", "exp" }.Contains(
-            token.ToLowerInvariant());
-
-    private static int GetPrecedence(string op) => op switch
+    private enum TokenType
     {
-        "^" => 4,
-        "*" or "/" or "%" => 3,
-        "+" or "-" => 2,
-        _ => 0
-    };
+        Number,
+        Operator,
+        Function,
+        Separator,
+        Constant
+    }
 
-    private static string GetAssociation(string op) => op == "^" ? "Right" : "Left";
+    private readonly struct Token
+    {
+        public string Value { get; }
+        public TokenType Type { get; }
+
+        public Token(string value, TokenType type)
+        {
+            Value = value;
+            Type = type;
+        }
+
+        public override string ToString() => Value;
+    }
+
+    private record FunctionInfo(int Arity, Func<double[], double> Evaluator);
+
+    private record OperatorInfo(int Precedence, bool RightAssociative);
 }
