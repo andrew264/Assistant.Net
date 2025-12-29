@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Models.Music;
-using Assistant.Net.Models.Playlist;
 using Assistant.Net.Modules.Music.Autocomplete;
 using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Modules.Music.Logic.Player;
@@ -16,6 +15,7 @@ using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
 using Lavalink4NET.Rest;
 using Lavalink4NET.Rest.Entities.Tracks;
+using Lavalink4NET.Tracks;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Modules.Music.InteractionModules;
@@ -30,7 +30,6 @@ public class PlaylistInteractionModule(
 {
     private static readonly ConcurrentDictionary<ulong, IUserMessage> ActiveShowViews = new();
 
-    // --- Create ---
     [SlashCommand("create", "Create a new playlist.")]
     public async Task CreatePlaylistCommand(
         [Summary("name", "The name for your new playlist (1-100 characters).")]
@@ -55,7 +54,6 @@ public class PlaylistInteractionModule(
         }
     }
 
-    // --- Delete ---
     [SlashCommand("delete", "Delete one of your playlists.")]
     public async Task DeletePlaylistCommand(
         [Summary("name", "The name of the playlist to delete.")]
@@ -141,7 +139,6 @@ public class PlaylistInteractionModule(
         }).ConfigureAwait(false);
     }
 
-    // --- Add ---
     [SlashCommand("add", "Add a song or playlist URL to your playlist.")]
     public async Task AddToPlaylistCommand(
         [Summary("playlist_name", "The name of your playlist.")]
@@ -154,7 +151,7 @@ public class PlaylistInteractionModule(
 
         var (player, isError) = await GetVerifiedPlayerAsync(
             !string.IsNullOrWhiteSpace(query) ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
-            MemberVoiceStateBehavior.RequireSame // User must be in a VC to add songs
+            MemberVoiceStateBehavior.RequireSame
         ).ConfigureAwait(false);
 
         if (isError || player is null)
@@ -165,7 +162,7 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var songsToAdd = new List<SongModel>();
+        var tracksToAdd = new List<LavalinkTrack>();
 
         if (!string.IsNullOrWhiteSpace(query))
         {
@@ -180,28 +177,11 @@ public class PlaylistInteractionModule(
                 return;
             }
 
-            songsToAdd.AddRange(loadResult.Tracks.Select(track => new SongModel
-            {
-                Title = track.Title,
-                Artist = track.Author,
-                Uri = track.Uri?.ToString() ?? "Unknown URI",
-                Duration = track.Duration.TotalMilliseconds,
-                Thumbnail = track.ArtworkUri?.ToString(),
-                Source = track.SourceName ?? "other"
-            }));
+            tracksToAdd.AddRange(loadResult.Tracks);
         }
         else if (player.CurrentTrack != null)
         {
-            var currentTrack = player.CurrentTrack;
-            songsToAdd.Add(new SongModel
-            {
-                Title = currentTrack.Title,
-                Artist = currentTrack.Author,
-                Uri = currentTrack.Uri?.ToString() ?? "Unknown URI",
-                Duration = currentTrack.Duration.TotalMilliseconds,
-                Thumbnail = currentTrack.ArtworkUri?.ToString(),
-                Source = currentTrack.SourceName ?? "other"
-            });
+            tracksToAdd.Add(player.CurrentTrack);
         }
         else
         {
@@ -210,15 +190,15 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        if (songsToAdd.Count == 0)
+        if (tracksToAdd.Count == 0)
         {
             await FollowupAsync("No valid songs found to add.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         var addResult =
-            await playlistService.AddTracksToPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName, songsToAdd)
-                .ConfigureAwait(false);
+            await playlistService.AddTracksToPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName,
+                tracksToAdd).ConfigureAwait(false);
 
         if (addResult.Success)
         {
@@ -235,7 +215,6 @@ public class PlaylistInteractionModule(
         }
     }
 
-    // --- Remove ---
     [SlashCommand("remove", "Remove a song from your playlist by its position.")]
     public async Task RemoveFromPlaylistCommand(
         [Summary("playlist_name", "The name of your playlist.")]
@@ -245,11 +224,11 @@ public class PlaylistInteractionModule(
         int position)
     {
         await DeferAsync().ConfigureAwait(false);
-        var (success, message, removedSong) = await playlistService
+        var (success, message, removedTrack) = await playlistService
             .RemoveSongFromPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistName, position)
             .ConfigureAwait(false);
 
-        if (success && removedSong != null)
+        if (success && removedTrack != null)
         {
             var container = new ContainerBuilder()
                 .WithTextDisplay(new TextDisplayBuilder("🗑️ **Song Removed**"))
@@ -263,7 +242,6 @@ public class PlaylistInteractionModule(
         }
     }
 
-    // --- List ---
     [SlashCommand("list", "Show all your playlists in this server.")]
     public async Task ListPlaylistsCommand()
     {
@@ -301,7 +279,6 @@ public class PlaylistInteractionModule(
         await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
-    // --- Show ---
     [SlashCommand("show", "Display the songs in one of your playlists.")]
     public async Task ShowPlaylistCommand(
         [Summary("playlist_name", "The name of the playlist.")] [Autocomplete(typeof(PlaylistNameAutocompleteProvider))]
@@ -341,7 +318,7 @@ public class PlaylistInteractionModule(
             }
             catch (Exception ex)
             {
-                Logger.LogDebug(ex, "Failed to disable components on timed-out show playlist view {MessageId}",
+                logger.LogDebug(ex, "Failed to disable components on timed-out show playlist view {MessageId}",
                     msgToClean.Id);
             }
         });
@@ -429,7 +406,6 @@ public class PlaylistInteractionModule(
             await FollowupAsync(components: ephemeralComponents, ephemeral: true, flags: MessageFlags.ComponentsV2)
                 .ConfigureAwait(false);
 
-            // Update the original message to show the shuffled playlist
             var originalResponse = await GetOriginalResponseAsync().ConfigureAwait(false);
             var (components, _) = MusicUiFactory.BuildShowPlaylistResponse(result.Playlist, 1, Context.User);
             await originalResponse.ModifyAsync(props =>
@@ -500,7 +476,6 @@ public class PlaylistInteractionModule(
         await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
     }
 
-    // --- Play ---
     [SlashCommand("play", "Plays one of your playlists.")]
     public async Task PlayPlaylistCommand(
         [Summary("playlist_name", "The name of the playlist to play.")]
@@ -567,7 +542,7 @@ public class PlaylistInteractionModule(
         {
             if (string.IsNullOrWhiteSpace(song.Uri))
             {
-                Logger.LogWarning("Skipping song '{SongTitle}' from playlist '{PlaylistName}' due to missing URI.",
+                logger.LogWarning("Skipping song '{SongTitle}' from playlist '{PlaylistName}' due to missing URI.",
                     song.Title, playlist.Name);
                 failedTracks.Add(song.Title.Truncate(30) + " (Missing URI)");
                 continue;
@@ -586,7 +561,7 @@ public class PlaylistInteractionModule(
                 }
                 else
                 {
-                    Logger.LogWarning(
+                    logger.LogWarning(
                         "Failed to load track '{TrackUri}' (Title: {SongTitle}) from playlist '{PlaylistName}'.",
                         song.Uri, song.Title, playlist.Name);
                     failedTracks.Add(song.Title.Truncate(30) + " (Load Failed)");
@@ -594,7 +569,7 @@ public class PlaylistInteractionModule(
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex,
+                logger.LogError(ex,
                     "Error loading track '{TrackUri}' (Title: {SongTitle}) for playlist '{PlaylistName}'", song.Uri,
                     song.Title, playlist.Name);
                 failedTracks.Add(song.Title.Truncate(30) + " (Error)");
@@ -604,7 +579,6 @@ public class PlaylistInteractionModule(
         return (addedCount, failedTracks);
     }
 
-    // --- Rename ---
     [SlashCommand("rename", "Rename one of your playlists.")]
     public async Task RenamePlaylistCommand(
         [Summary("old_name", "The current name of the playlist.")]
@@ -619,7 +593,6 @@ public class PlaylistInteractionModule(
         await FollowupAsync(result.Message, ephemeral: !result.Success).ConfigureAwait(false);
     }
 
-    // --- Shuffle ---
     [SlashCommand("shuffle", "Shuffle the songs within one of your playlists.")]
     public async Task ShufflePlaylistCommand(
         [Summary("playlist_name", "The name of the playlist to shuffle.")]
@@ -643,7 +616,6 @@ public class PlaylistInteractionModule(
         }
     }
 
-    // --- Share ---
     [SlashCommand("share", "Share one of your playlists with another user in this server.")]
     public async Task SharePlaylistCommand(
         [Summary("playlist_name", "The name of your playlist to share.")]

@@ -1,6 +1,6 @@
 using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
-using Assistant.Net.Models.Playlist;
+using Lavalink4NET.Tracks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -112,7 +112,7 @@ public class PlaylistService(
     }
 
     public async Task<PlaylistOperationResult> AddTracksToPlaylistAsync(ulong userId, ulong guildId,
-        string playlistName, List<SongModel> songsToAdd)
+        string playlistName, IReadOnlyCollection<LavalinkTrack> tracksToAdd)
     {
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var dUserId = (decimal)userId;
@@ -130,31 +130,32 @@ public class PlaylistService(
 
         if (spaceAvailable <= 0) return new PlaylistOperationResult(false, "Playlist is already full.");
 
-        var actualSongsToAdd = songsToAdd.Take(spaceAvailable).ToList();
-        if (actualSongsToAdd.Count == 0)
+        var actualTracksToAdd = tracksToAdd.Take(spaceAvailable).ToList();
+        if (actualTracksToAdd.Count == 0)
             return new PlaylistOperationResult(false,
                 "No songs provided or playlist capacity would be exceeded (even with one song).");
 
         var addedCount = 0;
         var currentPosition = initialSongCount;
 
-        foreach (var songModel in actualSongsToAdd)
+        foreach (var trackModel in actualTracksToAdd)
         {
-            // Ensure track exists
-            var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == songModel.Uri).ConfigureAwait(false);
+            if (trackModel.Uri is null) continue;
+            var trackUri = trackModel.Uri.ToString();
+
+            var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == trackUri).ConfigureAwait(false);
             if (track == null)
             {
                 track = new TrackEntity
                 {
-                    Uri = songModel.Uri,
-                    Title = songModel.Title,
-                    Artist = songModel.Artist,
-                    ThumbnailUrl = songModel.Thumbnail,
-                    Duration = songModel.Duration, // Assuming duration in seconds or TimeSpan converted to double
-                    Source = songModel.Source
+                    Uri = trackUri,
+                    Title = trackModel.Title,
+                    Artist = trackModel.Author,
+                    ThumbnailUrl = trackModel.ArtworkUri?.ToString(),
+                    Duration = trackModel.Duration.TotalSeconds,
+                    Source = trackModel.SourceName ?? "other"
                 };
                 context.Tracks.Add(track);
-                // Save immediately to get ID for linking, or rely on EF graph if using existing track reference carefully
                 await context.SaveChangesAsync().ConfigureAwait(false);
             }
 
@@ -172,14 +173,13 @@ public class PlaylistService(
         {
             await context.SaveChangesAsync().ConfigureAwait(false);
             var message = $"Added {addedCount} song(s) to '{playlistName}'.";
-            if (songsToAdd.Count > addedCount)
-                message += $" Could not add {songsToAdd.Count - addedCount} song(s) due to playlist capacity.";
+            if (tracksToAdd.Count > addedCount)
+                message += $" Could not add {tracksToAdd.Count - addedCount} song(s) due to playlist capacity.";
 
             logger.LogInformation(
                 "Added {AddedCount} songs to playlist '{PlaylistName}' for User {UserId}, Guild {GuildId}.",
                 addedCount, playlistName, userId, guildId);
 
-            // Re-fetch playlist to return complete object if needed
             return new PlaylistOperationResult(true, message, playlist);
         }
         catch (Exception ex)
@@ -190,7 +190,8 @@ public class PlaylistService(
         }
     }
 
-    public async Task<(bool Success, string Message, SongModel? RemovedSong)> RemoveSongFromPlaylistAsync(ulong userId,
+    public async Task<(bool Success, string Message, TrackEntity? RemovedTrack)> RemoveSongFromPlaylistAsync(
+        ulong userId,
         ulong guildId, string playlistName, int oneBasedIndex)
     {
         if (oneBasedIndex <= 0) return (false, "Invalid song index. Position must be 1 or greater.", null);
@@ -207,25 +208,14 @@ public class PlaylistService(
 
         if (playlist == null) return (false, "Playlist not found.", null);
 
-        // Find item by logical position (sorted) or assume Position matches index if maintained perfectly
-        // To be safe, let's sort by position and pick
         var sortedItems = playlist.Items.OrderBy(i => i.Position).ToList();
         if (oneBasedIndex > sortedItems.Count) return (false, "Invalid song index; it's out of bounds.", null);
 
         var itemToRemove = sortedItems[oneBasedIndex - 1];
-        var removedSongModel = new SongModel
-        {
-            Title = itemToRemove.Track.Title,
-            Uri = itemToRemove.Track.Uri,
-            Artist = itemToRemove.Track.Artist ?? "Unknown",
-            Duration = itemToRemove.Track.Duration,
-            Thumbnail = itemToRemove.Track.ThumbnailUrl,
-            Source = itemToRemove.Track.Source
-        };
+        var removedTrack = itemToRemove.Track;
 
         context.PlaylistItems.Remove(itemToRemove);
 
-        // Re-index subsequent items
         for (var i = oneBasedIndex; i < sortedItems.Count; i++) sortedItems[i].Position--;
 
         try
@@ -234,7 +224,7 @@ public class PlaylistService(
             logger.LogInformation(
                 "Removed song '{SongTitle}' from playlist '{PlaylistName}' for User {UserId}, Guild {GuildId}",
                 itemToRemove.Track.Title, playlistName, userId, guildId);
-            return (true, $"Removed '{itemToRemove.Track.Title}' from playlist '{playlistName}'.", removedSongModel);
+            return (true, $"Removed '{itemToRemove.Track.Title}' from playlist '{playlistName}'.", removedTrack);
         }
         catch (Exception ex)
         {
@@ -254,7 +244,7 @@ public class PlaylistService(
         return await context.Playlists
             .Where(p => p.UserId == dUserId && p.GuildId == dGuildId)
             .OrderBy(p => p.Name)
-            .Include(p => p.Items) // Optional: might be heavy if only listing names
+            .Include(p => p.Items)
             .ToListAsync()
             .ConfigureAwait(false);
     }
@@ -324,7 +314,6 @@ public class PlaylistService(
         var random = new Random();
         var shuffledItems = items.OrderBy(_ => random.Next()).ToList();
 
-        // Reassign positions
         for (var i = 0; i < shuffledItems.Count; i++) shuffledItems[i].Position = i + 1;
 
         try
