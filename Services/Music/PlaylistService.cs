@@ -30,11 +30,9 @@ public class PlaylistService(IDbContextFactory<AssistantDbContext> dbFactory, IL
         var dUserId = (decimal)userId;
         var dGuildId = (decimal)guildId;
 
-        // Ensure User exists
         if (!await context.Users.AnyAsync(u => u.Id == dUserId).ConfigureAwait(false))
         {
             context.Users.Add(new UserEntity { Id = dUserId });
-            // Save to avoid FK issues
             await context.SaveChangesAsync().ConfigureAwait(false);
         }
 
@@ -360,7 +358,6 @@ public class PlaylistService(IDbContextFactory<AssistantDbContext> dbFactory, IL
 
         if (originalPlaylist == null) return new PlaylistOperationResult(false, "Original playlist not found.");
 
-        // Ensure Recipient Exists
         if (!await context.Users.AnyAsync(u => u.Id == dRecipientId).ConfigureAwait(false))
         {
             context.Users.Add(new UserEntity { Id = dRecipientId });
@@ -390,14 +387,13 @@ public class PlaylistService(IDbContextFactory<AssistantDbContext> dbFactory, IL
         };
 
         context.Playlists.Add(sharedPlaylist);
-        // Save to generate ID
         await context.SaveChangesAsync().ConfigureAwait(false);
 
         foreach (var item in originalPlaylist.Items)
             context.PlaylistItems.Add(new PlaylistItemEntity
             {
                 PlaylistId = sharedPlaylist.Id,
-                TrackId = item.TrackId, // Share track reference
+                TrackId = item.TrackId,
                 Position = item.Position
             });
 

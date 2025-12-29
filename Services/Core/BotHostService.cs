@@ -2,6 +2,7 @@ using System.Reflection;
 using Assistant.Net.Configuration;
 using Assistant.Net.Services.GuildFeatures;
 using Assistant.Net.Services.GuildFeatures.Starboard;
+using Assistant.Net.Services.Logging;
 using Assistant.Net.Services.User;
 using Discord;
 using Discord.Commands;
@@ -23,15 +24,21 @@ public class BotHostService(
     Config config,
     ILogger<BotHostService> logger,
     IAudioService audioService,
-    SurveillanceService surveillanceService,
     UserActivityTrackingService userActivityTrackingService,
-    StarboardService starboardService)
+    StarboardService starboardService,
+    MessageLogger messageLogger,
+    UserLogger userLogger,
+    VoiceLogger voiceLogger,
+    PresenceLogger presenceLogger)
     : IHostedService
 {
     // ReSharper disable UnusedMember.Local
-    private readonly SurveillanceService _surveillanceService = surveillanceService;
     private readonly UserActivityTrackingService _userActivityTrackingService = userActivityTrackingService;
     private readonly StarboardService _starboardService = starboardService;
+    private readonly MessageLogger _messageLogger = messageLogger;
+    private readonly UserLogger _userLogger = userLogger;
+    private readonly VoiceLogger _voiceLogger = voiceLogger;
+    private readonly PresenceLogger _presenceLogger = presenceLogger;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -90,7 +97,7 @@ public class BotHostService(
             logger.LogInformation("Command Service modules loaded.");
 
             // Register commands globally or to test guilds
-            if (config.Client.TestGuilds != null && config.Client.TestGuilds.Count != 0)
+            if (config.Client.TestGuilds.Count != 0)
                 foreach (var guildId in config.Client.TestGuilds)
                     try
                     {

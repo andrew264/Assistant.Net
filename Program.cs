@@ -5,6 +5,7 @@ using Assistant.Net.Services.ExternalApis;
 using Assistant.Net.Services.Games;
 using Assistant.Net.Services.GuildFeatures;
 using Assistant.Net.Services.GuildFeatures.Starboard;
+using Assistant.Net.Services.Logging;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Services.User;
 using Assistant.Net.Services.Voting;
@@ -171,8 +172,11 @@ public class Program
                 // --- User Activity Tracking Service ---
                 services.AddSingleton<UserActivityTrackingService>();
 
-                // --- Surveillance Service ---
-                services.AddSingleton<SurveillanceService>();
+                // --- Surveillance / Logging Services ---
+                services.AddSingleton<MessageLogger>();
+                services.AddSingleton<UserLogger>();
+                services.AddSingleton<VoiceLogger>();
+                services.AddSingleton<PresenceLogger>();
 
                 // --- Starboard Services ---
                 services.AddSingleton<StarboardConfigService>();
