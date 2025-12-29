@@ -2,6 +2,7 @@ using Assistant.Net.Configuration;
 using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Models.Music;
+using Lavalink4NET.Players;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -48,11 +49,26 @@ public class MusicHistoryService
         return settings;
     }
 
-    public async Task AddSongToHistoryAsync(ulong guildId, SongHistoryEntry songEntry)
+    public async Task AddSongToHistoryAsync(ulong guildId, ITrackQueueItem queueItem)
     {
+        if (queueItem.Track?.Uri is null)
+        {
+            _logger.LogWarning("Cannot add track to history: Track or URI is null. Guild: {GuildId}", guildId);
+            return;
+        }
+
+        var requesterId = 0UL;
+        var customQueueItem = queueItem.As<CustomTrackQueueItem>();
+        if (customQueueItem is not null)
+            requesterId = customQueueItem.RequesterId;
+        else
+            _logger.LogWarning(
+                "Could not determine requester for track '{TrackTitle}' in guild {GuildId}. The queue item was not a CustomTrackQueueItem.",
+                queueItem.Track.Title, guildId);
+
         await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var decimalGuildId = (decimal)guildId;
-        var decimalRequesterId = (decimal)songEntry.RequestedBy;
+        var decimalRequesterId = (decimal)requesterId;
 
         try
         {
@@ -67,19 +83,20 @@ public class MusicHistoryService
                 context.GuildMusicSettings.Add(settings);
             }
 
-            await _userService.EnsureUserExistsAsync(context, songEntry.RequestedBy).ConfigureAwait(false);
+            await _userService.EnsureUserExistsAsync(context, requesterId).ConfigureAwait(false);
 
-            var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == songEntry.Uri).ConfigureAwait(false);
+            var trackUri = queueItem.Track.Uri.ToString();
+            var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == trackUri).ConfigureAwait(false);
             if (track == null)
             {
                 track = new TrackEntity
                 {
-                    Uri = songEntry.Uri,
-                    Title = songEntry.Title,
-                    Artist = songEntry.Artist,
-                    ThumbnailUrl = songEntry.ThumbnailUrl,
-                    Duration = songEntry.Duration.TotalSeconds,
-                    Source = "unknown"
+                    Uri = trackUri,
+                    Title = queueItem.Track.Title,
+                    Artist = queueItem.Track.Author,
+                    ThumbnailUrl = queueItem.Track.ArtworkUri?.ToString(),
+                    Duration = queueItem.Track.Duration.TotalSeconds,
+                    Source = queueItem.Track.SourceName ?? "unknown"
                 };
                 context.Tracks.Add(track);
             }
@@ -94,7 +111,8 @@ public class MusicHistoryService
             context.PlayHistories.Add(playHistory);
 
             await context.SaveChangesAsync().ConfigureAwait(false);
-            _logger.LogDebug("Added song '{SongTitle}' to history for Guild {GuildId}.", songEntry.Title, guildId);
+            _logger.LogDebug("Added song '{SongTitle}' to history for Guild {GuildId}.", queueItem.Track.Title,
+                guildId);
         }
         catch (Exception ex)
         {

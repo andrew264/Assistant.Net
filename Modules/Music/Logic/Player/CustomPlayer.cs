@@ -1,5 +1,4 @@
 using Assistant.Net.Configuration;
-using Assistant.Net.Models.Music;
 using Assistant.Net.Services.Data;
 using Assistant.Net.Utilities;
 using Discord;
@@ -40,44 +39,11 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
     public ValueTask NotifyPlayerTrackedAsync(PlayerTrackingState trackingState,
         CancellationToken cancellationToken = default) => default;
 
-    // Add track to history when started
-    private async Task AddTrackToHistoryAsync(ITrackQueueItem queueItem)
-    {
-        if (queueItem.Track?.Uri is null)
-        {
-            _logger.LogWarning("Cannot add track to history: Track or URI is null. Guild: {GuildId}", GuildId);
-            return;
-        }
-
-        var requesterId = 0UL;
-        var customQueueItem = queueItem.As<CustomTrackQueueItem>();
-        if (customQueueItem is not null)
-            requesterId = customQueueItem.RequesterId;
-        else
-            _logger.LogWarning(
-                "Could not determine requester for track '{TrackTitle}' in guild {GuildId}. The queue item was not a CustomTrackQueueItem.",
-                queueItem.Track.Title, GuildId);
-
-        var historyEntry = new SongHistoryEntry
-        {
-            Title = queueItem.Track.Title,
-            Uri = queueItem.Track.Uri.ToString(),
-            PlayedAt = DateTime.UtcNow,
-            RequestedBy = requesterId,
-            Duration = queueItem.Track.Duration,
-            ThumbnailUrl = queueItem.Track.ArtworkUri?.ToString(),
-            Artist = queueItem.Track.Author
-        };
-
-        await _historyService.AddSongToHistoryAsync(GuildId, historyEntry).ConfigureAwait(false);
-    }
-
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem queueItem,
         CancellationToken cancellationToken = default)
     {
         await base.NotifyTrackStartedAsync(queueItem, cancellationToken).ConfigureAwait(false);
 
-        // Update bot presence if in home guild
         if (IsHomeGuildPlayer)
         {
             var title = queueItem.Track?.Title ?? "Unknown Track";
@@ -95,8 +61,7 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
             }
         }
 
-        // Add to history
-        await AddTrackToHistoryAsync(queueItem).ConfigureAwait(false);
+        await _historyService.AddSongToHistoryAsync(GuildId, queueItem).ConfigureAwait(false);
 
         _logger.LogInformation("[Player:{GuildId}] Track started: {TrackTitle} ({TrackUri})", GuildId,
             queueItem.Track?.Title, queueItem.Track?.Uri);
@@ -107,7 +72,6 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
     {
         await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
 
-        // Reset bot presence if in home guild and queue is empty
         if (IsHomeGuildPlayer && Queue.IsEmpty)
             try
             {
