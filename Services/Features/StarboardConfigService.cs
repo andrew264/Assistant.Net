@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services.GuildFeatures.Starboard;
+namespace Assistant.Net.Services.Features;
 
 public class StarboardConfigService
 {

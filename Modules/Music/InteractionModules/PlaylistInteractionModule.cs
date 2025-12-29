@@ -1,16 +1,16 @@
 using System.Collections.Concurrent;
-using System.Text;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Models.Playlist;
 using Assistant.Net.Modules.Music.Autocomplete;
 using Assistant.Net.Modules.Music.Base;
 using Assistant.Net.Modules.Music.Logic.Player;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
+using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.Interactions;
-using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
@@ -28,7 +28,6 @@ public class PlaylistInteractionModule(
     IAudioService audioService,
     ILogger<PlaylistInteractionModule> logger) : MusicInteractionModuleBase(musicService, logger)
 {
-    private const int SongsPerPage = 10;
     private static readonly ConcurrentDictionary<ulong, IUserMessage> ActiveShowViews = new();
 
     // --- Create ---
@@ -320,7 +319,8 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var (components, errorMessage) = BuildShowPlaylistResponse(playlist, page, Context.User);
+        var (components, errorMessage) =
+            MusicUiFactory.BuildShowPlaylistResponse(playlist, page, Context.User);
 
         if (errorMessage != null)
         {
@@ -347,67 +347,6 @@ public class PlaylistInteractionModule(
         });
     }
 
-    private static (MessageComponent? Components, string? ErrorMessage) BuildShowPlaylistResponse(
-        PlaylistEntity playlist,
-        int currentPage, SocketUser requester)
-    {
-        var totalSongs = playlist.Items.Count;
-        if (totalSongs == 0)
-        {
-            var emptyContainer = new ContainerBuilder()
-                .WithTextDisplay(new TextDisplayBuilder($"**🎵 Playlist: {playlist.Name.Truncate(100)}**"))
-                .WithTextDisplay(new TextDisplayBuilder("*This playlist is empty.*"));
-            return (new ComponentBuilderV2().WithContainer(emptyContainer).Build(), null);
-        }
-
-        var totalPages = (int)Math.Ceiling((double)totalSongs / SongsPerPage);
-        currentPage = Math.Clamp(currentPage, 1, totalPages);
-
-        var container = new ContainerBuilder()
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"**🎵 Playlist: {playlist.Name.Truncate(100)}**"));
-                section.AddComponent(new TextDisplayBuilder($"*Created by {requester.Mention}*"));
-            })
-            .WithSeparator();
-
-        var songsOnPage = playlist.Items
-            .OrderBy(i => i.Position)
-            .Skip((currentPage - 1) * SongsPerPage)
-            .Take(SongsPerPage)
-            .ToList();
-
-        var songListBuilder = new StringBuilder();
-        for (var i = 0; i < songsOnPage.Count; i++)
-        {
-            var song = songsOnPage[i].Track;
-            var overallIndex = (currentPage - 1) * SongsPerPage + i + 1;
-            songListBuilder.AppendLine(
-                $"{overallIndex}. {song.Title.AsMarkdownLink(song.Uri).Truncate(80)} (`{TimeSpan.FromSeconds(song.Duration):mm\\:ss}`)");
-        }
-
-        container.WithTextDisplay(new TextDisplayBuilder(songListBuilder.ToString()));
-        container.WithSeparator();
-
-        var footerText =
-            $"Page {currentPage}/{totalPages}  •  {totalSongs} Songs  •  Updated {TimestampTag.FormatFromDateTime(playlist.CreatedAt, TimestampTagStyles.Relative)}";
-        container.WithTextDisplay(new TextDisplayBuilder(footerText));
-
-        var controlsRow = new ActionRowBuilder()
-            .WithButton("Previous", $"assistant:playlist:show_prev:{requester.Id}:{playlist.Name}:{currentPage}",
-                ButtonStyle.Secondary, new Emoji("◀"), disabled: currentPage == 1)
-            .WithButton("Next", $"assistant:playlist:show_next:{requester.Id}:{playlist.Name}:{currentPage}",
-                ButtonStyle.Secondary, new Emoji("▶"), disabled: currentPage == totalPages)
-            .WithButton("Shuffle", $"assistant:playlist:action_shuffle:{requester.Id}:{playlist.Name}",
-                ButtonStyle.Primary,
-                new Emoji("🔀"))
-            .WithButton("Play", $"assistant:playlist:action_play:{requester.Id}:{playlist.Name}", ButtonStyle.Success,
-                new Emoji("▶️"));
-
-        container.WithActionRow(controlsRow);
-        return (new ComponentBuilderV2().WithContainer(container).Build(), null);
-    }
-
     [ComponentInteraction("assistant:playlist:show_prev:*:*:*", true)]
     public async Task HandleShowPrev(ulong requesterId, string playlistName, int currentPage)
     {
@@ -430,7 +369,7 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var (components, _) = BuildShowPlaylistResponse(playlist, currentPage - 1, Context.User);
+        var (components, _) = MusicUiFactory.BuildShowPlaylistResponse(playlist, currentPage - 1, Context.User);
         await ModifyOriginalResponseAsync(m =>
         {
             m.Components = components;
@@ -460,7 +399,7 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var (components, _) = BuildShowPlaylistResponse(playlist, currentPage + 1, Context.User);
+        var (components, _) = MusicUiFactory.BuildShowPlaylistResponse(playlist, currentPage + 1, Context.User);
         await ModifyOriginalResponseAsync(m =>
         {
             m.Components = components;
@@ -492,7 +431,7 @@ public class PlaylistInteractionModule(
 
             // Update the original message to show the shuffled playlist
             var originalResponse = await GetOriginalResponseAsync().ConfigureAwait(false);
-            var (components, _) = BuildShowPlaylistResponse(result.Playlist, 1, Context.User);
+            var (components, _) = MusicUiFactory.BuildShowPlaylistResponse(result.Playlist, 1, Context.User);
             await originalResponse.ModifyAsync(props =>
             {
                 props.Components = components;

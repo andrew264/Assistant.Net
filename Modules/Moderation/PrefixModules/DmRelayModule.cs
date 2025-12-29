@@ -1,6 +1,6 @@
 using System.Text;
 using Assistant.Net.Modules.Attributes;
-using Assistant.Net.Services.User;
+using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Commands;

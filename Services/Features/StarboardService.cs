@@ -7,7 +7,7 @@ using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services.GuildFeatures.Starboard;
+namespace Assistant.Net.Services.Features;
 
 public class StarboardService
 {

@@ -1,6 +1,6 @@
 using Assistant.Net.Configuration;
 using Assistant.Net.Models.Music;
-using Assistant.Net.Services.Music;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.WebSocket;

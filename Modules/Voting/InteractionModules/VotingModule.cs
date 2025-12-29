@@ -1,5 +1,5 @@
 using Assistant.Net.Modules.Voting.Logic;
-using Assistant.Net.Services.Voting;
+using Assistant.Net.Services.Features;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;

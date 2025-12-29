@@ -1,6 +1,6 @@
 using System.Text;
 using Assistant.Net.Modules.Games.Autocomplete;
-using Assistant.Net.Services.Games;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;

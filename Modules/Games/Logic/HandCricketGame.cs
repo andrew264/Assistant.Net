@@ -1,5 +1,5 @@
 using Assistant.Net.Modules.Games.Models.HandCricket;
-using Assistant.Net.Services.Games;
+using Assistant.Net.Services.Data;
 using Discord;
 using Microsoft.Extensions.Logging;
 
@@ -7,9 +7,8 @@ namespace Assistant.Net.Modules.Games.Logic;
 
 public class HandCricketGame
 {
-    private const string CustomIdPrefix = "assistant:hc";
-    private static readonly int[] TossNumbers = [1, 2, 0x3, 4, 5, 6];
-    private static readonly int[] GameNumbers = [1, 2, 3, 4, 5, 6];
+    public static readonly int[] TossNumbers = [1, 2, 3, 4, 5, 6];
+    public static readonly int[] GameNumbers = [1, 2, 3, 4, 5, 6];
     private readonly GameStatsService? _gameStatsService;
     private readonly ILogger _logger;
     private string? _lastOutcomeMessage;
@@ -37,10 +36,12 @@ public class HandCricketGame
 
     private IUser CurrentBatter { get; set; }
     private IUser CurrentBowler { get; set; }
-    private int Player1Score { get; set; }
-    private int Player2Score { get; set; }
+    public int Player1Score { get; private set; }
+    public int Player2Score { get; private set; }
     private GameNumberChoices CurrentTurnChoices { get; set; } = new();
     private int CurrentInning { get; set; }
+
+    public ulong CurrentBatterId => CurrentBatter.Id;
 
     public void SetTossEvenOddPreference(IUser chooser, EvenOddChoice choice)
     {
@@ -201,7 +202,7 @@ public class HandCricketGame
         return true;
     }
 
-    private int GetTargetScore()
+    public int GetTargetScore()
     {
         if (CurrentInning == 0) return -1;
         return (CurrentBatter.Id == Player1.Id ? Player2Score : Player1Score) + 1;
@@ -249,62 +250,7 @@ public class HandCricketGame
             _logger.LogWarning("[HC {GameId}] GameStatsService not available, skipping stat recording.", GameId);
     }
 
-    private string GetHumanPhaseName()
-    {
-        return CurrentPhase switch
-        {
-            HandCricketPhase.TossSelectEvenOdd => "Toss - Choose Even/Odd",
-            HandCricketPhase.TossSelectNumber => "Toss - Choose Number",
-            HandCricketPhase.TossSelectBatBowl => "Toss - Choose Bat/Bowl",
-            HandCricketPhase.Inning1Batting => "Inning 1",
-            HandCricketPhase.Inning2Batting => "Inning 2",
-            HandCricketPhase.GameOver => "Game Over",
-            _ => CurrentPhase.ToString()
-        };
-    }
-
-    public MessageComponent BuildGameComponent()
-    {
-        var builder = new ComponentBuilderV2();
-        var container = new ContainerBuilder();
-
-        // --- Header ---
-        container.AddComponent(new TextDisplayBuilder($"# Hand Cricket: {Player1.Username} vs {Player2.Username}"));
-        container.AddComponent(new TextDisplayBuilder($"*Phase: {GetHumanPhaseName()}*"));
-        container.WithSeparator();
-
-        // --- Scoreboard ---
-        var p1Role = CurrentBatter.Id == Player1.Id ? "🏏" : "⚾";
-        var p2Role = CurrentBatter.Id == Player2.Id ? "🏏" : "⚾";
-        container.AddComponent(new TextDisplayBuilder($"**{Player1.Username} {p1Role}:** {Player1Score}"));
-        container.AddComponent(new TextDisplayBuilder($"**{Player2.Username} {p2Role}:** {Player2Score}"));
-
-        var targetScore = GetTargetScore();
-        if (targetScore > 0 && CurrentPhase == HandCricketPhase.Inning2Batting)
-            container.AddComponent(new TextDisplayBuilder($"**Target:** {targetScore}"));
-
-        // --- Last Turn Info & Current Prompt ---
-        var prompt = GetCurrentPrompt();
-        if (!string.IsNullOrWhiteSpace(prompt))
-        {
-            container.WithSeparator();
-            container.WithTextDisplay(new TextDisplayBuilder(prompt));
-        }
-
-        // --- Buttons ---
-        var buttonActionRows = GetActionRowsForCurrentPhase();
-        foreach (var row in buttonActionRows) container.WithActionRow(row);
-
-        // --- Footer ---
-        container.WithSeparator();
-        container.WithTextDisplay(new TextDisplayBuilder($"*Game ID: {GameId[..8]}*"));
-
-        builder.WithContainer(container);
-        return builder.Build();
-    }
-
-
-    private string GetCurrentPrompt()
+    public string GetCurrentPrompt()
     {
         var outcome = _lastOutcomeMessage;
         _lastOutcomeMessage = null; // Consume the message
@@ -349,63 +295,5 @@ public class HandCricketGame
         if (!string.IsNullOrEmpty(waitingFor)) prompt += $" Waiting for {waitingFor}...";
 
         return prompt;
-    }
-
-    private List<ActionRowBuilder> GetActionRowsForCurrentPhase()
-    {
-        var rows = new List<ActionRowBuilder>();
-
-        switch (CurrentPhase)
-        {
-            case HandCricketPhase.TossSelectEvenOdd:
-                rows.Add(new ActionRowBuilder()
-                    .WithButton("Even", $"{CustomIdPrefix}:{GameId}:toss_eo:even", ButtonStyle.Success)
-                    .WithButton("Odd", $"{CustomIdPrefix}:{GameId}:toss_eo:odd", ButtonStyle.Danger));
-                break;
-
-            case HandCricketPhase.TossSelectNumber:
-                rows.AddRange(CreateNumberButtonRows(TossNumbers, "toss_num"));
-                break;
-
-            case HandCricketPhase.TossSelectBatBowl:
-                rows.Add(new ActionRowBuilder()
-                    .WithButton("Bat 🏏", $"{CustomIdPrefix}:{GameId}:batbowl:bat")
-                    .WithButton("Bowl ⚾", $"{CustomIdPrefix}:{GameId}:batbowl:bowl", ButtonStyle.Success));
-                break;
-
-            case HandCricketPhase.Inning1Batting:
-            case HandCricketPhase.Inning2Batting:
-                rows.AddRange(CreateNumberButtonRows(GameNumbers, "play_num"));
-                break;
-
-            case HandCricketPhase.GameOver:
-                // No buttons for game over state
-                break;
-        }
-
-        return rows;
-    }
-
-    private List<ActionRowBuilder> CreateNumberButtonRows(IEnumerable<int> numbers, string action)
-    {
-        var actionRows = new List<ActionRowBuilder>();
-        var currentRow = new ActionRowBuilder();
-        var count = 0;
-
-        foreach (var num in numbers)
-        {
-            if (count > 0 && count % 5 == 0)
-            {
-                actionRows.Add(currentRow);
-                currentRow = new ActionRowBuilder();
-            }
-
-            currentRow.WithButton(num.ToString(), $"{CustomIdPrefix}:{GameId}:{action}:{num}", ButtonStyle.Secondary);
-            count++;
-        }
-
-        if (currentRow.Components.Count > 0) actionRows.Add(currentRow);
-
-        return actionRows;
     }
 }

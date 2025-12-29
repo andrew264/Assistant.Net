@@ -1,5 +1,5 @@
 using System.Text;
-using Assistant.Net.Services.User;
+using Assistant.Net.Services.Data;
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;

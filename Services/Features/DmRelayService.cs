@@ -8,7 +8,7 @@ using Discord.Webhook;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services.User;
+namespace Assistant.Net.Services.Features;
 
 public class DmRelayService
 {

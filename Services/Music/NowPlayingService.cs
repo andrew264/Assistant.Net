@@ -1,17 +1,14 @@
 using System.Collections.Concurrent;
 using System.Net;
-using System.Text;
 using Assistant.Net.Configuration;
-using Assistant.Net.Models.Music;
 using Assistant.Net.Modules.Music.Logic.Player;
-using Assistant.Net.Utilities;
+using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.Interactions;
 using Discord.Net;
 using Discord.WebSocket;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
-using Lavalink4NET.Players.Queued;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Music;
@@ -102,7 +99,7 @@ public class NowPlayingService : IDisposable
         var guildId = player.GuildId;
         await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
 
-        var components = BuildNowPlayingDisplay(player, guildId);
+        var components = MusicUiFactory.BuildNowPlayingDisplay(player, guildId, _config);
         IUserMessage? sentMessage;
 
         try
@@ -284,7 +281,7 @@ public class NowPlayingService : IDisposable
 
         try
         {
-            var components = BuildNowPlayingDisplay(player, guildId);
+            var components = MusicUiFactory.BuildNowPlayingDisplay(player, guildId, _config);
             await npInfo.MessageInstance!.ModifyAsync(props => { props.Components = components; })
                 .ConfigureAwait(false);
         }
@@ -323,141 +320,6 @@ public class NowPlayingService : IDisposable
             }
 
         _logger.LogTrace("Exited NP update loop for Guild {GuildId}", guildId);
-    }
-
-    private MessageComponent BuildNowPlayingDisplay(CustomPlayer player, ulong guildId)
-    {
-        var builder = new ComponentBuilderV2();
-        var container = new ContainerBuilder();
-
-        var currentTrack = player.CurrentTrack;
-        var queue = player.Queue;
-
-        if (currentTrack != null)
-        {
-            // --- Title, Author, Thumbnail Section ---
-            container.WithSection(section =>
-            {
-                var titleAndAuthor =
-                    $"## {currentTrack.Title.AsMarkdownLink(currentTrack.Uri?.ToString())}\nby {currentTrack.Author}";
-                section.AddComponent(new TextDisplayBuilder(titleAndAuthor));
-
-                if (currentTrack.ArtworkUri != null)
-                    section.WithAccessory(new ThumbnailBuilder
-                    {
-                        Media = new UnfurledMediaItemProperties { Url = currentTrack.ArtworkUri.ToString() }
-                    });
-            });
-
-            // --- Requester Info ---
-            var customItem = player.CurrentItem?.As<CustomTrackQueueItem>();
-            if (customItem != null)
-                container.WithTextDisplay(new TextDisplayBuilder($"Added by: **<@{customItem.RequesterId}>**"));
-
-            // --- Progress Bar ---
-            if (player.Position?.Position != null)
-            {
-                var position = player.Position.Value.Position;
-                var progressBar = MusicUtils.CreateProgressBar(position, currentTrack.Duration, 18);
-                var currentTime = position.FormatPlayerTime();
-                var totalTime = currentTrack.Duration.FormatPlayerTime();
-                container.WithTextDisplay(new TextDisplayBuilder($"`{currentTime}` {progressBar} `{totalTime}`"));
-            }
-        }
-        else
-        {
-            container.WithTextDisplay(new TextDisplayBuilder(
-                $"**No song currently playing**\nUse `/play` to add songs. `{_config.Client.Prefix}play` also works."));
-        }
-
-        // --- Add a small space ---
-        if (currentTrack != null)
-            container.WithSeparator(isDivider: false, spacing: SeparatorSpacingSize.Small);
-
-        // --- Controls ---
-        var controlsDisabled = currentTrack == null;
-
-        // Row 0: Playback Controls
-        var playbackRow = new ActionRowBuilder()
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:prev_restart", ButtonStyle.Primary, Emoji.Parse("⏮️"),
-                disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:rewind", ButtonStyle.Primary, Emoji.Parse("⏪"),
-                disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:pause_resume",
-                player.State == PlayerState.Paused ? ButtonStyle.Success : ButtonStyle.Primary,
-                player.State == PlayerState.Paused ? Emoji.Parse("▶️") : Emoji.Parse("⏸️"), disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:forward", ButtonStyle.Primary, Emoji.Parse("⏩"),
-                disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:skip", ButtonStyle.Primary, Emoji.Parse("⏭️"),
-                disabled: controlsDisabled);
-        container.WithActionRow(playbackRow);
-
-        container.AddComponent(new SeparatorBuilder());
-
-        // --- Footer Info ---
-        var footerText = new StringBuilder();
-        if (!queue.IsEmpty)
-        {
-            var nextTrack = queue[0].Track;
-            if (nextTrack != null)
-                footerText.Append($"Next: {nextTrack.Title.Truncate(50)} | {queue.Count} in queue");
-            else
-                footerText.Append($"{queue.Count} songs in queue");
-        }
-        else
-        {
-            footerText.Append("Queue is empty");
-        }
-
-        switch (player.RepeatMode)
-        {
-            case TrackRepeatMode.Track:
-                footerText.Append(" | 🔂 Looping Track");
-                break;
-            case TrackRepeatMode.Queue:
-                footerText.Append(" | 🔁 Looping Queue");
-                break;
-            case TrackRepeatMode.None:
-            default:
-                break;
-        }
-
-        if (footerText.Length > 0)
-        {
-            container.WithSeparator(isDivider: false, spacing: SeparatorSpacingSize.Small);
-            container.WithTextDisplay(new TextDisplayBuilder(footerText.ToString()));
-        }
-
-        // Row 1: Player/Queue Controls
-        var loopEmoji = player.RepeatMode switch
-        {
-            TrackRepeatMode.Track => Emoji.Parse("🔂"),
-            TrackRepeatMode.Queue => Emoji.Parse("🔁"),
-            _ => Emoji.Parse("➡️")
-        };
-        var utilityRow = new ActionRowBuilder()
-            .WithButton("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger, Emoji.Parse("⏹️"),
-                disabled: controlsDisabled)
-            .WithButton("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary, loopEmoji,
-                disabled: controlsDisabled);
-        container.WithActionRow(utilityRow);
-
-        container.AddComponent(new SeparatorBuilder());
-
-        // --- Volume Controls ---
-        var currentVolumePercent = (int)(player.Volume * 100);
-        var maxVolume = _config.Music.MaxPlayerVolumePercent;
-        var volumeRow = new ActionRowBuilder()
-            .WithButton("➖", $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success,
-                disabled: controlsDisabled || currentVolumePercent <= 0)
-            .WithButton($"🔊 {currentVolumePercent}%", $"{NpCustomIdPrefix}:{guildId}:vol_display",
-                ButtonStyle.Secondary, disabled: true)
-            .WithButton("➕", $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success,
-                disabled: controlsDisabled || currentVolumePercent >= maxVolume);
-        container.WithActionRow(volumeRow);
-
-        builder.WithContainer(container);
-        return builder.Build();
     }
 
     // State

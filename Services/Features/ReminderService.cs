@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Recognizers.Text;
 using Microsoft.Recognizers.Text.DateTime;
 
-namespace Assistant.Net.Services.GuildFeatures;
+namespace Assistant.Net.Services.Features;
 
 public class ReminderService(
     IDbContextFactory<AssistantDbContext> dbFactory,

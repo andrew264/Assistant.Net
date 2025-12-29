@@ -5,7 +5,7 @@ using Assistant.Net.Models.Music;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services.Music;
+namespace Assistant.Net.Services.Data;
 
 public class MusicHistoryService
 {

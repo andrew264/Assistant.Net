@@ -1,4 +1,4 @@
-using Assistant.Net.Services.Games;
+using Assistant.Net.Services.Data;
 using Discord;
 using Microsoft.Extensions.Logging;
 
@@ -56,6 +56,8 @@ public class TicTacToeGame
     public bool IsGameOver { get; private set; }
     public GameResultState Result { get; private set; } = GameResultState.None;
 
+    public PlayerMarker GetMarkerAt(int row, int col) => Board[row, col];
+
     private void InitializeBoard()
     {
         for (var i = 0; i < BoardSize; i++)
@@ -70,16 +72,6 @@ public class TicTacToeGame
             var id when id == Player1.Id => Player1Marker,
             var id when id == Player2.Id => Player2Marker,
             _ => PlayerMarker.None
-        };
-    }
-
-    public IUser GetUserFromMarker(PlayerMarker marker)
-    {
-        return marker switch
-        {
-            PlayerMarker.X => Player1,
-            PlayerMarker.O => Player2,
-            _ => throw new ArgumentException("Invalid marker", nameof(marker))
         };
     }
 
@@ -123,9 +115,6 @@ public class TicTacToeGame
     {
         if (!CurrentPlayer.IsBot || IsGameOver)
             return null;
-
-        // Use Task.Run to avoid blocking the gateway thread if minimax takes time,
-        // although for Tic Tac Toe it's very fast.
         return await Task.Run(FindBestMoveInternal).ConfigureAwait(false);
     }
 
@@ -136,7 +125,7 @@ public class TicTacToeGame
         (int row, int col)? bestMove = null;
         var availableMoves = GetEmptyCells();
 
-        // Handle first move randomly for variety and speed
+        // Handle first move randomly
         if (availableMoves.Count == BoardSize * BoardSize) return availableMoves[_random.Next(availableMoves.Count)];
 
         foreach (var move in availableMoves)
@@ -292,77 +281,5 @@ public class TicTacToeGame
         {
             _logger.LogError(ex, "Failed to record game stats for game {GameId} in guild {GuildId}", GameId, guildId);
         }
-    }
-
-    // --- Message Component Generation ---
-    public MessageComponent BuildGameComponent()
-    {
-        var builder = new ComponentBuilderV2();
-        var container = new ContainerBuilder();
-
-        // --- Determine Colors and Status Message ---
-        string statusMessage;
-        switch (Result)
-        {
-            case GameResultState.XWins:
-                statusMessage = $"**{Player1.Mention} wins!**";
-                container.WithAccentColor(Color.Green);
-                break;
-            case GameResultState.OWins:
-                statusMessage = $"**{Player2.Mention} wins!**";
-                container.WithAccentColor(Color.Green);
-                break;
-            case GameResultState.Tie:
-                statusMessage = "**It's a tie!**";
-                container.WithAccentColor(Color.DarkGrey);
-                break;
-            case GameResultState.None:
-            default: // Game is ongoing
-                statusMessage = $"It's {CurrentPlayer.Mention}'s turn!";
-                break;
-        }
-
-        // --- Build Text Content ---
-        container
-            .WithTextDisplay(new TextDisplayBuilder("# Tic Tac Toe"))
-            .WithTextDisplay(new TextDisplayBuilder($"{Player1.Mention} (❌) vs {Player2.Mention} (⭕)"))
-            .WithTextDisplay(new TextDisplayBuilder(statusMessage))
-            .WithSeparator();
-
-        // --- Build Button Grid ---
-        var disableAll = IsGameOver;
-        for (var row = 0; row < BoardSize; row++)
-        {
-            var actionRow = new ActionRowBuilder();
-            for (var col = 0; col < BoardSize; col++)
-            {
-                var index = row * BoardSize + col + 1;
-                var marker = Board[row, col];
-
-                var label = marker switch
-                {
-                    PlayerMarker.None => "\u200b",
-                    PlayerMarker.X => "❌",
-                    PlayerMarker.O => "⭕",
-                    _ => "?"
-                };
-
-                var style = marker switch
-                {
-                    PlayerMarker.X => ButtonStyle.Primary,
-                    PlayerMarker.O => ButtonStyle.Success,
-                    _ => ButtonStyle.Secondary
-                };
-
-                var disabled = disableAll || marker != PlayerMarker.None;
-
-                actionRow.WithButton(label, $"assistant:tictactoe:{GameId}:{index}", style, disabled: disabled);
-            }
-
-            container.WithActionRow(actionRow);
-        }
-
-        builder.WithContainer(container);
-        return builder.Build();
     }
 }

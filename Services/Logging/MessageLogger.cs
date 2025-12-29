@@ -1,6 +1,5 @@
 using Assistant.Net.Configuration;
 using Assistant.Net.Services.Core;
-using Assistant.Net.Utilities;
 using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.WebSocket;
@@ -121,8 +120,6 @@ public class MessageLogger
     }
 
     private Task HandleMessagesBulkDeletedAsync(IReadOnlyCollection<Cacheable<IMessage, ulong>> msgs,
-        Cacheable<IMessageChannel, ulong> chan)
-    {
-        return Task.CompletedTask;
-    }
+        Cacheable<IMessageChannel, ulong> chan) =>
+        Task.CompletedTask;
 }

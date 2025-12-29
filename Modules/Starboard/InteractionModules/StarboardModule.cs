@@ -1,4 +1,4 @@
-using Assistant.Net.Services.GuildFeatures.Starboard;
+using Assistant.Net.Services.Features;
 using Discord;
 using Discord.Interactions;
 using Microsoft.Extensions.Logging;

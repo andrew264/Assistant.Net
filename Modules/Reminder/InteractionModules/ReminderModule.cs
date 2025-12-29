@@ -1,4 +1,4 @@
-using Assistant.Net.Services.GuildFeatures;
+using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;

@@ -1,15 +1,12 @@
 ﻿using Assistant.Net.Configuration;
 using Assistant.Net.Data;
-using Assistant.Net.Services.Background;
 using Assistant.Net.Services.Core;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Services.ExternalApis;
+using Assistant.Net.Services.Features;
 using Assistant.Net.Services.Games;
-using Assistant.Net.Services.GuildFeatures;
-using Assistant.Net.Services.GuildFeatures.Starboard;
 using Assistant.Net.Services.Logging;
 using Assistant.Net.Services.Music;
-using Assistant.Net.Services.User;
-using Assistant.Net.Services.Voting;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;

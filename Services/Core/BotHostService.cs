@@ -1,9 +1,8 @@
 using System.Reflection;
 using Assistant.Net.Configuration;
-using Assistant.Net.Services.GuildFeatures;
-using Assistant.Net.Services.GuildFeatures.Starboard;
+using Assistant.Net.Services.Data;
+using Assistant.Net.Services.Features;
 using Assistant.Net.Services.Logging;
-using Assistant.Net.Services.User;
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;

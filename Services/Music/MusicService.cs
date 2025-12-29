@@ -1,8 +1,9 @@
-using System.Text;
 using Assistant.Net.Configuration;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Modules.Music.Logic.Player;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Utilities;
+using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.WebSocket;
 using Lavalink4NET;
@@ -23,7 +24,6 @@ public class MusicService(
     DiscordSocketClient client,
     ILogger<MusicService> logger)
 {
-    private const int QueueItemsPerPage = 10;
     private const int MaxRetryAttempts = 2;
     private static readonly TimeSpan InitialRetryDelay = TimeSpan.FromMilliseconds(500);
 
@@ -431,112 +431,12 @@ public class MusicService(
         }
     }
 
-
     public static (MessageComponent? Components, string? ErrorMessage) BuildQueueComponents(
         CustomPlayer player,
         int currentPage,
         ulong interactionMessageId,
-        ulong requesterId)
-    {
-        if (player.CurrentTrack is null && player.Queue.IsEmpty) return (null, "The queue is empty.");
-
-        var componentBuilder = new ComponentBuilderV2();
-        var container = new ContainerBuilder();
-
-
-        if (player.CurrentTrack is not null)
-        {
-            var title = $"## {player.CurrentTrack.Title.AsMarkdownLink(player.CurrentTrack.Uri?.ToString())}";
-            var customCurrentItem = player.CurrentItem?.As<CustomTrackQueueItem>();
-            if (customCurrentItem != null) title += $"\nAdded by <@{customCurrentItem.RequesterId}>";
-
-            if (player.CurrentTrack.ArtworkUri is not null)
-                container.WithSection(section =>
-                {
-                    section.AddComponent(new TextDisplayBuilder(title));
-                    section.WithAccessory(new ThumbnailBuilder
-                    {
-                        Media = new UnfurledMediaItemProperties { Url = player.CurrentTrack.ArtworkUri.ToString() }
-                    });
-                });
-            else
-                container.WithTextDisplay(new TextDisplayBuilder(title));
-        }
-        else
-        {
-            container.WithTextDisplay(new TextDisplayBuilder("**Queue**\n*Nothing is currently playing.*"));
-        }
-
-
-        var queueCount = player.Queue.Count;
-        container.WithSeparator();
-        if (queueCount > 0)
-        {
-            var totalPages = (int)Math.Ceiling((double)queueCount / QueueItemsPerPage);
-            currentPage = Math.Clamp(currentPage, 1, totalPages);
-
-            container.WithTextDisplay(new TextDisplayBuilder($"## Next Up ({currentPage}/{totalPages})"));
-
-            var firstIndex = (currentPage - 1) * QueueItemsPerPage;
-            var lastIndex = Math.Min(firstIndex + QueueItemsPerPage, queueCount);
-
-
-            var queueListBuilder = new StringBuilder();
-            for (var i = firstIndex; i < lastIndex; i++)
-            {
-                var trackItem = player.Queue[i];
-                if (trackItem.Track is null) continue;
-
-                var trackTitle =
-                    $"{i + 1}. {trackItem.Track.Title.Truncate(100).AsMarkdownLink(trackItem.Track.Uri?.ToString())}";
-                queueListBuilder.AppendLine(trackTitle);
-
-                var customItem = trackItem.As<CustomTrackQueueItem>();
-                var requesterInfo = customItem is not null
-                    ? $"Added by <@{customItem.RequesterId}>"
-                    : "Unknown Requester";
-                var durationInfo = trackItem.Track.Duration.FormatPlayerTime();
-
-                queueListBuilder.AppendLine($"   └ {requesterInfo} | `{durationInfo}`");
-            }
-
-            if (queueListBuilder.Length > 0)
-                container.WithTextDisplay(new TextDisplayBuilder(queueListBuilder.ToString()));
-
-
-            container.WithSeparator();
-
-            if (totalPages > 1)
-                container.WithActionRow(row => row
-                    .WithButton("◀ Previous",
-                        $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev",
-                        ButtonStyle.Secondary, disabled: currentPage == 1)
-                    .WithButton("Next ▶",
-                        $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next",
-                        ButtonStyle.Secondary, disabled: currentPage == totalPages)
-                );
-
-            var loopStatus = player.RepeatMode switch
-            {
-                TrackRepeatMode.Queue => "🔁 Looping Queue",
-                TrackRepeatMode.Track => "🔂 Looping Track",
-                _ => "➡️ Loop Disabled"
-            };
-            var totalSongsInQueueSystem = (player.CurrentTrack != null ? 1 : 0) + queueCount;
-
-            container.WithTextDisplay(
-                new TextDisplayBuilder(
-                    $"Page {currentPage}/{totalPages} • {totalSongsInQueueSystem} Song(s) • {loopStatus}"));
-        }
-        else
-        {
-            var loopStatus = player.RepeatMode == TrackRepeatMode.Track ? "🔂 Looping Track" : "➡️ Loop Disabled";
-            container.WithTextDisplay(new TextDisplayBuilder($"Queue is empty • {loopStatus}"));
-        }
-
-        componentBuilder.WithContainer(container);
-        return (componentBuilder.Build(), null);
-    }
+        ulong requesterId) =>
+        MusicUiFactory.BuildQueueComponents(player, currentPage, interactionMessageId, requesterId);
 
     public async Task<(bool Success, LavalinkTrack? RemovedTrack, string Message)> RemoveFromQueueAsync(
         CustomPlayer player, int oneBasedIndex)

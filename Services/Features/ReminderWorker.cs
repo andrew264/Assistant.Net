@@ -1,10 +1,9 @@
-using Assistant.Net.Services.GuildFeatures;
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services.Background;
+namespace Assistant.Net.Services.Features;
 
 public class ReminderWorker(
     ReminderService reminderService,
@@ -25,9 +24,7 @@ public class ReminderWorker(
             try
             {
                 if (client is { ConnectionState: ConnectionState.Connected, LoginState: LoginState.LoggedIn })
-                {
                     await reminderService.ProcessDueRemindersAsync().ConfigureAwait(false);
-                }
             }
             catch (Exception ex)
             {

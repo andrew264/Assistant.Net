@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using Assistant.Net.Modules.Voting.Logic;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services.Voting;
+namespace Assistant.Net.Services.Features;
 
 public class PollService(ILogger<PollService> logger)
 {

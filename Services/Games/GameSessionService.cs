@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using Assistant.Net.Modules.Games.Logic;
 using Assistant.Net.Modules.Games.Models;
 using Assistant.Net.Modules.Games.Models.HandCricket;
+using Assistant.Net.Services.Data;
+using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
@@ -88,49 +90,6 @@ public class GameSessionService(
         cts.Dispose();
     }
 
-    public static MessageComponent GetRpsTimeoutDisplay()
-    {
-        var container = new ContainerBuilder()
-            .WithTextDisplay(new TextDisplayBuilder("# Rock Paper Scissors"))
-            .WithTextDisplay(new TextDisplayBuilder("This game has timed out due to inactivity."))
-            .WithActionRow(row => row
-                .WithButton("Rock", "dummy_rock", ButtonStyle.Secondary, new Emoji("🪨"), disabled: true)
-                .WithButton("Paper", "dummy_paper", ButtonStyle.Secondary, new Emoji("📰"), disabled: true)
-                .WithButton("Scissors", "dummy_scissors", ButtonStyle.Secondary, new Emoji("✂️"), disabled: true)
-            );
-        return new ComponentBuilderV2().WithContainer(container).Build();
-    }
-
-    public static MessageComponent GetTicTacToeTimeoutDisplay()
-    {
-        var container = new ContainerBuilder()
-            .WithTextDisplay(new TextDisplayBuilder("# Tic Tac Toe"))
-            .WithTextDisplay(new TextDisplayBuilder("This game has timed out due to inactivity."))
-            .WithSeparator();
-
-        for (var i = 0; i < 3; i++) // 3 rows
-        {
-            var rowBuilder = new ActionRowBuilder();
-            for (var j = 0; j < 3; j++) // 3 buttons per row
-                rowBuilder.WithButton("\u200b", $"dummy_disabled_{i}_{j}", ButtonStyle.Secondary, disabled: true);
-            container.WithActionRow(rowBuilder);
-        }
-
-        return new ComponentBuilderV2().WithContainer(container).Build();
-    }
-
-    public static MessageComponent GetHandCricketTimeoutDisplay(HandCricketGame game)
-    {
-        var container = new ContainerBuilder()
-            .WithTextDisplay(new TextDisplayBuilder("# Hand Cricket"))
-            .WithTextDisplay(
-                new TextDisplayBuilder(
-                    $"The game between {game.Player1.Mention} and {game.Player2.Mention} has timed out due to inactivity."));
-
-        return new ComponentBuilderV2().WithContainer(container).Build();
-    }
-
-
     // --- RPS Game Management ---
     public GameCreationResult StartRpsGame(IUser player1, IUser? player2Input, ulong messageId, ulong guildId)
     {
@@ -152,7 +111,7 @@ public class GameSessionService(
         logger.LogInformation("[RPS] Started game ({MessageId}): {P1} vs {P2}", messageId, player1.Username,
             player2.Username);
 
-        var component = game.BuildGameComponent(messageId);
+        var component = GameUiFactory.BuildRpsGameComponent(messageId, game);
 
         if (game.BothPlayersChosen)
         {
@@ -218,9 +177,9 @@ public class GameSessionService(
         var messageId = ulong.Parse(gameKey);
 
         if (!game.BothPlayersChosen)
-            return new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent(messageId));
+            return new GameUpdateResult(GameUpdateStatus.Success, GameUiFactory.BuildRpsGameComponent(messageId, game));
         await ProcessRpsEndOfGame(gameKey, game, guildId).ConfigureAwait(false);
-        return new GameUpdateResult(GameUpdateStatus.GameOver, game.BuildGameComponent(messageId));
+        return new GameUpdateResult(GameUpdateStatus.GameOver, GameUiFactory.BuildRpsGameComponent(messageId, game));
     }
 
     public bool IsRpsGameActive(string gameKey) => _activeRpsGames.ContainsKey(gameKey);
@@ -263,7 +222,7 @@ public class GameSessionService(
             playerO.Username);
         StartTimeoutTask(gameId, TicTacToeGameTimeout, _activeTicTacToeGames, "TicTacToe");
 
-        var component = game.BuildGameComponent();
+        var component = GameUiFactory.BuildTicTacToeComponent(game);
 
         return new GameCreationResult(GameCreationStatus.Success, Component: component, GameKey: gameId);
     }
@@ -296,7 +255,7 @@ public class GameSessionService(
                     game.GameId);
         }
 
-        var component = game.BuildGameComponent(); // Get updated components
+        var component = GameUiFactory.BuildTicTacToeComponent(game); // Get updated components
 
         if (!game.IsGameOver) return new GameUpdateResult(GameUpdateStatus.Success, component);
         if (guildId != 0) await game.RecordStatsIfApplicable(guildId).ConfigureAwait(false);
@@ -337,7 +296,7 @@ public class GameSessionService(
 
         return new GameCreationResult(
             GameCreationStatus.Success,
-            Component: game.BuildGameComponent(),
+            Component: GameUiFactory.BuildHandCricketComponent(game),
             GameKey: game.GameId
         );
     }
@@ -441,7 +400,8 @@ public class GameSessionService(
                                     CancelTimeoutTask(game.GameId);
                                     logger.LogInformation("[HC] Game {GameId} finished.", game.GameId);
 
-                                    return new GameUpdateResult(GameUpdateStatus.GameOver, game.BuildGameComponent());
+                                    return new GameUpdateResult(GameUpdateStatus.GameOver,
+                                        GameUiFactory.BuildHandCricketComponent(game));
                                 }
                             }
                         }
@@ -465,7 +425,7 @@ public class GameSessionService(
 
         return !string.IsNullOrEmpty(userVisibleErrorMessage)
             ? new GameUpdateResult(GameUpdateStatus.Error, ErrorMessage: userVisibleErrorMessage)
-            : new GameUpdateResult(GameUpdateStatus.Success, game.BuildGameComponent());
+            : new GameUpdateResult(GameUpdateStatus.Success, GameUiFactory.BuildHandCricketComponent(game));
     }
 
     public bool IsHandCricketGameActive(string gameKey) => _activeHandCricketGames.ContainsKey(gameKey);

@@ -3,7 +3,7 @@ using Assistant.Net.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace Assistant.Net.Services.User;
+namespace Assistant.Net.Services.Data;
 
 public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogger<UserService> logger)
 {
