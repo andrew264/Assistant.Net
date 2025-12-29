@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text;
+using Assistant.Net.Data.Entities;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Models.Playlist;
 using Assistant.Net.Modules.Music.Autocomplete;
@@ -293,7 +294,7 @@ public class PlaylistInteractionModule(
         {
             var description = string.Join("\n",
                 playlists.Select((p, i) =>
-                    $"{i + 1}. **{p.Name.Truncate(50)}** ({p.Songs.Count} song{(p.Songs.Count == 1 ? "" : "s")})"));
+                    $"{i + 1}. **{p.Name.Truncate(50)}** ({p.Items.Count} song{(p.Items.Count == 1 ? "" : "s")})"));
             container.WithTextDisplay(new TextDisplayBuilder(description));
         }
 
@@ -347,10 +348,10 @@ public class PlaylistInteractionModule(
     }
 
     private static (MessageComponent? Components, string? ErrorMessage) BuildShowPlaylistResponse(
-        PlaylistModel playlist,
+        PlaylistEntity playlist,
         int currentPage, SocketUser requester)
     {
-        var totalSongs = playlist.Songs.Count;
+        var totalSongs = playlist.Items.Count;
         if (totalSongs == 0)
         {
             var emptyContainer = new ContainerBuilder()
@@ -370,7 +371,8 @@ public class PlaylistInteractionModule(
             })
             .WithSeparator();
 
-        var songsOnPage = playlist.Songs
+        var songsOnPage = playlist.Items
+            .OrderBy(i => i.Position)
             .Skip((currentPage - 1) * SongsPerPage)
             .Take(SongsPerPage)
             .ToList();
@@ -378,17 +380,17 @@ public class PlaylistInteractionModule(
         var songListBuilder = new StringBuilder();
         for (var i = 0; i < songsOnPage.Count; i++)
         {
-            var song = songsOnPage[i];
+            var song = songsOnPage[i].Track;
             var overallIndex = (currentPage - 1) * SongsPerPage + i + 1;
             songListBuilder.AppendLine(
-                $"{overallIndex}. {song.Title.AsMarkdownLink(song.Uri).Truncate(80)} (`{TimeSpan.FromMilliseconds(song.Duration):mm\\:ss}`)");
+                $"{overallIndex}. {song.Title.AsMarkdownLink(song.Uri).Truncate(80)} (`{TimeSpan.FromSeconds(song.Duration):mm\\:ss}`)");
         }
 
         container.WithTextDisplay(new TextDisplayBuilder(songListBuilder.ToString()));
         container.WithSeparator();
 
         var footerText =
-            $"Page {currentPage}/{totalPages}  •  {totalSongs} Songs  •  Updated {TimestampTag.FormatFromDateTime(playlist.UpdatedAt, TimestampTagStyles.Relative)}";
+            $"Page {currentPage}/{totalPages}  •  {totalSongs} Songs  •  Updated {TimestampTag.FormatFromDateTime(playlist.CreatedAt, TimestampTagStyles.Relative)}";
         container.WithTextDisplay(new TextDisplayBuilder(footerText));
 
         var controlsRow = new ActionRowBuilder()
@@ -522,7 +524,7 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        if (playlist.Songs.Count == 0)
+        if (playlist.Items.Count == 0)
         {
             await FollowupAsync($"Playlist '{playlistName}' is empty.", ephemeral: true).ConfigureAwait(false);
             return;
@@ -575,7 +577,7 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        if (playlist.Songs.Count == 0)
+        if (playlist.Items.Count == 0)
         {
             await FollowupAsync($"Playlist '{playlistName}' is empty.", ephemeral: true).ConfigureAwait(false);
             return;
@@ -614,13 +616,15 @@ public class PlaylistInteractionModule(
     }
 
     private async Task<(int AddedCount, List<string> FailedTracks)> QueuePlaylistSongsAsync(CustomPlayer player,
-        PlaylistModel playlist, ulong requesterId)
+        PlaylistEntity playlist, ulong requesterId)
     {
         var addedCount = 0;
         var failedTracks = new List<string>();
         var resolutionScope = new LavalinkApiResolutionScope(player.ApiClient);
 
-        foreach (var song in playlist.Songs)
+        var songs = playlist.Items.OrderBy(i => i.Position).Select(i => i.Track);
+
+        foreach (var song in songs)
         {
             if (string.IsNullOrWhiteSpace(song.Uri))
             {

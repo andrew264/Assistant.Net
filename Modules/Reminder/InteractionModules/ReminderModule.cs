@@ -76,7 +76,7 @@ public class ReminderModule(ReminderService reminderService)
                     $"I will remind {targetString} {reminder.TriggerTime.GetRelativeTime()}."))
                 .WithSeparator()
                 .WithTextDisplay(new TextDisplayBuilder($"**Message:** \"{reminder.Message.Truncate(500)}\""))
-                .WithTextDisplay(new TextDisplayBuilder($"**ID:** `{reminder.Id.SequenceNumber}`"))
+                .WithTextDisplay(new TextDisplayBuilder($"**ID:** `{reminder.Id}`"))
                 .WithTextDisplay(
                     new TextDisplayBuilder($"**Time:** {reminder.TriggerTime.GetLongDateTime()}"));
 
@@ -204,11 +204,11 @@ public class ReminderModule(ReminderService reminderService)
 
             container.WithSeparator();
             var titleText = string.IsNullOrWhiteSpace(reminder.Title)
-                ? $"**ID: `{reminder.Id.SequenceNumber}`**"
-                : $"**ID: `{reminder.Id.SequenceNumber}`** - {reminder.Title.Truncate(100)}";
+                ? $"**ID: `{reminder.Id}`**"
+                : $"**ID: `{reminder.Id}`** - {reminder.Title.Truncate(100)}";
 
             var targetStr = reminder.IsDm
-                ? reminder.TargetUserId == reminder.Id.UserId ? "DM to Self" : $"DM to <@{reminder.TargetUserId}>"
+                ? reminder.TargetUserId == reminder.CreatorId ? "DM to Self" : $"DM to <@{reminder.TargetUserId}>"
                 : $"in <#{reminder.ChannelId}>";
             var recurrenceStr = reminder.Recurrence != null ? $" (Repeats {reminder.Recurrence})" : "";
 
@@ -328,7 +328,7 @@ public class ReminderModule(ReminderService reminderService)
                     ? $" (Repeats {updatedReminder.Recurrence})"
                     : "";
                 var targetStr = updatedReminder.IsDm
-                    ? updatedReminder.TargetUserId == updatedReminder.Id.UserId
+                    ? updatedReminder.TargetUserId == updatedReminder.CreatorId
                         ? "DM to Self"
                         : $"DM to <@{updatedReminder.TargetUserId}>"
                     : $"in <#{updatedReminder.ChannelId}>";

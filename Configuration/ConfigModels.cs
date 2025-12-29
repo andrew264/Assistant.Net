@@ -1,132 +1,78 @@
+using YamlDotNet.Serialization;
+
 namespace Assistant.Net.Configuration;
 
-public record Config
+public class Config
 {
-    public ClientConfig Client { get; init; } = new();
-    public MongoConfig Mongo { get; init; } = new();
-    public RedditConfig Reddit { get; init; } = new();
-    public LavalinkConfig Lavalink { get; init; } = new();
-    public MusicConfig Music { get; init; } = new();
-    public string? YoutubeApiKey { get; init; }
-    public string? GeniusToken { get; init; }
-    public string? TenorApiKey { get; init; }
-    public Dictionary<string, LoggingGuildConfig>? LoggingGuilds { get; init; }
-    public string ResourcePath { get; init; } = "Resources";
+    public ClientConfig Client { get; set; } = new();
+    public LavalinkConfig Lavalink { get; set; } = new();
+    public RedditConfig Reddit { get; set; } = new();
+    public MusicConfig Music { get; set; } = new();
+    public DatabaseConfig Database { get; set; } = new();
+    public Dictionary<string, LoggingGuildConfig>? LoggingGuilds { get; set; }
+
+    [YamlIgnore] public string ResourcePath { get; set; } = "Resources";
+
+    public string GeniusToken { get; set; } = string.Empty;
 }
 
-public record ClientConfig
+public class ClientConfig
 {
-    public string? Token { get; init; }
-    public string? Prefix { get; init; }
-    public ulong? OwnerId { get; init; }
-    public string LogLevel { get; init; } = "Information";
-    public string Status { get; init; } = "Online";
-    public string ActivityType { get; init; } = "Playing";
-    public string? ActivityText { get; init; }
-    public ulong HomeGuildId { get; init; }
-    public List<ulong>? TestGuilds { get; init; }
-    public ulong DmRecipientsCategory { get; init; }
+    public string? Token { get; set; }
+    public ulong? OwnerId { get; set; }
+    public List<ulong> TestGuilds { get; set; } = [];
+    public string Status { get; set; } = "Online";
+    public string ActivityType { get; set; } = "Playing";
+    public string? ActivityText { get; set; }
+    public string? Prefix { get; set; }
+    public string LogLevel { get; set; } = "Information";
+    public ulong HomeGuildId { get; set; }
+    public ulong DmRecipientsCategory { get; set; }
 }
 
-public record MongoConfig
+public class LavalinkConfig
 {
-    // Option 1: User/Pass/Url
-    public string? Username { get; init; }
-    public string? Password { get; init; }
-    public string? Url { get; init; }
-
-    // Option 2: Full Connection String
-    public string? ConnectionString { get; init; }
-
-    public string DatabaseName { get; init; } = "assistant_cs";
-
-    // Helper to construct the connection string if needed
-    public string GetConnectionString()
-    {
-        if (!string.IsNullOrWhiteSpace(ConnectionString)) return ConnectionString;
-
-        if (string.IsNullOrWhiteSpace(Username) ||
-            string.IsNullOrWhiteSpace(Password) ||
-            string.IsNullOrWhiteSpace(Url))
-            throw new InvalidOperationException(
-                "MongoDB connection details are incomplete. Provide either a full ConnectionString, or Username, Password, and Url.");
-
-        string schemeToUse;
-        var addressPart = Url;
-
-        if (Url.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase))
-        {
-            schemeToUse = "mongodb+srv://";
-            addressPart = Url["mongodb+srv://".Length..];
-        }
-        else if (Url.StartsWith("mongodb://", StringComparison.OrdinalIgnoreCase))
-        {
-            schemeToUse = "mongodb://";
-            addressPart = Url["mongodb://".Length..];
-        }
-        else
-        {
-            schemeToUse = "mongodb://";
-        }
-
-        var atSymbolIndex = addressPart.IndexOf('@');
-        if (atSymbolIndex > 0)
-        {
-            var colonBeforeAt = addressPart.LastIndexOf(':', atSymbolIndex - 1);
-            if (colonBeforeAt != -1 && colonBeforeAt < atSymbolIndex)
-                addressPart = addressPart[(atSymbolIndex + 1)..];
-        }
-
-        var escapedUsername = Uri.EscapeDataString(Username);
-        var escapedPassword = Uri.EscapeDataString(Password);
-
-        return $"{schemeToUse}{escapedUsername}:{escapedPassword}@{addressPart}";
-    }
+    public List<LavalinkNode> Nodes { get; set; } = [];
+    public bool IsValid => Nodes.Count > 0;
 }
 
-public record RedditConfig
+public class LavalinkNode
 {
-    public string? ClientId { get; init; }
-    public string? ClientSecret { get; init; }
-    public string? Username { get; init; }
-    public string? Password { get; init; }
+    public string Name { get; set; } = "default";
+    public string Uri { get; set; } = "http://localhost:2333";
+    public string Password { get; set; } = "youshallnotpass";
+}
+
+public class RedditConfig
+{
+    public string? ClientId { get; set; }
+    public string? ClientSecret { get; set; }
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public List<string> MemeSubreddits { get; set; } = [];
+    public List<string> NsfwSubreddits { get; set; } = [];
 
     public bool IsValid => !string.IsNullOrWhiteSpace(ClientId) &&
                            !string.IsNullOrWhiteSpace(ClientSecret) &&
                            !string.IsNullOrWhiteSpace(Username) &&
                            !string.IsNullOrWhiteSpace(Password);
-
-    public List<string>? MemeSubreddits { get; init; }
-    public List<string>? NsfwSubreddits { get; init; }
 }
 
-public record LavalinkConfig
+public class MusicConfig
 {
-    public List<LavalinkNodeConfig> Nodes { get; init; } = [];
-
-    public bool IsValid => Nodes.Count > 0;
+    public float DefaultVolume { get; set; } = 1.0f;
+    public int MaxPlayerVolumePercent { get; set; } = 200;
+    public double TitleSimilarityCutoff { get; set; } = 0.4;
 }
 
-public record LavalinkNodeConfig
+public class DatabaseConfig
 {
-    public string Name { get; init; } = "Lavalink Node";
-    public required string Uri { get; init; }
-    public required string Password { get; init; }
+    public string ConnectionString { get; set; } = string.Empty;
 }
 
-public record LoggingGuildConfig
+public class LoggingGuildConfig
 {
-    public ulong GuildId { get; init; }
-    public ulong ChannelId { get; init; }
-    public bool LogPresenceUpdates { get; set; }
-}
-
-public record MusicConfig
-{
-    public int MaxHistorySize { get; init; } = 500;
-    public float DefaultVolume { get; init; } = 0.30f; // 30%
-    public int MaxPlayerVolumePercent { get; init; } = 100; // 100%
-    public float TitleSimilarityCutoff { get; init; } = 0.80f; // 80%
-    public float UriSimilarityCutoff { get; init; } = 0.70f; // 70%
-    public float ArtistSimilarityCutoff { get; init; } = 0.80f; // 80%
+    public ulong GuildId { get; set; }
+    public ulong ChannelId { get; set; }
+    public bool LogPresenceUpdates { get; set; } = false;
 }

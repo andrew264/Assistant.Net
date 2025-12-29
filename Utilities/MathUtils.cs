@@ -292,7 +292,8 @@ public static class MathUtils
 
             switch (token.Type)
             {
-                case TokenType.Number when double.TryParse(token.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out var val):
+                case TokenType.Number when double.TryParse(token.Value, NumberStyles.Any, CultureInfo.InvariantCulture,
+                    out var val):
                     stack.Push(val);
                     break;
                 case TokenType.Number:

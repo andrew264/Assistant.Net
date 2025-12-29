@@ -1,5 +1,5 @@
-﻿using System.Security.Authentication;
-using Assistant.Net.Configuration;
+﻿using Assistant.Net.Configuration;
+using Assistant.Net.Data;
 using Assistant.Net.Services.Core;
 using Assistant.Net.Services.ExternalApis;
 using Assistant.Net.Services.Games;
@@ -18,10 +18,10 @@ using Lavalink4NET.DiscordNet;
 using Lavalink4NET.InactivityTracking;
 using Lavalink4NET.InactivityTracking.Extensions;
 using Lavalink4NET.InactivityTracking.Trackers.Users;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 
 namespace Assistant.Net;
 
@@ -29,7 +29,23 @@ public class Program
 {
     public static async Task Main(string[] args)
     {
-        await CreateHostBuilder(args).Build().RunAsync();
+        var host = CreateHostBuilder(args).Build();
+
+        using (var scope = host.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AssistantDbContext>();
+            try
+            {
+                await dbContext.Database.EnsureCreatedAsync();
+            }
+            catch (Exception ex)
+            {
+                var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+                logger.LogCritical(ex, "Failed to connect to or create the database.");
+            }
+        }
+
+        await host.RunAsync();
     }
 
     private static IHostBuilder CreateHostBuilder(string[] args)
@@ -57,12 +73,20 @@ public class Program
                 }
 
                 logging.AddFilter("Microsoft.Extensions.Http", LogLevel.Warning);
+                logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
             })
             .ConfigureServices((_, services) =>
             {
                 // --- Configuration ---
                 services.AddSingleton<ConfigService>();
                 services.AddSingleton(provider => provider.GetRequiredService<ConfigService>().Config);
+
+                // --- Database ---
+                services.AddDbContextFactory<AssistantDbContext>((provider, options) =>
+                {
+                    var config = provider.GetRequiredService<Config>();
+                    options.UseNpgsql(config.Database.ConnectionString);
+                });
 
                 // --- Discord ---
                 var discordConfig = new DiscordSocketConfig
@@ -128,54 +152,6 @@ public class Program
                     options.Timeout = TimeSpan.FromSeconds(600);
                 });
 
-
-                // --- MongoDB ---
-                services.AddSingleton<IMongoClient>(provider =>
-                {
-                    var config = provider.GetRequiredService<Config>().Mongo;
-                    var logger = provider.GetRequiredService<ILogger<Program>>();
-                    try
-                    {
-                        var connectionString = config.GetConnectionString();
-                        var mongoSettings = MongoClientSettings.FromConnectionString(connectionString);
-                        mongoSettings.ServerApi = new ServerApi(ServerApiVersion.V1);
-                        mongoSettings.ServerSelectionTimeout = TimeSpan.FromSeconds(60);
-                        mongoSettings.ConnectTimeout = TimeSpan.FromSeconds(60);
-
-                        logger.LogInformation("Connecting to MongoDB...");
-                        var client = new MongoClient(mongoSettings);
-
-                        // Test connection
-                        client.ListDatabaseNames(new CancellationTokenSource(TimeSpan.FromSeconds(10)).Token);
-                        logger.LogInformation("MongoDB connection successful.");
-
-                        return client;
-                    }
-                    catch (TimeoutException tex)
-                    {
-                        logger.LogCritical(tex,
-                            "MongoDB connection timed out. Check connection string, firewall, and server status.");
-                        throw;
-                    }
-                    catch (AuthenticationException aex)
-                    {
-                        logger.LogCritical(aex, "MongoDB authentication failed. Check username/password.");
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogCritical(ex, "Failed to configure MongoDB client.");
-                        throw;
-                    }
-                });
-                // Inject IMongoDatabase
-                services.AddSingleton<IMongoDatabase>(provider =>
-                {
-                    var client = provider.GetRequiredService<IMongoClient>();
-                    var config = provider.GetRequiredService<Config>().Mongo;
-                    return client.GetDatabase(config.DatabaseName);
-                });
-
                 // --- Game Stats Service ---
                 services.AddSingleton<GameStatsService>();
                 services.AddSingleton<GameSessionService>();
@@ -199,9 +175,7 @@ public class Program
                 services.AddSingleton<SurveillanceService>();
 
                 // --- Starboard Services ---
-                // Config service
                 services.AddSingleton<StarboardConfigService>();
-                // Core service
                 services.AddSingleton<StarboardService>();
 
                 // --- Music History Service ---

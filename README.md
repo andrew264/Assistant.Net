@@ -75,7 +75,7 @@ To run your own instance of Assistant.Net, you'll need to follow these steps.
 
 * .NET 10 SDK (or the version specified in `Assistant.Net.csproj`)
 * A running Lavalink server for music functionality.
-* A MongoDB database for storing data.
+* A Postgres database for storing data.
 * A Discord Bot Token and various API keys.
 
 ### Installation
@@ -111,13 +111,12 @@ dotnet publish -r linux-x64 -c Release \
 
 ## Configuration
 
-The bot's behavior is controlled by the `Configuration/config.yaml` file. Here are the main sections you'"'"'ll need to
+The bot's behavior is controlled by the `Configuration/config.yaml` file. Here are the main sections you'll need to
 set up:
 
 * **client**: Contains essential Discord bot settings like the token, owner ID, command prefix, and the category for DM
   relay channels.
-* **mongo**: Your MongoDB connection details. You can use a full connection string or provide the username, password,
-  and URL separately.
+* **database**: Your PostgreSQL connection string.
 * **lavalink**: Credentials for your Lavalink server, which is required for all music features.
 * **reddit**: API credentials for a Reddit application if you want to use the Reddit commands. You can also configure
   the subreddits for the meme and NSFW commands here.
@@ -130,7 +129,7 @@ set up:
 * **Framework:** .NET 10
 * **Discord API Wrapper:** [Discord.Net](https://github.com/discord-net/Discord.Net)
 * **Music:** [Lavalink](https://github.com/lavalink-devs/Lavalink)
-* **Database:** [MongoDB](https://www.mongodb.com/)
+* **Database:** [PostgreSQL](https://www.postgresql.org/)
 
 ## Contributing
 

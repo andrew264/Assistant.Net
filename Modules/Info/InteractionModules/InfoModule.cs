@@ -10,7 +10,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Lavalink4NET;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
+using Npgsql;
 using ContextType = Discord.Interactions.ContextType;
 
 namespace Assistant.Net.Modules.Info.InteractionModules;
@@ -72,7 +72,7 @@ public class InfoModule(
         var discordNetVersion = typeof(DiscordSocketClient).Assembly.GetName().Version?.ToString() ?? "Unknown";
         var appVersion = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "N/A";
         var lavalinkVersion = typeof(IAudioService).Assembly.GetName().Version?.ToString() ?? "N/A";
-        var mongoDriverVersion = typeof(MongoClient).Assembly.GetName().Version?.ToString() ?? "N/A";
+        var npgsqlVersion = typeof(NpgsqlConnection).Assembly.GetName().Version?.ToString() ?? "N/A";
 
         var container = new ContainerBuilder()
             .WithSection(section =>
@@ -107,7 +107,7 @@ public class InfoModule(
                 $"**App Version:** v{appVersion}\n" +
                 $"**Discord.Net:** v{discordNetVersion}\n" +
                 $"**Lavalink4NET:** v{lavalinkVersion}\n" +
-                $"**MongoDB.Driver:** v{mongoDriverVersion}\n" +
+                $"**Npgsql:** v{npgsqlVersion}\n" +
                 $"**.NET Version:** {RuntimeInformation.FrameworkDescription}\n" +
                 $"**Operating System:** {RuntimeInformation.OSDescription}"))
             .WithSeparator()

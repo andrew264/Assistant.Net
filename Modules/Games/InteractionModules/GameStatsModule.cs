@@ -6,7 +6,6 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 
 namespace Assistant.Net.Modules.Games.InteractionModules;
 
@@ -62,29 +61,21 @@ public class GameStatsModule(
             for (var i = 0; i < leaderboardData.Count; i++)
             {
                 var entry = leaderboardData[i];
-                var user = await client.Rest.GetUserAsync(entry.Id.UserId).ConfigureAwait(false);
-                var userName = user?.ToString() ?? $"User ID: {entry.Id.UserId}";
+                var userId = (ulong)entry.UserId;
+                var user = await client.Rest.GetUserAsync(userId).ConfigureAwait(false);
+                var userName = user?.ToString() ?? $"User ID: {userId}";
                 var userAvatarUrl = user?.GetDisplayAvatarUrl() ?? user?.GetDefaultAvatarUrl();
 
-                if (entry.Games.TryGetValue(gameName, out var stats))
-                {
-                    var userSection = new SectionBuilder()
-                        .AddComponent(new TextDisplayBuilder($"**{i + 1}.** {userName}"))
-                        .AddComponent(new TextDisplayBuilder(
-                            $"**Elo:** {stats.Elo:F1} (W:{stats.Wins} L:{stats.Losses} T:{stats.Ties})"));
+                var userSection = new SectionBuilder()
+                    .AddComponent(new TextDisplayBuilder($"**{i + 1}.** {userName}"))
+                    .AddComponent(new TextDisplayBuilder(
+                        $"**Elo:** {entry.Elo:F1} (W:{entry.Wins} L:{entry.Losses} T:{entry.Ties})"));
 
-                    if (userAvatarUrl != null)
-                        userSection.WithAccessory(new ThumbnailBuilder
-                            { Media = new UnfurledMediaItemProperties { Url = userAvatarUrl } });
+                if (userAvatarUrl != null)
+                    userSection.WithAccessory(new ThumbnailBuilder
+                        { Media = new UnfurledMediaItemProperties { Url = userAvatarUrl } });
 
-                    container.WithSection(userSection);
-                }
-                else
-                {
-                    logger.LogWarning(
-                        "Leaderboard entry for User {UserId} in Guild {GuildId} for Game {GameName} missing projected stats.",
-                        entry.Id.UserId, guildId, gameName);
-                }
+                container.WithSection(userSection);
             }
 
             container
@@ -94,13 +85,6 @@ public class GameStatsModule(
 
             var components = new ComponentBuilderV2().WithContainer(container).Build();
             await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-        }
-        catch (MongoException ex)
-        {
-            logger.LogError(ex, "MongoDB error fetching leaderboard for {GameName} in Guild {GuildId}", gameName,
-                guildId);
-            await FollowupAsync($"A database error occurred while fetching the leaderboard: {ex.Message}")
-                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -131,10 +115,10 @@ public class GameStatsModule(
 
         try
         {
-            var userStatsData =
+            var userStatsList =
                 await gameStatsService.GetUserGuildStatsAsync(targetUser.Id, guildId).ConfigureAwait(false);
 
-            if (userStatsData == null || userStatsData.Games.Count == 0)
+            if (userStatsList.Count == 0)
             {
                 await FollowupAsync($"{targetUser.Mention} hasn't played any recorded games in this server yet.")
                     .ConfigureAwait(false);
@@ -159,9 +143,12 @@ public class GameStatsModule(
 
             if (!string.IsNullOrEmpty(gameName))
             {
-                if (userStatsData.Games.TryGetValue(gameName, out var stats))
+                var targetType = GameStatsService.GetGameType(gameName);
+                var stats = userStatsList.FirstOrDefault(s => s.GameType == targetType);
+
+                if (stats != null)
                 {
-                    var matches = stats.MatchesPlayed;
+                    var matches = stats.Wins + stats.Losses + stats.Ties;
                     var winRate = matches > 0 ? (double)stats.Wins / matches * 100 : 0;
 
                     var statsText = new StringBuilder()
@@ -187,20 +174,23 @@ public class GameStatsModule(
             }
             else // Show all games
             {
-                var gamesPlayed = userStatsData.Games
-                    .Where(kvp => GameAutocompleteProvider.GameNames.Contains(kvp.Key))
-                    .OrderBy(kvp => kvp.Key)
+                // Filter to only known games and sort
+                var knownGames = userStatsList
+                    .Where(s => GameAutocompleteProvider.GameNames.Contains(
+                        GameStatsService.GetGameName(s.GameType), StringComparer.OrdinalIgnoreCase))
+                    .OrderBy(s => GameStatsService.GetGameName(s.GameType))
                     .ToList();
 
-                if (gamesPlayed.Count > 0)
+                if (knownGames.Count > 0)
                 {
                     container.WithSeparator();
                     hasStatsToShow = true;
                 }
 
-                foreach (var (gName, gStats) in gamesPlayed)
+                foreach (var gStats in knownGames)
                 {
-                    var matches = gStats.MatchesPlayed;
+                    var gName = GameStatsService.GetGameName(gStats.GameType);
+                    var matches = gStats.Wins + gStats.Losses + gStats.Ties;
                     var winRate = matches > 0 ? (double)gStats.Wins / matches * 100 : 0;
                     var statsSummary =
                         $"Elo: {gStats.Elo:F1} | W/L/T: {gStats.Wins}/{gStats.Losses}/{gStats.Ties} | Matches: {matches} ({winRate:F1}%)";
@@ -227,12 +217,6 @@ public class GameStatsModule(
 
             var components = new ComponentBuilderV2().WithContainer(container).Build();
             await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-        }
-        catch (MongoException ex)
-        {
-            logger.LogError(ex, "MongoDB error fetching stats for User {UserId} in Guild {GuildId} (Game: {GameName})",
-                targetUser.Id, guildId, gameName ?? "All");
-            await FollowupAsync($"A database error occurred while fetching stats: {ex.Message}").ConfigureAwait(false);
         }
         catch (Exception ex)
         {

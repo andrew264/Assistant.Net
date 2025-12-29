@@ -1,186 +1,221 @@
 using System.Globalization;
-using Assistant.Net.Models.Reminder;
+using Assistant.Net.Data;
+using Assistant.Net.Data.Entities;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Recognizers.Text;
 using Microsoft.Recognizers.Text.DateTime;
-using MongoDB.Driver;
-using MongoDB.Driver.Linq;
 
 namespace Assistant.Net.Services.GuildFeatures;
 
-public class ReminderService : IHostedService, IDisposable
+public class ReminderService(
+    IDbContextFactory<AssistantDbContext> dbFactory,
+    DiscordSocketClient client,
+    ILogger<ReminderService> logger) : IHostedService, IDisposable
 {
-    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(60); // Check every 60 seconds
-    private readonly DiscordSocketClient _client;
-    private readonly IMongoCollection<CounterModel> _countersCollection;
-    private readonly ILogger<ReminderService> _logger;
-    private readonly IMongoCollection<ReminderModel> _reminderCollection;
+    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30);
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
     private Timer? _timer;
-
-    public ReminderService(
-        IMongoDatabase database,
-        DiscordSocketClient client,
-        ILogger<ReminderService> logger)
-    {
-        _reminderCollection = database.GetCollection<ReminderModel>("reminders");
-        _countersCollection = database.GetCollection<CounterModel>("counters");
-        _client = client;
-        _logger = logger;
-
-        EnsureIndexesAsync().ConfigureAwait(false).GetAwaiter().GetResult();
-    }
 
     public void Dispose()
     {
         _timer?.Dispose();
+        _semaphore.Dispose();
         GC.SuppressFinalize(this);
     }
 
-
-    // --- Hosted Service Implementation ---
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("ReminderService is starting.");
+        logger.LogInformation("ReminderService is starting.");
         _timer = new Timer(DoWork, null, TimeSpan.Zero, _checkInterval);
         return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("ReminderService is stopping.");
+        logger.LogInformation("ReminderService is stopping.");
         _timer?.Change(Timeout.Infinite, 0);
         return Task.CompletedTask;
     }
 
-    // --- Index Creation ---
-    private async Task EnsureIndexesAsync()
-    {
-        try
-        {
-            var dueReminderIndex = Builders<ReminderModel>.IndexKeys
-                .Ascending(r => r.IsActive)
-                .Ascending(r => r.TriggerTime);
-            await _reminderCollection.Indexes.CreateOneAsync(
-                new CreateIndexModel<ReminderModel>(dueReminderIndex,
-                    new CreateIndexOptions { Name = "ActiveTriggerTime" })
-            ).ConfigureAwait(false);
-
-            var userReminderIndex = Builders<ReminderModel>.IndexKeys
-                .Ascending(r => r.Id.UserId)
-                .Ascending(r => r.IsActive)
-                .Ascending(r => r.TriggerTime);
-            await _reminderCollection.Indexes.CreateOneAsync(
-                new CreateIndexModel<ReminderModel>(userReminderIndex,
-                    new CreateIndexOptions { Name = "UserIdActiveTriggerTime" })
-            ).ConfigureAwait(false);
-
-            _logger.LogInformation("Ensured indexes on reminders collection.");
-        }
-        catch (MongoCommandException ex) when (ex.CodeName == "IndexOptionsConflict" ||
-                                               ex.CodeName == "IndexKeySpecsConflict" ||
-                                               ex.Message.Contains("already exists with different options"))
-        {
-            _logger.LogWarning(
-                "One or more reminder indexes already exist with potentially different options: {ErrorMessage}. This might be okay if definitions match.",
-                ex.Message);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to ensure indexes on reminders collection.");
-        }
-    }
-
-    // --- Background Work ---
     private void DoWork(object? state)
     {
-        if (_client.ConnectionState != ConnectionState.Connected || _client.LoginState != LoginState.LoggedIn)
-        {
-            _logger.LogTrace("ReminderService skipping check, client not ready.");
+        if (client.ConnectionState != ConnectionState.Connected || client.LoginState != LoginState.LoggedIn)
             return;
-        }
 
         _ = CheckRemindersAsync();
     }
 
     private async Task CheckRemindersAsync()
     {
-        _logger.LogTrace("Checking for due reminders...");
-        var now = DateTime.UtcNow;
+        if (!await _semaphore.WaitAsync(0)) return;
 
-        List<ReminderModel> dueReminders;
         try
         {
-            dueReminders = await _reminderCollection.AsQueryable().Where(r => r.TriggerTime <= now && r.IsActive)
+            var now = DateTime.UtcNow;
+            await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+
+            var dueReminders = await GetDueRemindersAsync(context, now).ConfigureAwait(false);
+            if (dueReminders.Count == 0) return;
+
+            logger.LogInformation("Found {Count} due reminders.", dueReminders.Count);
+
+            foreach (var reminder in dueReminders)
+                await ProcessReminderAsync(context, reminder, now).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error in reminder check loop.");
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    private async Task<List<ReminderEntity>> GetDueRemindersAsync(AssistantDbContext context, DateTime now)
+    {
+        try
+        {
+            return await context.Reminders
+                .Where(r => r.TriggerTime <= now && r.IsActive)
                 .ToListAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error fetching due reminders from database.");
+            logger.LogError(ex, "Error fetching due reminders from database.");
+            return [];
+        }
+    }
+
+    private async Task ProcessReminderAsync(AssistantDbContext context, ReminderEntity reminder, DateTime now)
+    {
+        try
+        {
+            var creator = await client.GetUserAsync((ulong)reminder.CreatorId).ConfigureAwait(false);
+            var components = BuildReminderComponent(reminder, creator);
+
+            if (reminder.IsDm)
+                await SendDmReminderAsync(reminder, components).ConfigureAwait(false);
+            else
+                await SendChannelReminderAsync(reminder, components).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error processing reminder (ID: {Id}).", reminder.Id);
+        }
+        finally
+        {
+            await HandleReminderCompletionAsync(context, reminder, now).ConfigureAwait(false);
+        }
+    }
+
+    private async Task SendDmReminderAsync(ReminderEntity reminder, MessageComponent components)
+    {
+        var targetId = (ulong)(reminder.TargetUserId ?? reminder.CreatorId);
+        var user = await client.GetUserAsync(targetId).ConfigureAwait(false);
+
+        if (user == null)
+        {
+            logger.LogWarning("Could not find user {TargetUserId} for DM reminder (ID: {Id}). Fallback to channel.",
+                targetId, reminder.Id);
+            await SendChannelReminderAsync(reminder, components, true).ConfigureAwait(false);
             return;
         }
 
-
-        if (dueReminders.Count > 0) _logger.LogInformation("Found {Count} due reminders.", dueReminders.Count);
-
-        foreach (var reminder in dueReminders)
-            try
-            {
-                var creatorUser = await _client.GetUserAsync(reminder.Id.UserId).ConfigureAwait(false);
-                var components = BuildReminderComponent(reminder, creatorUser);
-                var targetId = reminder.TargetUserId ?? reminder.Id.UserId;
-
-                if (reminder.IsDm)
-                {
-                    var user = await _client.GetUserAsync(targetId).ConfigureAwait(false);
-                    if (user != null)
-                    {
-                        try
-                        {
-                            var dmChannel = await user.CreateDMChannelAsync().ConfigureAwait(false);
-                            await dmChannel.SendMessageAsync(components: components, flags: MessageFlags.ComponentsV2)
-                                .ConfigureAwait(false);
-                            _logger.LogInformation("Sent DM reminder (ID: {UserId}/{Seq}) to User {TargetUserId}",
-                                reminder.Id.UserId, reminder.Id.SequenceNumber, targetId);
-                        }
-                        catch (HttpException hex) when (hex.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
-                        {
-                            _logger.LogWarning(
-                                "Cannot send DM reminder to User {TargetUserId} (User {UserId}/{Seq}). Sending to original channel.",
-                                targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
-                            await SendToChannelFallback(reminder, components).ConfigureAwait(false);
-                        }
-                    }
-                    else
-                    {
-                        _logger.LogWarning("Could not find user {TargetUserId} for DM reminder (ID: {UserId}/{Seq}).",
-                            targetId, reminder.Id.UserId, reminder.Id.SequenceNumber);
-                        await SendToChannelFallback(reminder, components).ConfigureAwait(false);
-                    }
-                }
-                else
-                {
-                    await SendToChannel(reminder, components).ConfigureAwait(false);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing reminder (ID: {UserId}/{Seq}).", reminder.Id.UserId,
-                    reminder.Id.SequenceNumber);
-            }
-            finally
-            {
-                await HandleReminderCompletion(reminder, now).ConfigureAwait(false);
-            }
-
-        _logger.LogTrace("Finished checking reminders.");
+        try
+        {
+            var dmChannel = await user.CreateDMChannelAsync().ConfigureAwait(false);
+            await dmChannel.SendMessageAsync(components: components, flags: MessageFlags.ComponentsV2)
+                .ConfigureAwait(false);
+            logger.LogInformation("Sent DM reminder (ID: {Id}) to User {TargetUserId}", reminder.Id, targetId);
+        }
+        catch (HttpException hex) when (hex.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
+        {
+            logger.LogWarning(
+                "Cannot send DM reminder to User {TargetUserId} (ID {Id}). Sending to original channel.",
+                targetId, reminder.Id);
+            await SendChannelReminderAsync(reminder, components, true).ConfigureAwait(false);
+        }
     }
 
-    private static MessageComponent BuildReminderComponent(ReminderModel reminder, IUser? creator)
+    private async Task SendChannelReminderAsync(ReminderEntity reminder, MessageComponent components,
+        bool isFallback = false)
+    {
+        if (client.GetChannel((ulong)reminder.ChannelId) is not ITextChannel channel)
+        {
+            logger.LogWarning("Could not find channel {ChannelId} for reminder (ID: {Id}).",
+                reminder.ChannelId, reminder.Id);
+            return;
+        }
+
+        try
+        {
+            await channel.SendMessageAsync(components: components, allowedMentions: AllowedMentions.All,
+                flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+
+            if (!isFallback)
+                logger.LogInformation(
+                    "Sent channel reminder (ID: {Id}) to Channel {ChannelId} for User {TargetUserId}",
+                    reminder.Id, reminder.ChannelId, reminder.TargetUserId ?? reminder.CreatorId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to send {Type} channel reminder (ID: {Id}) to Channel {ChannelId}.",
+                isFallback ? "fallback" : "standard", reminder.Id, reminder.ChannelId);
+        }
+    }
+
+    private async Task HandleReminderCompletionAsync(AssistantDbContext context, ReminderEntity reminder,
+        DateTime triggerTime)
+    {
+        if (string.IsNullOrEmpty(reminder.Recurrence) ||
+            reminder.Recurrence.Equals("none", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Reminders.Remove(reminder);
+            await SaveChangesSafelyAsync(context, $"Deleted one-time reminder (ID: {reminder.Id}).");
+        }
+        else
+        {
+            var nextTrigger = CalculateNextTriggerTime(reminder.Recurrence, triggerTime);
+            if (nextTrigger.HasValue)
+            {
+                reminder.LastTriggered = triggerTime;
+                reminder.TriggerTime = nextTrigger.Value;
+                await SaveChangesSafelyAsync(context,
+                    $"Updated recurring reminder (ID: {reminder.Id}). Next trigger: {nextTrigger.Value}");
+            }
+            else
+            {
+                logger.LogWarning(
+                    "Could not calculate next trigger time for reminder (ID: {Id}) with recurrence '{Recurrence}'. Deactivating.",
+                    reminder.Id, reminder.Recurrence);
+                reminder.LastTriggered = triggerTime;
+                reminder.IsActive = false;
+                await SaveChangesSafelyAsync(context, $"Deactivated invalid recurring reminder (ID: {reminder.Id}).");
+            }
+        }
+    }
+
+    private async Task SaveChangesSafelyAsync(AssistantDbContext context, string successLog)
+    {
+        try
+        {
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            logger.LogInformation("{Message}", successLog);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Database error while saving changes for reminder update/deletion.");
+        }
+    }
+
+    private static MessageComponent BuildReminderComponent(ReminderEntity reminder, IUser? creator)
     {
         var titleText = string.IsNullOrWhiteSpace(reminder.Title) ? "⏰ Reminder" : $"⏰ Reminder: {reminder.Title}";
 
@@ -189,10 +224,10 @@ public class ReminderService : IHostedService, IDisposable
             .WithTextDisplay(new TextDisplayBuilder(reminder.Message))
             .WithSeparator();
 
-        var creatorInfo = creator != null ? creator.Mention : $"<@{reminder.Id.UserId}>";
+        var creatorInfo = creator != null ? creator.Mention : $"<@{reminder.CreatorId}>";
         container.WithTextDisplay(
             new TextDisplayBuilder(
-                $"**Set by:** {creatorInfo} | **Set at:** {reminder.CreationTime.GetRelativeTime()}"));
+                $"**Set by:** {creatorInfo} | **Set at:** {reminder.CreatedAt.GetRelativeTime()}"));
 
         if (reminder.Recurrence != null)
             container.WithTextDisplay(new TextDisplayBuilder($"*This reminder repeats {reminder.Recurrence}*"));
@@ -200,103 +235,6 @@ public class ReminderService : IHostedService, IDisposable
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    private async Task SendToChannel(ReminderModel reminder, MessageComponent components)
-    {
-        if (_client.GetChannel(reminder.ChannelId) is ITextChannel channel)
-            try
-            {
-                await channel.SendMessageAsync(components: components, allowedMentions: AllowedMentions.All,
-                    flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-                _logger.LogInformation(
-                    "Sent channel reminder (ID: {UserId}/{Seq}) to Channel {ChannelId} for User {TargetUserId}",
-                    reminder.Id.UserId, reminder.Id.SequenceNumber, reminder.ChannelId,
-                    reminder.TargetUserId ?? reminder.Id.UserId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send channel reminder (ID: {UserId}/{Seq}) to Channel {ChannelId}.",
-                    reminder.Id.UserId, reminder.Id.SequenceNumber, reminder.ChannelId);
-            }
-        else
-            _logger.LogWarning("Could not find channel {ChannelId} for channel reminder (ID: {UserId}/{Seq}).",
-                reminder.ChannelId, reminder.Id.UserId, reminder.Id.SequenceNumber);
-    }
-
-    private async Task SendToChannelFallback(ReminderModel reminder, MessageComponent components)
-    {
-        if (_client.GetChannel(reminder.ChannelId) is ITextChannel channel)
-            try
-            {
-                await channel.SendMessageAsync(components: components,
-                    allowedMentions: AllowedMentions.All, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Failed to send fallback channel reminder (ID: {UserId}/{Seq}) to Channel {ChannelId}.",
-                    reminder.Id.UserId, reminder.Id.SequenceNumber, reminder.ChannelId);
-            }
-        else
-            _logger.LogWarning(
-                "Could not find original channel {ChannelId} for fallback reminder (ID: {UserId}/{Seq}).",
-                reminder.ChannelId, reminder.Id.UserId, reminder.Id.SequenceNumber);
-    }
-
-
-    private async Task HandleReminderCompletion(ReminderModel reminder, DateTime triggerTime)
-    {
-        if (string.IsNullOrEmpty(reminder.Recurrence) ||
-            reminder.Recurrence.Equals("none", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                await _reminderCollection.DeleteOneAsync(r => r.Id == reminder.Id).ConfigureAwait(false);
-                _logger.LogInformation("Deleted one-time reminder (ID: {UserId}/{Seq}).", reminder.Id.UserId,
-                    reminder.Id.SequenceNumber);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to delete reminder (ID: {UserId}/{Seq}).", reminder.Id.UserId,
-                    reminder.Id.SequenceNumber);
-            }
-        }
-        else
-        {
-            var nextTrigger = CalculateNextTriggerTime(reminder.Recurrence, triggerTime);
-            if (nextTrigger.HasValue)
-            {
-                var updateFilter = Builders<ReminderModel>.Filter.Eq(r => r.Id, reminder.Id);
-                var update = Builders<ReminderModel>.Update
-                    .Set(r => r.LastTriggered, triggerTime)
-                    .Set(r => r.TriggerTime, nextTrigger.Value);
-                try
-                {
-                    await _reminderCollection.UpdateOneAsync(updateFilter, update).ConfigureAwait(false);
-                    _logger.LogInformation(
-                        "Updated recurring reminder (ID: {UserId}/{Seq}). Next trigger: {NextTrigger}",
-                        reminder.Id.UserId, reminder.Id.SequenceNumber, nextTrigger.Value);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to update recurring reminder (ID: {UserId}/{Seq}).",
-                        reminder.Id.UserId, reminder.Id.SequenceNumber);
-                }
-            }
-            else
-            {
-                _logger.LogWarning(
-                    "Could not calculate next trigger time for reminder (ID: {UserId}/{Seq}) with recurrence '{Recurrence}'. Deactivating.",
-                    reminder.Id.UserId, reminder.Id.SequenceNumber, reminder.Recurrence);
-                var updateFilter = Builders<ReminderModel>.Filter.Eq(r => r.Id, reminder.Id);
-                var update = Builders<ReminderModel>.Update
-                    .Set(r => r.LastTriggered, triggerTime)
-                    .Set(r => r.IsActive, false); // Deactivate
-                await _reminderCollection.UpdateOneAsync(updateFilter, update).ConfigureAwait(false);
-            }
-        }
-    }
-
-    // --- Recurrence Calculation ---
     private DateTime? CalculateNextTriggerTime(string? recurrence, DateTime lastTriggered)
     {
         if (string.IsNullOrEmpty(recurrence)) return null;
@@ -315,7 +253,7 @@ public class ReminderService : IHostedService, IDisposable
                 case "minutely": return lastTriggered.AddMinutes(1);
             }
 
-            if (recurrence.StartsWith("every")) // "every 2 days", "every 3 weeks" etc.
+            if (recurrence.StartsWith("every"))
             {
                 var parts = recurrence.Split([' '], StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 3 && int.TryParse(parts[1], out var count) && count > 0)
@@ -332,7 +270,7 @@ public class ReminderService : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError("Error calculating next trigger time for '{Recurrence}': {ExMessage}", recurrence,
+            logger.LogError("Error calculating next trigger time for '{Recurrence}': {ExMessage}", recurrence,
                 ex.Message);
             return null;
         }
@@ -340,33 +278,7 @@ public class ReminderService : IHostedService, IDisposable
         return null;
     }
 
-    // --- Sequence Number Generation ---
-    private async Task<int> GetNextSequenceNumberAsync(ulong userId)
-    {
-        var counterId = $"reminder_user_{userId}";
-        var filter = Builders<CounterModel>.Filter.Eq(c => c.Id, counterId);
-        var update = Builders<CounterModel>.Update.Inc(c => c.SequenceValue, 1);
-        var options = new FindOneAndUpdateOptions<CounterModel, CounterModel>
-        {
-            IsUpsert = true,
-            ReturnDocument = ReturnDocument.After
-        };
-
-        try
-        {
-            var result = await _countersCollection.FindOneAndUpdateAsync(filter, update, options).ConfigureAwait(false);
-            return result.SequenceValue;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get next sequence number for user {UserId}", userId);
-            throw;
-        }
-    }
-
-    // --- Public Methods for Module ---
-
-    public async Task<ReminderModel?> CreateReminderAsync(
+    public async Task<ReminderEntity?> CreateReminderAsync(
         ulong creatorUserId,
         ulong guildId,
         ulong channelId,
@@ -377,18 +289,30 @@ public class ReminderService : IHostedService, IDisposable
         string? recurrence = null,
         string? title = null)
     {
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var dCreatorId = (decimal)creatorUserId;
+        var dTargetId = targetUserId ?? dCreatorId;
+
+        if (await context.Users.FindAsync(dCreatorId).ConfigureAwait(false) == null)
+            context.Users.Add(new UserEntity { Id = dCreatorId });
+
+        if (dTargetId != dCreatorId)
+            if (await context.Users.FindAsync(dTargetId).ConfigureAwait(false) == null)
+                context.Users.Add(new UserEntity { Id = dTargetId });
+
+        await context.SaveChangesAsync().ConfigureAwait(false);
+
         try
         {
-            var sequenceNumber = await GetNextSequenceNumberAsync(creatorUserId).ConfigureAwait(false);
-            var reminder = new ReminderModel
+            var reminder = new ReminderEntity
             {
-                Id = new ReminderIdKey { UserId = creatorUserId, SequenceNumber = sequenceNumber },
-                TargetUserId = targetUserId ?? creatorUserId,
+                CreatorId = dCreatorId,
+                TargetUserId = dTargetId,
                 ChannelId = channelId,
                 GuildId = guildId,
                 Message = message,
-                TriggerTime = triggerTime.ToUniversalTime(), // Ensure UTC
-                CreationTime = DateTime.UtcNow,
+                TriggerTime = triggerTime.ToUniversalTime(),
+                CreatedAt = DateTime.UtcNow,
                 IsDm = isDm,
                 Recurrence = recurrence?.ToLowerInvariant() == "none" ? null : recurrence?.ToLowerInvariant(),
                 Title = title,
@@ -396,196 +320,154 @@ public class ReminderService : IHostedService, IDisposable
                 LastTriggered = null
             };
 
-            await _reminderCollection.InsertOneAsync(reminder).ConfigureAwait(false);
-            _logger.LogInformation("Created reminder (ID: {UserId}/{Seq}) for User {TargetUserId}.", creatorUserId,
-                sequenceNumber, reminder.TargetUserId);
+            context.Reminders.Add(reminder);
+            await context.SaveChangesAsync().ConfigureAwait(false);
+
+            logger.LogInformation("Created reminder (ID: {Id}) for User {TargetUserId}.", reminder.Id, dTargetId);
             return reminder;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create reminder for user {UserId}.", creatorUserId);
+            logger.LogError(ex, "Failed to create reminder for user {UserId}.", creatorUserId);
             return null;
         }
     }
 
-    public async Task<List<ReminderModel>> ListUserRemindersAsync(ulong userId)
+    public async Task<List<ReminderEntity>> ListUserRemindersAsync(ulong userId)
     {
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         try
         {
-            var filter = Builders<ReminderModel>.Filter.And(
-                Builders<ReminderModel>.Filter.Eq(r => r.Id.UserId, userId),
-                Builders<ReminderModel>.Filter.Eq(r => r.IsActive, true),
-                Builders<ReminderModel>.Filter.Gt(r => r.TriggerTime, DateTime.UtcNow) // Only future reminders
-            );
-            var sort = Builders<ReminderModel>.Sort.Ascending(r => r.TriggerTime);
-
-            return await _reminderCollection.Find(filter).Sort(sort).ToListAsync().ConfigureAwait(false);
+            var decimalUserId = (decimal)userId;
+            return await context.Reminders
+                .Where(r => r.CreatorId == decimalUserId && r.IsActive && r.TriggerTime > DateTime.UtcNow)
+                .OrderBy(r => r.TriggerTime)
+                .ToListAsync()
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to list reminders for user {UserId}.", userId);
-            return []; // Return empty list on error
+            logger.LogError(ex, "Failed to list reminders for user {UserId}.", userId);
+            return [];
         }
     }
 
-    public async Task<(bool success, bool found)> CancelReminderAsync(ulong userId, int sequenceNumber,
+    public async Task<(bool success, bool found)> CancelReminderAsync(ulong userId, int reminderId,
         bool deletePermanently = false)
     {
-        var reminderId = new ReminderIdKey { UserId = userId, SequenceNumber = sequenceNumber };
-        var filter = Builders<ReminderModel>.Filter.Eq(r => r.Id, reminderId);
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalUserId = (decimal)userId;
 
         try
         {
+            var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
+
+            if (reminder == null) return (false, false);
+            if (reminder.CreatorId != decimalUserId) return (false, false); // Not owned by user
+
             if (deletePermanently)
             {
-                var result = await _reminderCollection.DeleteOneAsync(filter).ConfigureAwait(false);
-                if (result.DeletedCount > 0)
-                {
-                    _logger.LogInformation("Permanently deleted reminder (ID: {UserId}/{Seq}).", userId,
-                        sequenceNumber);
-                    return (true, true);
-                }
-
-                _logger.LogWarning("Attempted to delete non-existent or already deleted reminder (ID: {UserId}/{Seq}).",
-                    userId, sequenceNumber);
+                context.Reminders.Remove(reminder);
+                await context.SaveChangesAsync().ConfigureAwait(false);
+                logger.LogInformation("Permanently deleted reminder (ID: {Id}).", reminderId);
+                return (true, true);
             }
-            else
+
+            if (!reminder.IsActive)
             {
-                var update = Builders<ReminderModel>.Update.Set(r => r.IsActive, false);
-                var result = await _reminderCollection.UpdateOneAsync(filter, update).ConfigureAwait(false);
-                if (result.MatchedCount > 0)
-                {
-                    if (result.ModifiedCount > 0)
-                    {
-                        _logger.LogInformation("Deactivated reminder (ID: {UserId}/{Seq}).", userId, sequenceNumber);
-                        return (true, true);
-                    }
-
-                    _logger.LogInformation("Reminder (ID: {UserId}/{Seq}) was already inactive.", userId,
-                        sequenceNumber);
-                    return (true, true);
-                }
-
-                _logger.LogWarning("Attempted to deactivate non-existent reminder (ID: {UserId}/{Seq}).", userId,
-                    sequenceNumber);
+                logger.LogInformation("Reminder (ID: {Id}) was already inactive.", reminderId);
+                return (true, true);
             }
 
-            return (false, false);
+            reminder.IsActive = false;
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            logger.LogInformation("Deactivated reminder (ID: {Id}).", reminderId);
+            return (true, true);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to cancel/delete reminder (ID: {UserId}/{Seq}). DeletePermanently={Delete}",
-                userId, sequenceNumber, deletePermanently);
+            logger.LogError(ex, "Failed to cancel/delete reminder (ID: {Id}).", reminderId);
             return (false, true);
         }
     }
 
-    public async Task<(bool success, bool found, ReminderModel? updatedReminder)> EditReminderAsync(
+    public async Task<(bool success, bool found, ReminderEntity? updatedReminder)> EditReminderAsync(
         ulong userId,
-        int sequenceNumber,
+        int reminderId,
         string? newMessage = null,
         DateTime? newTriggerTime = null,
         string? newRecurrence = null,
         string? newTitle = null)
     {
-        var reminderId = new ReminderIdKey { UserId = userId, SequenceNumber = sequenceNumber };
-        var filter = Builders<ReminderModel>.Filter.Eq(r => r.Id, reminderId);
-
-        // Fetch the existing reminder first to validate ownership and active status
-        ReminderModel? existingReminder;
-        try
-        {
-            existingReminder = await _reminderCollection.Find(filter).FirstOrDefaultAsync().ConfigureAwait(false);
-            if (existingReminder is not { IsActive: true })
-            {
-                _logger.LogWarning("Attempted to edit non-existent or inactive reminder (ID: {UserId}/{Seq}).", userId,
-                    sequenceNumber);
-                return (false, false, null); // Not found or inactive
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to fetch reminder for editing (ID: {UserId}/{Seq}).", userId, sequenceNumber);
-            return (false, true, null);
-        }
-
-
-        var updateDefinition = Builders<ReminderModel>.Update.Combine();
-        var hasChanges = false;
-
-        if (newMessage != null)
-        {
-            updateDefinition = updateDefinition.Set(r => r.Message, newMessage);
-            hasChanges = true;
-        }
-
-        if (newTriggerTime.HasValue)
-        {
-            var utcTime = newTriggerTime.Value.ToUniversalTime();
-            if (utcTime <= DateTime.UtcNow)
-            {
-                _logger.LogWarning("Attempted to set reminder time to the past for (ID: {UserId}/{Seq}).", userId,
-                    sequenceNumber);
-                return (false, true, null);
-            }
-
-            updateDefinition = updateDefinition.Set(r => r.TriggerTime, utcTime);
-            updateDefinition = updateDefinition.Set(r => r.LastTriggered, null);
-            hasChanges = true;
-        }
-
-        if (newRecurrence != null)
-        {
-            var recurrenceValue = newRecurrence.Equals("none", StringComparison.OrdinalIgnoreCase)
-                ? null
-                : newRecurrence.ToLowerInvariant();
-            updateDefinition = updateDefinition.Set(r => r.Recurrence, recurrenceValue);
-            updateDefinition =
-                updateDefinition.Set(r => r.LastTriggered, null);
-            hasChanges = true;
-        }
-
-        if (newTitle != null)
-        {
-            updateDefinition = updateDefinition.Set(r => r.Title, newTitle);
-            hasChanges = true;
-        }
-
-
-        if (!hasChanges)
-        {
-            _logger.LogInformation("No changes specified for editing reminder (ID: {UserId}/{Seq}).", userId,
-                sequenceNumber);
-            return (true, true, existingReminder);
-        }
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalUserId = (decimal)userId;
 
         try
         {
-            var options = new FindOneAndUpdateOptions<ReminderModel, ReminderModel>
-            {
-                ReturnDocument = ReturnDocument.After
-            };
-            var updatedDoc = await _reminderCollection.FindOneAndUpdateAsync(filter, updateDefinition, options)
-                .ConfigureAwait(false);
+            var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
 
-            if (updatedDoc != null)
+            if (reminder == null) return (false, false, null);
+            if (reminder.CreatorId != decimalUserId || !reminder.IsActive)
             {
-                _logger.LogInformation("Successfully edited reminder (ID: {UserId}/{Seq}).", userId, sequenceNumber);
-                return (true, true, updatedDoc);
+                logger.LogWarning("Attempted to edit non-existent, inactive or unowned reminder (ID: {Id}).",
+                    reminderId);
+                return (false, false, null);
             }
 
-            _logger.LogWarning("Failed to find reminder during update phase (ID: {UserId}/{Seq}).", userId,
-                sequenceNumber);
-            return (false, false, null);
+            var hasChanges = false;
+
+            if (newMessage != null)
+            {
+                reminder.Message = newMessage;
+                hasChanges = true;
+            }
+
+            if (newTriggerTime.HasValue)
+            {
+                var utcTime = newTriggerTime.Value.ToUniversalTime();
+                if (utcTime <= DateTime.UtcNow)
+                {
+                    logger.LogWarning("Attempted to set reminder time to the past for (ID: {Id}).", reminderId);
+                    return (false, true, null);
+                }
+
+                reminder.TriggerTime = utcTime;
+                reminder.LastTriggered = null;
+                hasChanges = true;
+            }
+
+            if (newRecurrence != null)
+            {
+                reminder.Recurrence = newRecurrence.Equals("none", StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : newRecurrence.ToLowerInvariant();
+                reminder.LastTriggered = null;
+                hasChanges = true;
+            }
+
+            if (newTitle != null)
+            {
+                reminder.Title = newTitle;
+                hasChanges = true;
+            }
+
+            if (!hasChanges)
+            {
+                logger.LogInformation("No changes specified for editing reminder (ID: {Id}).", reminderId);
+                return (true, true, reminder);
+            }
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            logger.LogInformation("Successfully edited reminder (ID: {Id}).", reminderId);
+            return (true, true, reminder);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to edit reminder (ID: {UserId}/{Seq}).", userId, sequenceNumber);
+            logger.LogError(ex, "Failed to edit reminder (ID: {Id}).", reminderId);
             return (false, true, null);
         }
     }
 
-    // --- Time Parsing Utility ---
     public static DateTime? ParseTime(string timeString)
     {
         try
@@ -626,9 +508,8 @@ public class ReminderService : IHostedService, IDisposable
             selectedDateTime = selectedDateTime.Value.AddDays(1);
             return selectedDateTime.Value <= referenceTime ? null : selectedDateTime;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine($"Error parsing time string '{timeString}': {ex.Message}");
             return null;
         }
     }

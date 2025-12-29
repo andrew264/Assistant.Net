@@ -1,41 +1,37 @@
-using Assistant.Net.Models.User;
+using Assistant.Net.Data;
+using Assistant.Net.Data.Entities;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 
 namespace Assistant.Net.Services.User;
 
-public class UserService(IMongoDatabase database, ILogger<UserService> logger)
+public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogger<UserService> logger)
 {
-    private readonly IMongoCollection<UserModel> _userCollection = database.GetCollection<UserModel>("allUsers");
-
     public async Task UpdateUserIntroductionAsync(ulong userId, string introduction)
     {
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalUserId = (decimal)userId;
+
         try
         {
-            var filter = Builders<UserModel>.Filter.Eq(u => u.UserId, userId);
-            var update = Builders<UserModel>.Update
-                .Set(u => u.About, introduction)
-                .SetOnInsert(u => u.UserId, userId);
-
-            var options = new UpdateOptions { IsUpsert = true };
-
-            var result = await _userCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
-
-            if (result.IsAcknowledged)
+            var user = await context.Users.FindAsync(decimalUserId).ConfigureAwait(false);
+            if (user == null)
             {
-                if (result is { MatchedCount: > 0, ModifiedCount: 0 } && result.UpsertedId == null)
-                    logger.LogInformation("Introduction for User {UserId} submitted, but no changes detected.", userId);
-                else if (result.UpsertedId != null)
-                    logger.LogInformation("Successfully upserted introduction and set LastSeen for new User {UserId}.",
-                        userId);
-                else
-                    logger.LogInformation("Successfully updated introduction and LastSeen for User {UserId}.", userId);
+                user = new UserEntity { Id = decimalUserId };
+                context.Users.Add(user);
             }
-            else
+
+            if (user.About == introduction)
             {
-                logger.LogWarning("MongoDB update for user introduction (UserId: {UserId}) was not acknowledged.",
-                    userId);
+                logger.LogInformation("Introduction for User {UserId} submitted, but no changes detected.", userId);
+                return;
             }
+
+            user.About = introduction;
+            user.LastSeen = DateTime.UtcNow;
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            logger.LogInformation("Successfully updated introduction and LastSeen for User {UserId}.", userId);
         }
         catch (Exception ex)
         {
@@ -44,30 +40,25 @@ public class UserService(IMongoDatabase database, ILogger<UserService> logger)
         }
     }
 
-    // This method now explicitly sets LastSeen to UtcNow when called.
     public async Task UpdateLastSeenAsync(ulong userId)
     {
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalUserId = (decimal)userId;
+
         try
         {
-            var filter = Builders<UserModel>.Filter.Eq(u => u.UserId, userId);
-            var update = Builders<UserModel>.Update
-                .Set(u => u.LastSeen, DateTime.UtcNow)
-                .SetOnInsert(u => u.UserId, userId);
-
-            var options = new UpdateOptions { IsUpsert = true };
-            var result = await _userCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
-
-            if (result.IsAcknowledged)
+            var user = await context.Users.FindAsync(decimalUserId).ConfigureAwait(false);
+            if (user == null)
             {
-                if (result.UpsertedId != null)
-                    logger.LogDebug("Upserted user document for {UserId} while updating LastSeen.", userId);
-                else if (result.ModifiedCount > 0)
-                    logger.LogDebug("Updated LastSeen for User {UserId}.", userId);
+                user = new UserEntity { Id = decimalUserId };
+                context.Users.Add(user);
+                logger.LogDebug("Creating new user entity for {UserId} while updating LastSeen.", userId);
             }
-            else
-            {
-                logger.LogWarning("MongoDB update for LastSeen (UserId: {UserId}) was not acknowledged.", userId);
-            }
+
+            user.LastSeen = DateTime.UtcNow;
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
+            logger.LogDebug("Updated LastSeen for User {UserId}.", userId);
         }
         catch (Exception ex)
         {
@@ -75,12 +66,12 @@ public class UserService(IMongoDatabase database, ILogger<UserService> logger)
         }
     }
 
-    public async Task<UserModel?> GetUserAsync(ulong userId)
+    public async Task<UserEntity?> GetUserAsync(ulong userId)
     {
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         try
         {
-            var filter = Builders<UserModel>.Filter.Eq(u => u.UserId, userId);
-            return await _userCollection.Find(filter).FirstOrDefaultAsync().ConfigureAwait(false);
+            return await context.Users.FindAsync((decimal)userId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

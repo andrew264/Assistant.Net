@@ -1,124 +1,98 @@
-using System.Collections.Concurrent;
 using Assistant.Net.Configuration;
+using Assistant.Net.Data;
+using Assistant.Net.Data.Entities;
 using Assistant.Net.Models.Music;
-using F23.StringSimilarity;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using MongoDB.Driver;
 
 namespace Assistant.Net.Services.Music;
 
 public class MusicHistoryService
 {
-    private const string CollectionName = "guildMusicSettings";
-    private const string CachePrefix = "musicHistory:";
-    private const int CacheSizeLimit = 500;
-    private readonly ConcurrentQueue<ulong> _cacheKeysQueue = new();
+    private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
     private readonly ILogger<MusicHistoryService> _logger;
-    private readonly IMemoryCache _memoryCache;
     private readonly MusicConfig _musicConfig;
 
-    private readonly IMongoCollection<GuildMusicSettingsModel> _settingsCollection;
-
     public MusicHistoryService(
-        IMongoDatabase database,
-        IMemoryCache memoryCache,
+        IDbContextFactory<AssistantDbContext> dbFactory,
         ILogger<MusicHistoryService> logger,
         Config config)
     {
-        _settingsCollection = database.GetCollection<GuildMusicSettingsModel>(CollectionName);
-        _memoryCache = memoryCache;
+        _dbFactory = dbFactory;
         _logger = logger;
         _musicConfig = config.Music;
 
-        EnsureIndexesAsync().ConfigureAwait(false).GetAwaiter().GetResult();
         _logger.LogInformation("MusicHistoryService initialized.");
     }
 
-    private static async Task EnsureIndexesAsync()
+    private async Task<GuildMusicSettingsEntity> GetSettingsAsync(ulong guildId)
     {
-        // If specific queries on song properties become frequent, consider indexing `songs.uri` or `songs.title`.
+        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalGuildId = (decimal)guildId;
 
-        // var songsUriIndexModel = new CreateIndexModel<GuildMusicSettingsModel>(
-        //     Builders<GuildMusicSettingsModel>.IndexKeys.Ascending("songs.uri"),
-        //     new CreateIndexOptions { Name = "SongsUriIndex", Sparse = true }
-        // );
-        // await _settingsCollection.Indexes.CreateOneAsync(songsUriIndexModel);
-        // _logger.LogInformation("Music history index check complete (primary _id index used).");
-        await Task.CompletedTask;
-    }
+        var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
 
-    private async Task<GuildMusicSettingsModel> GetOrAddSettingsAsync(ulong guildId)
-    {
-        var cacheKey = $"{CachePrefix}{guildId}";
+        if (settings != null) return settings;
 
-        if (_memoryCache.TryGetValue(cacheKey, out GuildMusicSettingsModel? cachedSettings) && cachedSettings != null)
+        settings = new GuildMusicSettingsEntity
         {
-            _logger.LogTrace("Music history cache hit for Guild {GuildId}", guildId);
-            return cachedSettings;
-        }
-
-        _logger.LogTrace("Music history cache miss for Guild {GuildId}. Fetching from DB.", guildId);
-        var settings = await _settingsCollection.Find(x => x.GuildId == guildId).FirstOrDefaultAsync()
-            .ConfigureAwait(false);
-
-        if (settings == null)
-        {
-            _logger.LogInformation("No music settings found for Guild {GuildId}. Creating with defaults.", guildId);
-            settings = new GuildMusicSettingsModel
-            {
-                GuildId = guildId,
-                Volume = _musicConfig.DefaultVolume,
-                Songs = [],
-                UpdatedAt = DateTime.UtcNow
-            };
-        }
-
-        AddToCache(cacheKey, settings);
-        return settings;
-    }
-
-    private void AddToCache(string cacheKey, GuildMusicSettingsModel settings)
-    {
-        var cacheEntryOptions = new MemoryCacheEntryOptions
-        {
-            AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(4),
-            SlidingExpiration = TimeSpan.FromHours(1),
-            Size = 1
+            GuildId = decimalGuildId,
+            Volume = _musicConfig.DefaultVolume
         };
+        context.GuildMusicSettings.Add(settings);
+        await context.SaveChangesAsync().ConfigureAwait(false);
 
-        _memoryCache.Set(cacheKey, settings, cacheEntryOptions);
-
-        // Manage cache size
-        if (_cacheKeysQueue.Contains(settings.GuildId)) return; // Avoid duplicate guild IDs in queue
-        _cacheKeysQueue.Enqueue(settings.GuildId);
-        while (_cacheKeysQueue.Count > CacheSizeLimit && _cacheKeysQueue.TryDequeue(out var oldestGuildId))
-        {
-            _memoryCache.Remove($"{CachePrefix}{oldestGuildId}");
-            _logger.LogDebug("Evicted music history for Guild {GuildId} from cache due to size limit.", oldestGuildId);
-        }
+        return settings;
     }
 
     public async Task AddSongToHistoryAsync(ulong guildId, SongHistoryEntry songEntry)
     {
+        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalGuildId = (decimal)guildId;
+        var decimalRequesterId = (decimal)songEntry.RequestedBy;
+
         try
         {
-            var filter = Builders<GuildMusicSettingsModel>.Filter.Eq(x => x.GuildId, guildId);
-            var update = Builders<GuildMusicSettingsModel>.Update
-                .PushEach("songs", [songEntry], _musicConfig.MaxHistorySize, 0)
-                .SetOnInsert(x => x.GuildId, guildId) // Ensure GuildId is set on insert
-                .SetOnInsert(x => x.Volume, _musicConfig.DefaultVolume) // Set default volume on insert
-                .Set(x => x.UpdatedAt, DateTime.UtcNow);
+            var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
+            if (settings == null)
+            {
+                settings = new GuildMusicSettingsEntity
+                {
+                    GuildId = decimalGuildId,
+                    Volume = _musicConfig.DefaultVolume
+                };
+                context.GuildMusicSettings.Add(settings);
+            }
 
-            var options = new UpdateOptions { IsUpsert = true };
-            await _settingsCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
+            if (!await context.Users.AnyAsync(u => u.Id == decimalRequesterId).ConfigureAwait(false))
+                context.Users.Add(new UserEntity { Id = decimalRequesterId });
 
+            var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == songEntry.Uri).ConfigureAwait(false);
+            if (track == null)
+            {
+                track = new TrackEntity
+                {
+                    Uri = songEntry.Uri,
+                    Title = songEntry.Title,
+                    Artist = songEntry.Artist,
+                    ThumbnailUrl = songEntry.ThumbnailUrl,
+                    Duration = songEntry.Duration.TotalSeconds,
+                    Source = "unknown"
+                };
+                context.Tracks.Add(track);
+            }
+
+            var playHistory = new PlayHistoryEntity
+            {
+                GuildSettings = settings,
+                Track = track,
+                RequestedBy = decimalRequesterId,
+                PlayedAt = DateTime.UtcNow
+            };
+            context.PlayHistories.Add(playHistory);
+
+            await context.SaveChangesAsync().ConfigureAwait(false);
             _logger.LogDebug("Added song '{SongTitle}' to history for Guild {GuildId}.", songEntry.Title, guildId);
-
-            // Invalidate and refetch cache to ensure consistency
-            var cacheKey = $"{CachePrefix}{guildId}";
-            _memoryCache.Remove(cacheKey);
-            await GetOrAddSettingsAsync(guildId).ConfigureAwait(false); // Re-cache
         }
         catch (Exception ex)
         {
@@ -128,69 +102,61 @@ public class MusicHistoryService
 
     public async Task<IEnumerable<SongHistoryEntryInfo>> SearchSongHistoryAsync(ulong guildId, string searchTerm)
     {
-        var settings = await GetOrAddSettingsAsync(guildId).ConfigureAwait(false);
-        if (settings.Songs.Count == 0) return [];
+        if (string.IsNullOrWhiteSpace(searchTerm)) return [];
 
-        var jaroWinkler = new JaroWinkler(0.4);
-        var lowerSearchTerm = searchTerm.ToLowerInvariant();
+        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalGuildId = (decimal)guildId;
+        var cutoff = _musicConfig.TitleSimilarityCutoff;
 
-        return settings.Songs
-            .Select(song =>
-            {
-                var titleScore = string.IsNullOrEmpty(song.Title)
-                    ? 0
-                    : jaroWinkler.Similarity(song.Title.ToLowerInvariant(), lowerSearchTerm);
-                var uriScore = string.IsNullOrEmpty(song.Uri)
-                    ? 0
-                    : jaroWinkler.Similarity(song.Uri.ToLowerInvariant(), lowerSearchTerm);
-                var artistScore = string.IsNullOrEmpty(song.Artist)
-                    ? 0
-                    : jaroWinkler.Similarity(song.Artist.ToLowerInvariant(), lowerSearchTerm);
-
-                var combinedScore = Math.Max(Math.Max(titleScore, uriScore), artistScore);
-
-                var matches = titleScore >= _musicConfig.TitleSimilarityCutoff ||
-                              uriScore >= _musicConfig.UriSimilarityCutoff ||
-                              artistScore >= _musicConfig.ArtistSimilarityCutoff;
-
-                return (Song: song, Score: combinedScore, Matches: matches);
-            })
-            .Where(x => x.Matches)
-            .OrderByDescending(x => x.Score)
-            .Select(x => new SongHistoryEntryInfo(x.Song.Title, x.Song.Uri))
+        var tracks = await context.PlayHistories
+            .Where(ph => ph.GuildId == decimalGuildId)
+            .Include(ph => ph.Track)
+            .Select(ph => ph.Track)
+            .Where(t =>
+                EF.Functions.TrigramsSimilarity(t.Title, searchTerm) > cutoff ||
+                EF.Functions.TrigramsSimilarity(t.Uri, searchTerm) > cutoff ||
+                (t.Artist != null && EF.Functions.TrigramsSimilarity(t.Artist, searchTerm) > cutoff))
+            .OrderByDescending(t =>
+                EF.Functions.TrigramsSimilarity(t.Title, searchTerm) +
+                EF.Functions.TrigramsSimilarity(t.Uri, searchTerm) +
+                (t.Artist == null ? 0 : EF.Functions.TrigramsSimilarity(t.Artist, searchTerm))
+            )
             .Distinct()
-            .Take(24);
-    }
+            .Take(24)
+            .ToListAsync()
+            .ConfigureAwait(false);
 
+        return tracks.Select(t => new SongHistoryEntryInfo(t.Title, t.Uri));
+    }
 
     public async Task<float> GetGuildVolumeAsync(ulong guildId)
     {
-        var settings = await GetOrAddSettingsAsync(guildId).ConfigureAwait(false);
+        var settings = await GetSettingsAsync(guildId).ConfigureAwait(false);
         return settings.Volume;
     }
 
     public async Task SetGuildVolumeAsync(ulong guildId, double volume)
     {
-        var clampedVolume = Math.Clamp(volume, 0.0, 2.0);
+        var clampedVolume = (float)Math.Clamp(volume, 0.0, 2.0);
+
+        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalGuildId = (decimal)guildId;
+
+        var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
+        if (settings == null)
+        {
+            settings = new GuildMusicSettingsEntity { GuildId = decimalGuildId, Volume = clampedVolume };
+            context.GuildMusicSettings.Add(settings);
+        }
+        else
+        {
+            settings.Volume = clampedVolume;
+        }
 
         try
         {
-            var filter = Builders<GuildMusicSettingsModel>.Filter.Eq(x => x.GuildId, guildId);
-            var update = Builders<GuildMusicSettingsModel>.Update
-                .Set(x => x.Volume, clampedVolume)
-                .SetOnInsert(x => x.GuildId, guildId)
-                .SetOnInsert(x => x.Songs, [])
-                .Set(x => x.UpdatedAt, DateTime.UtcNow);
-
-
-            var options = new UpdateOptions { IsUpsert = true };
-            await _settingsCollection.UpdateOneAsync(filter, update, options).ConfigureAwait(false);
-
+            await context.SaveChangesAsync().ConfigureAwait(false);
             _logger.LogInformation("Set volume for Guild {GuildId} to {Volume}%.", guildId, clampedVolume * 100);
-
-            var cacheKey = $"{CachePrefix}{guildId}";
-            _memoryCache.Remove(cacheKey);
-            await GetOrAddSettingsAsync(guildId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
