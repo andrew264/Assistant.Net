@@ -1,5 +1,6 @@
 ﻿using Assistant.Net.Configuration;
 using Assistant.Net.Data;
+using Assistant.Net.Services.Background;
 using Assistant.Net.Services.Core;
 using Assistant.Net.Services.ExternalApis;
 using Assistant.Net.Services.Games;
@@ -199,7 +200,7 @@ public class Program
 
                 // --- Reminder Service ---
                 services.AddSingleton<ReminderService>();
-                services.AddHostedService(provider => provider.GetRequiredService<ReminderService>());
+                services.AddHostedService<ReminderWorker>();
 
                 // --- Bot Host Service ---
                 services.AddHostedService<BotHostService>();

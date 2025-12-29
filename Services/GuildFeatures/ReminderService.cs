@@ -6,7 +6,6 @@ using Discord;
 using Discord.Net;
 using Discord.WebSocket;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Recognizers.Text;
 using Microsoft.Recognizers.Text.DateTime;
@@ -16,44 +15,13 @@ namespace Assistant.Net.Services.GuildFeatures;
 public class ReminderService(
     IDbContextFactory<AssistantDbContext> dbFactory,
     DiscordSocketClient client,
-    ILogger<ReminderService> logger) : IHostedService, IDisposable
+    ILogger<ReminderService> logger)
 {
-    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30);
-    private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private Timer? _timer;
+    private readonly SemaphoreSlim _processingLock = new(1, 1);
 
-    public void Dispose()
+    public async Task ProcessDueRemindersAsync()
     {
-        _timer?.Dispose();
-        _semaphore.Dispose();
-        GC.SuppressFinalize(this);
-    }
-
-    public Task StartAsync(CancellationToken cancellationToken)
-    {
-        logger.LogInformation("ReminderService is starting.");
-        _timer = new Timer(DoWork, null, TimeSpan.Zero, _checkInterval);
-        return Task.CompletedTask;
-    }
-
-    public Task StopAsync(CancellationToken cancellationToken)
-    {
-        logger.LogInformation("ReminderService is stopping.");
-        _timer?.Change(Timeout.Infinite, 0);
-        return Task.CompletedTask;
-    }
-
-    private void DoWork(object? state)
-    {
-        if (client.ConnectionState != ConnectionState.Connected || client.LoginState != LoginState.LoggedIn)
-            return;
-
-        _ = CheckRemindersAsync();
-    }
-
-    private async Task CheckRemindersAsync()
-    {
-        if (!await _semaphore.WaitAsync(0)) return;
+        if (!await _processingLock.WaitAsync(0)) return;
 
         try
         {
@@ -66,15 +34,15 @@ public class ReminderService(
             logger.LogInformation("Found {Count} due reminders.", dueReminders.Count);
 
             foreach (var reminder in dueReminders)
-                await ProcessReminderAsync(context, reminder, now).ConfigureAwait(false);
+                await DispatchReminderAsync(context, reminder, now).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error in reminder check loop.");
+            logger.LogError(ex, "Error processing due reminders.");
         }
         finally
         {
-            _semaphore.Release();
+            _processingLock.Release();
         }
     }
 
@@ -93,7 +61,7 @@ public class ReminderService(
         }
     }
 
-    private async Task ProcessReminderAsync(AssistantDbContext context, ReminderEntity reminder, DateTime now)
+    private async Task DispatchReminderAsync(AssistantDbContext context, ReminderEntity reminder, DateTime now)
     {
         try
         {
