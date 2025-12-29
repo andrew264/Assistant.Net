@@ -5,9 +5,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Data;
 
-public class GameStatsService(IDbContextFactory<AssistantDbContext> dbFactory, ILogger<GameStatsService> logger)
+public class GameStatsService(
+    IDbContextFactory<AssistantDbContext> dbFactory,
+    ILogger<GameStatsService> logger,
+    UserService userService)
 {
-    public const double DefaultElo = 1000.0;
+    private const double DefaultElo = 1000.0;
     private const double KFactor = 32.0;
 
     public const string TicTacToeGameName = "tictactoe";
@@ -67,8 +70,7 @@ public class GameStatsService(IDbContextFactory<AssistantDbContext> dbFactory, I
 
         if (stat != null) return stat;
 
-        if (!await context.Users.AnyAsync(u => u.Id == userId).ConfigureAwait(false))
-            context.Users.Add(new UserEntity { Id = userId });
+        await userService.EnsureUserExistsAsync(context, (ulong)userId).ConfigureAwait(false);
 
         stat = new GameStatEntity
         {

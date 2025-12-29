@@ -1,6 +1,7 @@
 using System.Globalization;
 using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
@@ -15,7 +16,8 @@ namespace Assistant.Net.Services.Features;
 public class ReminderService(
     IDbContextFactory<AssistantDbContext> dbFactory,
     DiscordSocketClient client,
-    ILogger<ReminderService> logger)
+    ILogger<ReminderService> logger,
+    UserService userService)
 {
     private readonly SemaphoreSlim _processingLock = new(1, 1);
 
@@ -261,12 +263,9 @@ public class ReminderService(
         var dCreatorId = (decimal)creatorUserId;
         var dTargetId = targetUserId ?? dCreatorId;
 
-        if (await context.Users.FindAsync(dCreatorId).ConfigureAwait(false) == null)
-            context.Users.Add(new UserEntity { Id = dCreatorId });
-
+        await userService.EnsureUserExistsAsync(context, creatorUserId).ConfigureAwait(false);
         if (dTargetId != dCreatorId)
-            if (await context.Users.FindAsync(dTargetId).ConfigureAwait(false) == null)
-                context.Users.Add(new UserEntity { Id = dTargetId });
+            await userService.EnsureUserExistsAsync(context, (ulong)dTargetId).ConfigureAwait(false);
 
         await context.SaveChangesAsync().ConfigureAwait(false);
 

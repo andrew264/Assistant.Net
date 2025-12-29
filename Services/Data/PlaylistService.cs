@@ -15,7 +15,10 @@ public record PlaylistCreationResult(
     bool LimitReached = false,
     bool NameExists = false);
 
-public class PlaylistService(IDbContextFactory<AssistantDbContext> dbFactory, ILogger<PlaylistService> logger)
+public class PlaylistService(
+    IDbContextFactory<AssistantDbContext> dbFactory,
+    ILogger<PlaylistService> logger,
+    UserService userService)
 {
     private const int MaxPlaylistsPerUser = 10;
     private const int MaxSongsPerPlaylist = 200;
@@ -30,11 +33,7 @@ public class PlaylistService(IDbContextFactory<AssistantDbContext> dbFactory, IL
         var dUserId = (decimal)userId;
         var dGuildId = (decimal)guildId;
 
-        if (!await context.Users.AnyAsync(u => u.Id == dUserId).ConfigureAwait(false))
-        {
-            context.Users.Add(new UserEntity { Id = dUserId });
-            await context.SaveChangesAsync().ConfigureAwait(false);
-        }
+        await userService.EnsureUserExistsAsync(context, userId).ConfigureAwait(false);
 
         var userPlaylistCount = await context.Playlists
             .CountAsync(p => p.UserId == dUserId && p.GuildId == dGuildId).ConfigureAwait(false);
@@ -358,11 +357,7 @@ public class PlaylistService(IDbContextFactory<AssistantDbContext> dbFactory, IL
 
         if (originalPlaylist == null) return new PlaylistOperationResult(false, "Original playlist not found.");
 
-        if (!await context.Users.AnyAsync(u => u.Id == dRecipientId).ConfigureAwait(false))
-        {
-            context.Users.Add(new UserEntity { Id = dRecipientId });
-            await context.SaveChangesAsync().ConfigureAwait(false);
-        }
+        await userService.EnsureUserExistsAsync(context, recipientId).ConfigureAwait(false);
 
         var recipientPlaylistCount = await context.Playlists
             .CountAsync(p => p.UserId == dRecipientId && p.GuildId == dGuildId).ConfigureAwait(false);

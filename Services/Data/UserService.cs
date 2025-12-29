@@ -7,6 +7,13 @@ namespace Assistant.Net.Services.Data;
 
 public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogger<UserService> logger)
 {
+    public async Task EnsureUserExistsAsync(AssistantDbContext context, ulong userId)
+    {
+        var decimalUserId = (decimal)userId;
+        if (await context.Users.FindAsync(decimalUserId).ConfigureAwait(false) == null)
+            context.Users.Add(new UserEntity { Id = decimalUserId });
+    }
+
     public async Task UpdateUserIntroductionAsync(ulong userId, string introduction)
     {
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);

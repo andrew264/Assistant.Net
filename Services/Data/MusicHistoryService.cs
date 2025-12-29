@@ -12,15 +12,18 @@ public class MusicHistoryService
     private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
     private readonly ILogger<MusicHistoryService> _logger;
     private readonly MusicConfig _musicConfig;
+    private readonly UserService _userService;
 
     public MusicHistoryService(
         IDbContextFactory<AssistantDbContext> dbFactory,
         ILogger<MusicHistoryService> logger,
-        Config config)
+        Config config,
+        UserService userService)
     {
         _dbFactory = dbFactory;
         _logger = logger;
         _musicConfig = config.Music;
+        _userService = userService;
 
         _logger.LogInformation("MusicHistoryService initialized.");
     }
@@ -64,8 +67,7 @@ public class MusicHistoryService
                 context.GuildMusicSettings.Add(settings);
             }
 
-            if (!await context.Users.AnyAsync(u => u.Id == decimalRequesterId).ConfigureAwait(false))
-                context.Users.Add(new UserEntity { Id = decimalRequesterId });
+            await _userService.EnsureUserExistsAsync(context, songEntry.RequestedBy).ConfigureAwait(false);
 
             var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == songEntry.Uri).ConfigureAwait(false);
             if (track == null)

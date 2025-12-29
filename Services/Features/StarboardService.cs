@@ -1,6 +1,7 @@
 using System.Net;
 using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
+using Assistant.Net.Services.Data;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
@@ -15,17 +16,20 @@ public class StarboardService
     private readonly StarboardConfigService _configService;
     private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
     private readonly ILogger<StarboardService> _logger;
+    private readonly UserService _userService;
 
     public StarboardService(
         DiscordSocketClient client,
         IDbContextFactory<AssistantDbContext> dbFactory,
         StarboardConfigService configService,
-        ILogger<StarboardService> logger)
+        ILogger<StarboardService> logger,
+        UserService userService)
     {
         _client = client;
         _dbFactory = dbFactory;
         _configService = configService;
         _logger = logger;
+        _userService = userService;
 
         _client.ReactionAdded += HandleReactionAddedAsync;
         _client.ReactionRemoved += HandleReactionRemovedAsync;
@@ -185,9 +189,7 @@ public class StarboardService
 
         if (entry == null)
         {
-            // Ensure Author Exists
-            if (!await context.Users.AnyAsync(u => u.Id == originalMessage.Author.Id))
-                context.Users.Add(new UserEntity { Id = originalMessage.Author.Id });
+            await _userService.EnsureUserExistsAsync(context, originalMessage.Author.Id).ConfigureAwait(false);
 
             entry = new StarredMessageEntity
             {
@@ -205,11 +207,7 @@ public class StarboardService
         // Add Vote
         if (entry.Votes.All(v => v.UserId != reaction.UserId))
         {
-            if (!await context.Users.AnyAsync(u => u.Id == reaction.UserId))
-            {
-                context.Users.Add(new UserEntity { Id = reaction.UserId });
-                await context.SaveChangesAsync().ConfigureAwait(false);
-            }
+            await _userService.EnsureUserExistsAsync(context, reaction.UserId).ConfigureAwait(false);
 
             entry.Votes.Add(new StarVoteEntity
             {
