@@ -1,12 +1,12 @@
+using System.Globalization;
 using System.Text;
 using Assistant.Net.Configuration;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Models.Lyrics;
 using Assistant.Net.Models.Music;
-using Assistant.Net.Modules.Music.Logic.Player;
+using Assistant.Net.Services.Music.Logic;
 using Discord;
 using Lavalink4NET.Players;
-using System.Globalization;
 using Lavalink4NET.Players.Queued;
 
 namespace Assistant.Net.Utilities.Ui;

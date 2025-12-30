@@ -17,6 +17,13 @@ public class GameStatsService(
     public const string RpsGameName = "rps";
     public const string HandCricketGameName = "handcricket";
 
+    public static readonly IReadOnlyList<string> GameNames = new List<string>
+    {
+        TicTacToeGameName,
+        RpsGameName,
+        HandCricketGameName
+    }.AsReadOnly();
+
     public static int GetGameType(string gameName) => gameName.ToLowerInvariant() switch
     {
         TicTacToeGameName => 0,

@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
-using Assistant.Net.Modules.Games.Logic;
-using Assistant.Net.Modules.Games.Models;
-using Assistant.Net.Modules.Games.Models.HandCricket;
 using Assistant.Net.Services.Data;
+using Assistant.Net.Services.Games.Logic;
+using Assistant.Net.Services.Games.Models;
 using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.WebSocket;

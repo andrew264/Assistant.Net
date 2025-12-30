@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using Assistant.Net.Configuration;
-using Assistant.Net.Modules.Music.Logic.Player;
+using Assistant.Net.Services.Music.Logic;
 using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.Interactions;

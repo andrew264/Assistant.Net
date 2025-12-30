@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Assistant.Net.Modules.Voting.Logic;
+using Assistant.Net.Services.Features.Logic;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Features;

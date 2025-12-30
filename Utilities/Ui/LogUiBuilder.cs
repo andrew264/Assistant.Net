@@ -1,5 +1,6 @@
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Utilities.Ui;
 
@@ -96,11 +97,9 @@ public static class LogUiBuilder
             SocketUser before,
             SocketUser after,
             IHttpClientFactory httpClientFactory,
-            Microsoft.Extensions.Logging.ILogger logger)
-    {
-        return await UserUtils.BuildUserProfileUpdateComponentAsync(before, after, httpClientFactory, logger)
+            ILogger logger) =>
+        await UserUtils.BuildUserProfileUpdateComponentAsync(before, after, httpClientFactory, logger)
             .ConfigureAwait(false);
-    }
 
     public static MessageComponent BuildVoiceStateUpdateComponent(SocketGuildUser member, string actionDescription)
     {
