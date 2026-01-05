@@ -81,7 +81,7 @@ public class GameStatsModule(
             container
                 .WithSeparator()
                 .WithTextDisplay(new TextDisplayBuilder(
-                    $"*Generated {TimestampTag.FromDateTime(DateTime.UtcNow, TimestampTagStyles.Relative)}*"));
+                    $"*Generated {DateTime.UtcNow.GetRelativeTime()}*"));
 
             var components = new ComponentBuilderV2().WithContainer(container).Build();
             await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
@@ -211,8 +211,7 @@ public class GameStatsModule(
 
             container
                 .WithSeparator()
-                .WithTextDisplay(new TextDisplayBuilder(
-                    $"*Stats as of {TimestampTag.FromDateTime(DateTime.UtcNow, TimestampTagStyles.Relative)}*"));
+                .WithTextDisplay(new TextDisplayBuilder($"*Stats as of {DateTime.UtcNow.GetRelativeTime()}*"));
 
             var components = new ComponentBuilderV2().WithContainer(container).Build();
             await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);

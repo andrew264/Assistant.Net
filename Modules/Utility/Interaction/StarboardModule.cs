@@ -1,4 +1,5 @@
 using Assistant.Net.Services.Features;
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Interactions;
 using Microsoft.Extensions.Logging;
@@ -230,7 +231,7 @@ public class StarboardModule(
                 .WithTextDisplay(new TextDisplayBuilder(toggles))
                 .WithSeparator()
                 .WithTextDisplay(new TextDisplayBuilder(
-                    $"*Last Updated: {TimestampTag.FromDateTime(config.UpdatedAt, TimestampTagStyles.Relative)}*\n" +
+                    $"*Last Updated: {config.UpdatedAt.GetRelativeTime()}*\n" +
                     "*Use `/starboard settings <option>` to change a setting.*"));
 
             var components = new ComponentBuilderV2().WithContainer(container).Build();

@@ -140,8 +140,8 @@ public static class LogUiBuilder
             });
 
         if (title.Equals("Joined", StringComparison.OrdinalIgnoreCase))
-            container.WithTextDisplay(new TextDisplayBuilder(
-                $"**Account Created:** {TimestampTag.FromDateTimeOffset(user.CreatedAt, TimestampTagStyles.Relative)}"));
+            container.WithTextDisplay(
+                new TextDisplayBuilder($"**Account Created:** {user.CreatedAt.GetRelativeTime()}"));
 
         container
             .WithSeparator()

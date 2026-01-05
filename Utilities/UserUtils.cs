@@ -160,18 +160,15 @@ public static class UserUtils
         // --- Timestamps Section ---
         mainContainer.AddComponent(new SeparatorBuilder());
         var timestampsContent = new StringBuilder();
-        timestampsContent.AppendLine(
-            $"**Account Created:** {TimestampTag.FromDateTimeOffset(targetUser.CreatedAt, TimestampTagStyles.Relative)}");
+        timestampsContent.AppendLine($"**Account Created:** {targetUser.CreatedAt.GetRelativeTime()}");
 
         if (guildUser?.JoinedAt is { } joinedAt)
-            timestampsContent.AppendLine(
-                $"**Joined Server:** {TimestampTag.FromDateTimeOffset(joinedAt, TimestampTagStyles.Relative)}");
+            timestampsContent.AppendLine($"**Joined Server:** {joinedAt.GetRelativeTime()}");
 
         if (showSensitiveInfo && userModel?.LastSeen is { } lastSeen)
         {
             var statusFieldName = guildUser?.Status == UserStatus.Offline ? "Last Seen:" : "Online for:";
-            timestampsContent.AppendLine(
-                $"**{statusFieldName}** {TimestampTag.FromDateTime(lastSeen, TimestampTagStyles.Relative)}");
+            timestampsContent.AppendLine($"**{statusFieldName}** {lastSeen.GetRelativeTime()}");
         }
 
         mainContainer.AddComponent(new TextDisplayBuilder(timestampsContent.ToString()));
@@ -212,8 +209,7 @@ public static class UserUtils
                         if (!string.IsNullOrWhiteSpace(richGame.State))
                             richGameText.AppendLine($"\n{richGame.State}");
                         if (richGame.Timestamps?.Start is { } startTime)
-                            richGameText.AppendLine(
-                                $"\nElapsed: {TimestampTag.FromDateTimeOffset(startTime, TimestampTagStyles.Relative)}");
+                            richGameText.AppendLine($"\nElapsed: {startTime.GetRelativeTime()}");
 
                         var largeAssetUrl = richGame.LargeAsset?.GetImageUrl();
 

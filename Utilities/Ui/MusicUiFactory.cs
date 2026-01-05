@@ -17,6 +17,7 @@ public static class MusicUiFactory
     private const string LyricsPageButtonPrefix = "assistant:lyrics_page";
     private const int QueueItemsPerPage = 10;
     private const int PlaylistItemsPerPage = 10;
+    private const int WrappedItemsPerPage = 5;
 
     public static (MessageComponent? Components, string? ErrorMessage) BuildQueueComponents(
         CustomPlayer player,
@@ -286,7 +287,7 @@ public static class MusicUiFactory
         container.WithSeparator();
 
         var footerText =
-            $"Page {currentPage}/{totalPages}  •  {totalSongs} Songs  •  Updated {TimestampTag.FormatFromDateTime(playlist.CreatedAt, TimestampTagStyles.Relative)}";
+            $"Page {currentPage}/{totalPages}  •  {totalSongs} Songs  •  Updated {playlist.CreatedAt.GetRelativeTime()}";
         container.WithTextDisplay(new TextDisplayBuilder(footerText));
 
         var controlsRow = new ActionRowBuilder()
@@ -358,6 +359,75 @@ public static class MusicUiFactory
 
         if (hasPagination || !string.IsNullOrEmpty(song.Url))
             container.WithActionRow(actionRow);
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    public static MessageComponent BuildWrappedComponents(
+        List<TrackPlayCount> allTracks,
+        int page,
+        ulong targetUserId,
+        string title,
+        string? iconUrl)
+    {
+        var totalItems = allTracks.Count;
+        var totalPages = (int)Math.Ceiling((double)totalItems / WrappedItemsPerPage);
+        if (totalPages == 0) totalPages = 1;
+        var currentPage = Math.Clamp(page, 1, totalPages);
+
+        var container = new ContainerBuilder()
+            .WithSection(section =>
+            {
+                section.AddComponent(new TextDisplayBuilder($"# {title}"));
+                section.AddComponent(new TextDisplayBuilder($"**Top Songs** • {totalItems} Total"));
+                if (!string.IsNullOrEmpty(iconUrl))
+                    section.WithAccessory(new ThumbnailBuilder
+                        { Media = new UnfurledMediaItemProperties { Url = iconUrl } });
+            })
+            .WithSeparator();
+
+        if (totalItems == 0)
+        {
+            container.WithTextDisplay(new TextDisplayBuilder("No play history found."));
+            return new ComponentBuilderV2().WithContainer(container).Build();
+        }
+
+        var tracksOnPage = allTracks
+            .Skip((currentPage - 1) * WrappedItemsPerPage)
+            .Take(WrappedItemsPerPage)
+            .ToList();
+
+        for (var i = 0; i < tracksOnPage.Count; i++)
+        {
+            var item = tracksOnPage[i];
+            var rank = (currentPage - 1) * WrappedItemsPerPage + i + 1;
+            var duration = TimeSpan.FromSeconds(item.Track.Duration).FormatPlayerTime();
+
+            var trackSection = new SectionBuilder()
+                .AddComponent(new TextDisplayBuilder(
+                    $"**#{rank}** {item.Track.Title.Truncate(80).AsMarkdownLink(item.Track.Uri)}"))
+                .AddComponent(new TextDisplayBuilder($"**Artist:** {item.Track.Artist?.Truncate(50) ?? "Unknown"}"))
+                .AddComponent(new TextDisplayBuilder($"**Plays:** {item.Count} • **Duration:** {duration}"));
+
+            if (!string.IsNullOrEmpty(item.Track.ThumbnailUrl))
+                trackSection.WithAccessory(new ThumbnailBuilder
+                    { Media = new UnfurledMediaItemProperties { Url = item.Track.ThumbnailUrl } });
+
+            container.WithSection(trackSection);
+        }
+
+        container.WithSeparator();
+        container.WithTextDisplay(
+            new TextDisplayBuilder($"Page {currentPage}/{totalPages} • {DateTime.UtcNow.GetLongDateTime()}"));
+
+        if (totalPages <= 1) return new ComponentBuilderV2().WithContainer(container).Build();
+
+        var navRow = new ActionRowBuilder()
+            .WithButton("◀ Previous", $"assistant:wrapped:{targetUserId}:{currentPage - 1}",
+                ButtonStyle.Secondary, disabled: currentPage <= 1)
+            .WithButton("Next ▶", $"assistant:wrapped:{targetUserId}:{currentPage + 1}",
+                ButtonStyle.Secondary, disabled: currentPage >= totalPages);
+        container.WithActionRow(navRow);
 
         return new ComponentBuilderV2().WithContainer(container).Build();
     }

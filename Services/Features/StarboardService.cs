@@ -2,6 +2,7 @@ using System.Net;
 using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Services.Data;
+using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
@@ -507,8 +508,7 @@ public class StarboardService
         container.WithSeparator();
 
         var starText = $"{starEmoji} **{starCount}** in {MentionUtils.MentionChannel(originalMessage.Channel.Id)}";
-        var timeText =
-            $"{TimestampTag.FormatFromDateTimeOffset(originalMessage.CreatedAt, TimestampTagStyles.Relative)}";
+        var timeText = $"{originalMessage.CreatedAt.GetRelativeTime()}";
         container.WithTextDisplay(new TextDisplayBuilder($"{starText}  •  {timeText}"));
 
         container.WithActionRow(row =>

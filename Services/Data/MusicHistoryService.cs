@@ -123,6 +123,32 @@ public class MusicHistoryService
         }
     }
 
+    public async Task<List<TrackPlayCount>> GetTopPlaysAsync(ulong guildId, ulong? requesterId = null, int limit = 10)
+    {
+        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalGuildId = (decimal)guildId;
+
+        var query = context.PlayHistories
+            .Include(ph => ph.Track)
+            .Where(ph => ph.GuildId == decimalGuildId);
+
+        if (requesterId.HasValue)
+        {
+            var decimalRequesterId = (decimal)requesterId.Value;
+            query = query.Where(ph => ph.RequestedBy == decimalRequesterId);
+        }
+
+        var result = await query
+            .GroupBy(ph => ph.Track)
+            .Select(g => new { Track = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(limit)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        return result.Select(x => new TrackPlayCount(x.Track, x.Count)).ToList();
+    }
+
     public async Task<IEnumerable<SongHistoryEntryInfo>> SearchSongHistoryAsync(ulong guildId, string searchTerm)
     {
         if (string.IsNullOrWhiteSpace(searchTerm)) return [];
