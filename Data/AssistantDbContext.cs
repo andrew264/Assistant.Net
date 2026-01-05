@@ -5,23 +5,19 @@ namespace Assistant.Net.Data;
 
 public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : DbContext(options)
 {
-    // --- Core ---
     public DbSet<UserEntity> Users { get; set; }
+    public DbSet<GuildEntity> Guilds { get; set; }
 
-    // --- Music ---
     public DbSet<TrackEntity> Tracks { get; set; }
     public DbSet<GuildMusicSettingsEntity> GuildMusicSettings { get; set; }
     public DbSet<PlayHistoryEntity> PlayHistories { get; set; }
     public DbSet<PlaylistEntity> Playlists { get; set; }
     public DbSet<PlaylistItemEntity> PlaylistItems { get; set; }
 
-    // --- Games ---
     public DbSet<GameStatEntity> GameStats { get; set; }
 
-    // --- Utility ---
     public DbSet<ReminderEntity> Reminders { get; set; }
 
-    // --- Starboard ---
     public DbSet<StarboardConfigEntity> StarboardConfigs { get; set; }
     public DbSet<StarredMessageEntity> StarredMessages { get; set; }
     public DbSet<StarVoteEntity> StarVotes { get; set; }
@@ -30,10 +26,10 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
     {
         base.OnModelCreating(modelBuilder);
 
-        // Enable pg_trgm extension
         modelBuilder.HasPostgresExtension("pg_trgm");
 
         modelBuilder.Entity<UserEntity>(entity => { entity.Property(e => e.Id).HasColumnType("numeric(20,0)"); });
+        modelBuilder.Entity<GuildEntity>(entity => { entity.Property(e => e.Id).HasColumnType("numeric(20,0)"); });
 
         modelBuilder.Entity<TrackEntity>(entity => { entity.HasIndex(e => e.Uri).IsUnique(); });
 
@@ -54,7 +50,7 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
                 .HasForeignKey(e => e.TrackId)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            entity.HasOne(e => e.GuildSettings)
+            entity.HasOne(e => e.Guild)
                 .WithMany()
                 .HasForeignKey(e => e.GuildId)
                 .OnDelete(DeleteBehavior.Cascade);
@@ -114,7 +110,6 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
             entity.HasIndex(e => new { e.TriggerTime, e.IsActive });
         });
 
-        // --- Starboard Configuration ---
         modelBuilder.Entity<StarboardConfigEntity>(entity =>
         {
             entity.Property(e => e.GuildId).HasColumnType("numeric(20,0)");

@@ -9,6 +9,8 @@ public class GameStatEntity
 {
     public decimal GuildId { get; set; }
 
+    [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
+
     public decimal UserId { get; set; }
 
     [ForeignKey(nameof(UserId))] public UserEntity User { get; set; } = null!;

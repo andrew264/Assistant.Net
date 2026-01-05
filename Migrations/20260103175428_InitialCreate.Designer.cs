@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Assistant.Net.Migrations
 {
     [DbContext(typeof(AssistantDbContext))]
-    [Migration("20251229193438_InitialCreate")]
+    [Migration("20260103175428_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -54,6 +54,16 @@ namespace Assistant.Net.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("GameStats");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.GuildEntity", b =>
+                {
+                    b.Property<decimal>("Id")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Guilds");
                 });
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.GuildMusicSettingsEntity", b =>
@@ -112,7 +122,7 @@ namespace Assistant.Net.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<decimal>("GuildId")
-                        .HasColumnType("numeric");
+                        .HasColumnType("numeric(20,0)");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -122,6 +132,8 @@ namespace Assistant.Net.Migrations
                         .HasColumnType("numeric(20,0)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("GuildId");
 
                     b.HasIndex("UserId", "GuildId", "Name")
                         .IsUnique();
@@ -203,6 +215,8 @@ namespace Assistant.Net.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("CreatorId");
+
+                    b.HasIndex("GuildId");
 
                     b.HasIndex("TargetUserId");
 
@@ -306,6 +320,8 @@ namespace Assistant.Net.Migrations
 
                     b.HasIndex("AuthorId");
 
+                    b.HasIndex("GuildId");
+
                     b.ToTable("StarredMessages");
                 });
 
@@ -364,18 +380,37 @@ namespace Assistant.Net.Migrations
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.GameStatEntity", b =>
                 {
+                    b.HasOne("Assistant.Net.Data.Entities.GuildEntity", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Assistant.Net.Data.Entities.UserEntity", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Guild");
+
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.GuildMusicSettingsEntity", b =>
+                {
+                    b.HasOne("Assistant.Net.Data.Entities.GuildEntity", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Guild");
                 });
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.PlayHistoryEntity", b =>
                 {
-                    b.HasOne("Assistant.Net.Data.Entities.GuildMusicSettingsEntity", "GuildSettings")
+                    b.HasOne("Assistant.Net.Data.Entities.GuildEntity", "Guild")
                         .WithMany()
                         .HasForeignKey("GuildId")
                         .OnDelete(DeleteBehavior.Cascade)
@@ -393,7 +428,7 @@ namespace Assistant.Net.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("GuildSettings");
+                    b.Navigation("Guild");
 
                     b.Navigation("Requester");
 
@@ -402,11 +437,19 @@ namespace Assistant.Net.Migrations
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.PlaylistEntity", b =>
                 {
+                    b.HasOne("Assistant.Net.Data.Entities.GuildEntity", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Assistant.Net.Data.Entities.UserEntity", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Guild");
 
                     b.Navigation("User");
                 });
@@ -438,12 +481,20 @@ namespace Assistant.Net.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Assistant.Net.Data.Entities.GuildEntity", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("Assistant.Net.Data.Entities.UserEntity", "TargetUser")
                         .WithMany()
                         .HasForeignKey("TargetUserId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("Creator");
+
+                    b.Navigation("Guild");
 
                     b.Navigation("TargetUser");
                 });
@@ -467,6 +518,17 @@ namespace Assistant.Net.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Assistant.Net.Data.Entities.StarboardConfigEntity", b =>
+                {
+                    b.HasOne("Assistant.Net.Data.Entities.GuildEntity", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Guild");
+                });
+
             modelBuilder.Entity("Assistant.Net.Data.Entities.StarredMessageEntity", b =>
                 {
                     b.HasOne("Assistant.Net.Data.Entities.UserEntity", "Author")
@@ -475,7 +537,15 @@ namespace Assistant.Net.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("Assistant.Net.Data.Entities.GuildEntity", "Guild")
+                        .WithMany()
+                        .HasForeignKey("GuildId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Author");
+
+                    b.Navigation("Guild");
                 });
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.PlaylistEntity", b =>

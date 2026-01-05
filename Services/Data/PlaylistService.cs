@@ -18,7 +18,8 @@ public record PlaylistCreationResult(
 public class PlaylistService(
     IDbContextFactory<AssistantDbContext> dbFactory,
     ILogger<PlaylistService> logger,
-    UserService userService)
+    UserService userService,
+    GuildService guildService)
 {
     private const int MaxPlaylistsPerUser = 10;
     private const int MaxSongsPerPlaylist = 200;
@@ -34,6 +35,7 @@ public class PlaylistService(
         var dGuildId = (decimal)guildId;
 
         await userService.EnsureUserExistsAsync(context, userId).ConfigureAwait(false);
+        await guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
 
         var userPlaylistCount = await context.Playlists
             .CountAsync(p => p.UserId == dUserId && p.GuildId == dGuildId).ConfigureAwait(false);

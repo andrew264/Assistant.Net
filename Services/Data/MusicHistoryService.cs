@@ -11,6 +11,7 @@ namespace Assistant.Net.Services.Data;
 public class MusicHistoryService
 {
     private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
+    private readonly GuildService _guildService;
     private readonly ILogger<MusicHistoryService> _logger;
     private readonly MusicConfig _musicConfig;
     private readonly UserService _userService;
@@ -19,12 +20,13 @@ public class MusicHistoryService
         IDbContextFactory<AssistantDbContext> dbFactory,
         ILogger<MusicHistoryService> logger,
         Config config,
-        UserService userService)
+        UserService userService, GuildService guildService)
     {
         _dbFactory = dbFactory;
         _logger = logger;
         _musicConfig = config.Music;
         _userService = userService;
+        _guildService = guildService;
 
         _logger.LogInformation("MusicHistoryService initialized.");
     }
@@ -37,7 +39,7 @@ public class MusicHistoryService
         var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
 
         if (settings != null) return settings;
-
+        await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
         settings = new GuildMusicSettingsEntity
         {
             GuildId = decimalGuildId,
@@ -75,6 +77,7 @@ public class MusicHistoryService
             var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
             if (settings == null)
             {
+                await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
                 settings = new GuildMusicSettingsEntity
                 {
                     GuildId = decimalGuildId,
@@ -103,7 +106,7 @@ public class MusicHistoryService
 
             var playHistory = new PlayHistoryEntity
             {
-                GuildSettings = settings,
+                GuildId = settings.GuildId,
                 Track = track,
                 RequestedBy = decimalRequesterId,
                 PlayedAt = DateTime.UtcNow
@@ -165,6 +168,7 @@ public class MusicHistoryService
         var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
         if (settings == null)
         {
+            await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
             settings = new GuildMusicSettingsEntity { GuildId = decimalGuildId, Volume = clampedVolume };
             context.GuildMusicSettings.Add(settings);
         }

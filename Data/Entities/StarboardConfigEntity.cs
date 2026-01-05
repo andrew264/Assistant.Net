@@ -10,6 +10,8 @@ public class StarboardConfigEntity
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public decimal GuildId { get; set; }
 
+    [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
+
     public bool IsEnabled { get; set; }
 
     public decimal? StarboardChannelId { get; set; }

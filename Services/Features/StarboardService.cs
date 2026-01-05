@@ -15,6 +15,7 @@ public class StarboardService
     private readonly DiscordSocketClient _client;
     private readonly StarboardConfigService _configService;
     private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
+    private readonly GuildService _guildService;
     private readonly ILogger<StarboardService> _logger;
     private readonly UserService _userService;
 
@@ -23,13 +24,15 @@ public class StarboardService
         IDbContextFactory<AssistantDbContext> dbFactory,
         StarboardConfigService configService,
         ILogger<StarboardService> logger,
-        UserService userService)
+        UserService userService,
+        GuildService guildService)
     {
         _client = client;
         _dbFactory = dbFactory;
         _configService = configService;
         _logger = logger;
         _userService = userService;
+        _guildService = guildService;
 
         _client.ReactionAdded += HandleReactionAddedAsync;
         _client.ReactionRemoved += HandleReactionRemovedAsync;
@@ -190,7 +193,7 @@ public class StarboardService
         if (entry == null)
         {
             await _userService.EnsureUserExistsAsync(context, originalMessage.Author.Id).ConfigureAwait(false);
-
+            await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
             entry = new StarredMessageEntity
             {
                 GuildId = guildId,

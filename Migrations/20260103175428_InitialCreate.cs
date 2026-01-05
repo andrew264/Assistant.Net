@@ -16,37 +16,14 @@ namespace Assistant.Net.Migrations
                 .Annotation("Npgsql:PostgresExtension:pg_trgm", ",,");
 
             migrationBuilder.CreateTable(
-                name: "GuildMusicSettings",
+                name: "Guilds",
                 columns: table => new
                 {
-                    GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
-                    Volume = table.Column<float>(type: "real", nullable: false)
+                    Id = table.Column<decimal>(type: "numeric(20,0)", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_GuildMusicSettings", x => x.GuildId);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "StarboardConfigs",
-                columns: table => new
-                {
-                    GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
-                    IsEnabled = table.Column<bool>(type: "boolean", nullable: false),
-                    StarboardChannelId = table.Column<decimal>(type: "numeric(20,0)", nullable: true),
-                    StarEmoji = table.Column<string>(type: "text", nullable: false),
-                    Threshold = table.Column<int>(type: "integer", nullable: false),
-                    AllowSelfStar = table.Column<bool>(type: "boolean", nullable: false),
-                    AllowBotMessages = table.Column<bool>(type: "boolean", nullable: false),
-                    IgnoreNsfwChannels = table.Column<bool>(type: "boolean", nullable: false),
-                    DeleteIfUnStarred = table.Column<bool>(type: "boolean", nullable: false),
-                    LogChannelId = table.Column<decimal>(type: "numeric(20,0)", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_StarboardConfigs", x => x.GuildId);
+                    table.PrimaryKey("PK_Guilds", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -81,6 +58,52 @@ namespace Assistant.Net.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "GuildMusicSettings",
+                columns: table => new
+                {
+                    GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
+                    Volume = table.Column<float>(type: "real", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_GuildMusicSettings", x => x.GuildId);
+                    table.ForeignKey(
+                        name: "FK_GuildMusicSettings_Guilds_GuildId",
+                        column: x => x.GuildId,
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "StarboardConfigs",
+                columns: table => new
+                {
+                    GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
+                    IsEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    StarboardChannelId = table.Column<decimal>(type: "numeric(20,0)", nullable: true),
+                    StarEmoji = table.Column<string>(type: "text", nullable: false),
+                    Threshold = table.Column<int>(type: "integer", nullable: false),
+                    AllowSelfStar = table.Column<bool>(type: "boolean", nullable: false),
+                    AllowBotMessages = table.Column<bool>(type: "boolean", nullable: false),
+                    IgnoreNsfwChannels = table.Column<bool>(type: "boolean", nullable: false),
+                    DeleteIfUnStarred = table.Column<bool>(type: "boolean", nullable: false),
+                    LogChannelId = table.Column<decimal>(type: "numeric(20,0)", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_StarboardConfigs", x => x.GuildId);
+                    table.ForeignKey(
+                        name: "FK_StarboardConfigs_Guilds_GuildId",
+                        column: x => x.GuildId,
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "GameStats",
                 columns: table => new
                 {
@@ -95,6 +118,12 @@ namespace Assistant.Net.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_GameStats", x => new { x.GuildId, x.UserId, x.GameType });
+                    table.ForeignKey(
+                        name: "FK_GameStats_Guilds_GuildId",
+                        column: x => x.GuildId,
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_GameStats_Users_UserId",
                         column: x => x.UserId,
@@ -118,10 +147,10 @@ namespace Assistant.Net.Migrations
                 {
                     table.PrimaryKey("PK_PlayHistory", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_PlayHistory_GuildMusicSettings_GuildId",
+                        name: "FK_PlayHistory_Guilds_GuildId",
                         column: x => x.GuildId,
-                        principalTable: "GuildMusicSettings",
-                        principalColumn: "GuildId",
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_PlayHistory_Tracks_TrackId",
@@ -144,13 +173,19 @@ namespace Assistant.Net.Migrations
                     Id = table.Column<int>(type: "integer", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     UserId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
-                    GuildId = table.Column<decimal>(type: "numeric", nullable: false),
+                    GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
                     Name = table.Column<string>(type: "text", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Playlists", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Playlists_Guilds_GuildId",
+                        column: x => x.GuildId,
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_Playlists_Users_UserId",
                         column: x => x.UserId,
@@ -181,6 +216,12 @@ namespace Assistant.Net.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_Reminders", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Reminders_Guilds_GuildId",
+                        column: x => x.GuildId,
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_Reminders_Users_CreatorId",
                         column: x => x.CreatorId,
@@ -213,6 +254,12 @@ namespace Assistant.Net.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_StarredMessages", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_StarredMessages_Guilds_GuildId",
+                        column: x => x.GuildId,
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
                         name: "FK_StarredMessages_Users_AuthorId",
                         column: x => x.AuthorId,
@@ -303,6 +350,11 @@ namespace Assistant.Net.Migrations
                 column: "TrackId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Playlists_GuildId",
+                table: "Playlists",
+                column: "GuildId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_Playlists_UserId_GuildId_Name",
                 table: "Playlists",
                 columns: new[] { "UserId", "GuildId", "Name" },
@@ -312,6 +364,11 @@ namespace Assistant.Net.Migrations
                 name: "IX_Reminders_CreatorId",
                 table: "Reminders",
                 column: "CreatorId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Reminders_GuildId",
+                table: "Reminders",
+                column: "GuildId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Reminders_TargetUserId",
@@ -327,6 +384,11 @@ namespace Assistant.Net.Migrations
                 name: "IX_StarredMessages_AuthorId",
                 table: "StarredMessages",
                 column: "AuthorId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_StarredMessages_GuildId",
+                table: "StarredMessages",
+                column: "GuildId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_StarVotes_UserId",
@@ -347,6 +409,9 @@ namespace Assistant.Net.Migrations
                 name: "GameStats");
 
             migrationBuilder.DropTable(
+                name: "GuildMusicSettings");
+
+            migrationBuilder.DropTable(
                 name: "PlayHistory");
 
             migrationBuilder.DropTable(
@@ -362,9 +427,6 @@ namespace Assistant.Net.Migrations
                 name: "StarVotes");
 
             migrationBuilder.DropTable(
-                name: "GuildMusicSettings");
-
-            migrationBuilder.DropTable(
                 name: "Playlists");
 
             migrationBuilder.DropTable(
@@ -372,6 +434,9 @@ namespace Assistant.Net.Migrations
 
             migrationBuilder.DropTable(
                 name: "StarredMessages");
+
+            migrationBuilder.DropTable(
+                name: "Guilds");
 
             migrationBuilder.DropTable(
                 name: "Users");

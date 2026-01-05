@@ -17,7 +17,8 @@ public class ReminderService(
     IDbContextFactory<AssistantDbContext> dbFactory,
     DiscordSocketClient client,
     ILogger<ReminderService> logger,
-    UserService userService)
+    UserService userService,
+    GuildService guildService)
 {
     private readonly SemaphoreSlim _processingLock = new(1, 1);
 
@@ -264,6 +265,7 @@ public class ReminderService(
         var dTargetId = targetUserId ?? dCreatorId;
 
         await userService.EnsureUserExistsAsync(context, creatorUserId).ConfigureAwait(false);
+        await guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
         if (dTargetId != dCreatorId)
             await userService.EnsureUserExistsAsync(context, (ulong)dTargetId).ConfigureAwait(false);
 

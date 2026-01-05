@@ -8,7 +8,8 @@ namespace Assistant.Net.Services.Data;
 public class GameStatsService(
     IDbContextFactory<AssistantDbContext> dbFactory,
     ILogger<GameStatsService> logger,
-    UserService userService)
+    UserService userService,
+    GuildService guildService)
 {
     private const double DefaultElo = 1000.0;
     private const double KFactor = 32.0;
@@ -78,6 +79,7 @@ public class GameStatsService(
         if (stat != null) return stat;
 
         await userService.EnsureUserExistsAsync(context, (ulong)userId).ConfigureAwait(false);
+        await guildService.EnsureGuildExistsAsync(context, (ulong)guildId).ConfigureAwait(false);
 
         stat = new GameStatEntity
         {

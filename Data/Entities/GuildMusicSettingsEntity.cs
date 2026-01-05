@@ -10,5 +10,7 @@ public class GuildMusicSettingsEntity
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public decimal GuildId { get; set; }
 
+    [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
+
     public float Volume { get; set; } = 1.0f;
 }

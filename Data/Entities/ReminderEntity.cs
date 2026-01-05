@@ -20,6 +20,8 @@ public class ReminderEntity
 
     public decimal GuildId { get; set; }
 
+    [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
+
     public decimal ChannelId { get; set; }
 
     [Required] public string Message { get; set; } = null!;

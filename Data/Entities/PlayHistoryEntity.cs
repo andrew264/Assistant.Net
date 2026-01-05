@@ -12,7 +12,7 @@ public class PlayHistoryEntity
 
     public decimal GuildId { get; set; }
 
-    [ForeignKey(nameof(GuildId))] public GuildMusicSettingsEntity? GuildSettings { get; set; }
+    [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 
     public long TrackId { get; set; }
 

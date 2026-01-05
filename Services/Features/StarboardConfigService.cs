@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
@@ -16,15 +17,17 @@ public class StarboardConfigService
     private readonly ConcurrentQueue<ulong> _cacheKeysQueue = new();
 
     private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
+    private readonly GuildService _guildService;
     private readonly ILogger<StarboardConfigService> _logger;
     private readonly IMemoryCache _memoryCache;
 
     public StarboardConfigService(IDbContextFactory<AssistantDbContext> dbFactory, IMemoryCache memoryCache,
-        ILogger<StarboardConfigService> logger)
+        ILogger<StarboardConfigService> logger, GuildService guildService)
     {
         _dbFactory = dbFactory;
         _memoryCache = memoryCache;
         _logger = logger;
+        _guildService = guildService;
 
         _logger.LogInformation("StarboardConfigService initialized.");
     }
@@ -60,7 +63,7 @@ public class StarboardConfigService
         config.UpdatedAt = DateTime.UtcNow;
 
         await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-
+        await _guildService.EnsureGuildExistsAsync(context, (ulong)config.GuildId).ConfigureAwait(false);
         var existing = await context.StarboardConfigs.FindAsync(config.GuildId).ConfigureAwait(false);
         if (existing == null)
         {

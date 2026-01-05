@@ -12,6 +12,8 @@ public class StarredMessageEntity
 
     public decimal GuildId { get; set; }
 
+    [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
+
     public decimal OriginalChannelId { get; set; }
 
     public decimal OriginalMessageId { get; set; }

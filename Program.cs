@@ -132,7 +132,7 @@ public class Program
                         nodesList.AddRange(config.Lavalink.Nodes.Select(node => new LavalinkClusterNodeOptions
                             { BaseAddress = new Uri(node.Uri), Passphrase = node.Password, Label = node.Name }));
                         options.Nodes = [..nodesList];
-                        options.ReadyTimeout = TimeSpan.FromSeconds(60);
+                        options.ReadyTimeout = TimeSpan.FromSeconds(10);
                     }
                     else
                     {
@@ -164,8 +164,9 @@ public class Program
                 // --- Reddit Service ---
                 services.AddSingleton<RedditService>();
 
-                // --- User Service ---
+                // --- User/Guild Service ---
                 services.AddSingleton<UserService>();
+                services.AddSingleton<GuildService>();
 
                 // --- User Activity Tracking Service ---
                 services.AddSingleton<UserActivityTrackingService>();
