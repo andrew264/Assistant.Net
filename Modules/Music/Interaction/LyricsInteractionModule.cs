@@ -16,7 +16,7 @@ public class LyricsInteractionModule(
     GeniusLyricsService geniusLyricsService,
     ILogger<LyricsInteractionModule> logger) : MusicInteractionModuleBase(musicService, logger)
 {
-    private const string LyricsPageButtonPrefix = "assistant:lyrics_page";
+    private const string LyricsPageButtonPrefix = "lyrics_page";
 
     [SlashCommand("lyrics", "Fetch lyrics for a song.")]
     public async Task GetLyricsAsync(

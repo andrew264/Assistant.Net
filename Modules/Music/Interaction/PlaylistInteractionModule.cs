@@ -68,8 +68,8 @@ public class PlaylistInteractionModule(
             return;
         }
 
-        var confirmId = $"assistant:playlist:delete_confirm:{Context.User.Id}:{name}";
-        var cancelId = $"assistant:playlist:delete_cancel:{Context.User.Id}:{name}";
+        var confirmId = $"playlist:delete_confirm:{Context.User.Id}:{name}";
+        var cancelId = $"playlist:delete_cancel:{Context.User.Id}:{name}";
 
         var container = new ContainerBuilder()
             .WithAccentColor(Color.Red)
@@ -87,7 +87,7 @@ public class PlaylistInteractionModule(
             .ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:playlist:delete_confirm:*:*", true)]
+    [ComponentInteraction("playlist:delete_confirm:*:*", true)]
     public async Task HandleDeleteConfirm(ulong userId, string playlistName)
     {
         if (Context.User.Id != userId)
@@ -117,7 +117,7 @@ public class PlaylistInteractionModule(
         }).ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:playlist:delete_cancel:*:*", true)]
+    [ComponentInteraction("playlist:delete_cancel:*:*", true)]
     public async Task HandleDeleteCancel(ulong userId, string playlistName)
     {
         if (Context.User.Id != userId)
@@ -323,7 +323,7 @@ public class PlaylistInteractionModule(
         });
     }
 
-    [ComponentInteraction("assistant:playlist:show_prev:*:*:*", true)]
+    [ComponentInteraction("playlist:show_prev:*:*:*", true)]
     public async Task HandleShowPrev(ulong requesterId, string playlistName, int currentPage)
     {
         if (Context.User.Id != requesterId)
@@ -353,7 +353,7 @@ public class PlaylistInteractionModule(
         }).ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:playlist:show_next:*:*:*", true)]
+    [ComponentInteraction("playlist:show_next:*:*:*", true)]
     public async Task HandleShowNext(ulong requesterId, string playlistName, int currentPage)
     {
         if (Context.User.Id != requesterId)
@@ -383,7 +383,7 @@ public class PlaylistInteractionModule(
         }).ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:playlist:action_shuffle:*:*", true)]
+    [ComponentInteraction("playlist:action_shuffle:*:*", true)]
     public async Task HandleShuffleButtonAsync(ulong requesterId, string playlistName)
     {
         if (Context.User.Id != requesterId)
@@ -419,7 +419,7 @@ public class PlaylistInteractionModule(
         }
     }
 
-    [ComponentInteraction("assistant:playlist:action_play:*:*", true)]
+    [ComponentInteraction("playlist:action_play:*:*", true)]
     public async Task HandlePlayButtonAsync(ulong requesterId, string playlistName)
     {
         if (Context.User.Id != requesterId)

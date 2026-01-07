@@ -35,7 +35,7 @@ public class PlayModule(MusicService musicService, ILogger<PlayModule> logger)
                     new TextDisplayBuilder(
                         $"Duration: {track.Duration:mm\\:ss} | Source: {track.SourceName ?? "Unknown"}"));
 
-            var customId = $"assistant:play_search:{Context.User.Id}:{track.Uri?.ToString() ?? string.Empty}";
+            var customId = $"play_search:{Context.User.Id}:{track.Uri?.ToString() ?? string.Empty}";
             if (customId.Length <= 100 && track.Uri != null)
             {
                 trackInfo.WithAccessory(new ButtonBuilder("Select", customId, ButtonStyle.Secondary));
@@ -51,7 +51,7 @@ public class PlayModule(MusicService musicService, ILogger<PlayModule> logger)
 
         // For prefix commands, a cancel button that deletes the message is appropriate.
         container.WithActionRow(new ActionRowBuilder()
-            .WithButton("Cancel", $"assistant:play_search_cancel:{Context.User.Id}", ButtonStyle.Danger));
+            .WithButton("Cancel", $"play_search_cancel:{Context.User.Id}", ButtonStyle.Danger));
 
         var components = new ComponentBuilderV2().WithContainer(container).Build();
 

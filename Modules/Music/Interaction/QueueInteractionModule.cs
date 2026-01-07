@@ -84,7 +84,7 @@ public class QueueInteractionModule(
         await ModifyOrFollowupWithQueueAsync(player, 1, initialResponse.Id).ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:queue_page_action:*:*:*:*", true)]
+    [ComponentInteraction("queue_page_action:*:*:*:*", true)]
     public async Task HandleQueuePageAction(ulong requesterId, ulong interactionMessageId, int currentPage,
         string action)
     {

@@ -37,7 +37,7 @@ public class PlayInteractionModule(MusicService musicService, ILogger<PlayIntera
                 .AddComponent(new TextDisplayBuilder(
                     $"Duration: {track.Duration:mm\\:ss} | Source: {track.SourceName ?? "Unknown"}"));
 
-            var customId = $"assistant:play_search:{Context.User.Id}:{track.Uri?.ToString() ?? string.Empty}";
+            var customId = $"play_search:{Context.User.Id}:{track.Uri?.ToString() ?? string.Empty}";
             if (customId.Length <= 100 && track.Uri != null)
             {
                 trackInfo.WithAccessory(new ButtonBuilder("Select", customId, ButtonStyle.Secondary));
@@ -52,7 +52,7 @@ public class PlayInteractionModule(MusicService musicService, ILogger<PlayIntera
         }
 
         container.WithActionRow(new ActionRowBuilder()
-            .WithButton("Cancel", $"assistant:play_search_cancel:{Context.User.Id}", ButtonStyle.Danger));
+            .WithButton("Cancel", $"play_search_cancel:{Context.User.Id}", ButtonStyle.Danger));
 
         var components = new ComponentBuilderV2().WithContainer(container).Build();
 
@@ -113,7 +113,7 @@ public class PlayInteractionModule(MusicService musicService, ILogger<PlayIntera
         }
     }
 
-    [ComponentInteraction("assistant:play_search:*:*", true)]
+    [ComponentInteraction("play_search:*:*", true)]
     public async Task HandleSearchResultSelection(ulong requesterId, string uri)
     {
         if (Context.User.Id != requesterId)
@@ -160,7 +160,7 @@ public class PlayInteractionModule(MusicService musicService, ILogger<PlayIntera
         }
     }
 
-    [ComponentInteraction("assistant:play_search_cancel:*", true)]
+    [ComponentInteraction("play_search_cancel:*", true)]
     public async Task HandleSearchCancel(ulong requesterId)
     {
         if (Context.User.Id != requesterId)

@@ -57,7 +57,7 @@ public class MusicStatsInteractionModule(
         }
     }
 
-    [ComponentInteraction("assistant:wrapped:*:*", true)]
+    [ComponentInteraction("wrapped:*:*", true)]
     public async Task HandleWrappedPaginationAsync(ulong targetUserIdParam, int page)
     {
         await DeferAsync().ConfigureAwait(false);

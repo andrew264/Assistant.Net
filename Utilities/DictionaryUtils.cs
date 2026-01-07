@@ -6,7 +6,7 @@ namespace Assistant.Net.Utilities;
 
 public static class DictionaryUtils
 {
-    public const string CustomIdPrefix = "assistant:ud_page";
+    public const string CustomIdPrefix = "ud_page";
 
     public static MessageComponent BuildDefinitionResponse(List<UrbanDictionaryEntry> results, int pageIndex,
         ulong requesterId, string searchTerm)

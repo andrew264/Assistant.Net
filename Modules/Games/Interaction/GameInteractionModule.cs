@@ -82,7 +82,7 @@ public class GameInteractionModule(
         }
     }
 
-    [ComponentInteraction("assistant:rps:*:*", true)]
+    [ComponentInteraction("rps:*:*", true)]
     public async Task HandleRpsButtonAsync(ulong messageId, string choiceString)
     {
         await DeferAsync().ConfigureAwait(false);
@@ -197,7 +197,7 @@ public class GameInteractionModule(
         }
     }
 
-    [ComponentInteraction("assistant:tictactoe:*:*", true)]
+    [ComponentInteraction("tictactoe:*:*", true)]
     public async Task HandleTicTacToeButtonAsync(string gameId, string buttonPosition)
     {
         await DeferAsync().ConfigureAwait(false);
@@ -285,7 +285,7 @@ public class GameInteractionModule(
             .ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:hc:*:*:*", true)]
+    [ComponentInteraction("hc:*:*:*", true)]
     public async Task HandleHandCricketInteraction(string gameId, string action, string data)
     {
         await DeferAsync().ConfigureAwait(false);

@@ -11,8 +11,8 @@ namespace Assistant.Net.Modules.Utility.Interaction;
 public class VotingModule(ILogger<VotingModule> logger, PollService pollService)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private const string VoteButtonPrefix = "assistant:poll:vote:";
-    private const string SkipButtonPrefix = "assistant:poll:skip:";
+    private const string VoteButtonPrefix = "poll:vote:";
+    private const string SkipButtonPrefix = "poll:skip:";
 
     [SlashCommand("create", "Set up the candidates for an Elo poll in this channel.")]
     [RequireContext(ContextType.Guild)]
@@ -147,7 +147,7 @@ public class VotingModule(ILogger<VotingModule> logger, PollService pollService)
         }
     }
 
-    [ComponentInteraction("assistant:poll:vote:*", true)]
+    [ComponentInteraction("poll:vote:*", true)]
     public async Task HandleVoteButtonAsync()
     {
         if (Context.Interaction is not SocketMessageComponent component) return;
@@ -206,7 +206,7 @@ public class VotingModule(ILogger<VotingModule> logger, PollService pollService)
     }
 
 
-    [ComponentInteraction("assistant:poll:skip:*", true)]
+    [ComponentInteraction("poll:skip:*", true)]
     public async Task HandleSkipButtonAsync()
     {
         if (Context.Interaction is not SocketMessageComponent component) return;

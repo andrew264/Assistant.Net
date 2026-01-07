@@ -2,6 +2,7 @@ using Assistant.Net.Configuration;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Services.Music.Logic;
 using Assistant.Net.Utilities;
+using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.Interactions;
 using Lavalink4NET.Clients;
@@ -20,25 +21,23 @@ public class NowPlayingInteractionModule(
     [SlashCommand("nowplaying", "Displays the interactive Now Playing message.")]
     public async Task NowPlayingCommand()
     {
-        await DeferAsync(true).ConfigureAwait(false);
-
         var (player, isError) = await GetVerifiedPlayerAsync(memberBehavior: MemberVoiceStateBehavior.Ignore)
             .ConfigureAwait(false);
 
         if (isError || player == null || player.CurrentTrack == null)
         {
             if (!isError)
-                await FollowupAsync("I am not playing anything right now.", ephemeral: true).ConfigureAwait(false);
+                await RespondAsync("I am not playing anything right now.", ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        var npMessage = await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, Context)
-            .ConfigureAwait(false);
-        if (npMessage != null)
-            await FollowupAsync("Now Playing message created/updated!", ephemeral: true).ConfigureAwait(false);
-        else
-            await FollowupAsync("Failed to create or update the Now Playing message.", ephemeral: true)
-                .ConfigureAwait(false);
+        await nowPlayingService.RemoveNowPlayingMessageAsync(Context.Guild.Id).ConfigureAwait(false);
+
+        var components = MusicUiFactory.BuildNowPlayingDisplay(player, Context.Guild.Id, config);
+        await RespondAsync(components: components).ConfigureAwait(false);
+        var message = await GetOriginalResponseAsync().ConfigureAwait(false);
+
+        nowPlayingService.TrackNowPlayingMessage(message, Context.User, Context.Guild.Id);
     }
 
     [ComponentInteraction(NowPlayingService.NpCustomIdPrefix + ":*:*", true)]

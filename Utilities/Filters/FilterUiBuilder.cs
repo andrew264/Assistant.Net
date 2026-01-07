@@ -7,9 +7,9 @@ namespace Assistant.Net.Utilities.Filters;
 
 public static class FilterUiBuilder
 {
-    private const string BassBoostCustomIdPrefix = "assistant:filters:bb";
-    private const string TrebleBoostCustomIdPrefix = "assistant:filters:tb";
-    private const string TimescaleCustomIdPrefix = "assistant:filters:ts";
+    private const string BassBoostCustomIdPrefix = "filters:bb";
+    private const string TrebleBoostCustomIdPrefix = "filters:tb";
+    private const string TimescaleCustomIdPrefix = "filters:ts";
 
     // --- EQ Presets ---
     private static readonly Equalizer EqOffPreset = new();

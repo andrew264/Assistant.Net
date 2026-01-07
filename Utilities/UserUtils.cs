@@ -40,13 +40,16 @@ public static class UserUtils
 
         var userColor = GetTopRoleColor(targetUser as SocketUser);
 
-        var container = new ContainerBuilder()
-            .WithAccentColor(userColor)
-            .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
-            .WithMediaGallery(["attachment://avatar.png"])
-            .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
-
-        var components = new ComponentBuilderV2().WithContainer(container).Build();
+        var components = new ComponentBuilderV2(
+            new ContainerBuilder()
+                .WithAccentColor(userColor)
+                .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
+                .WithMediaGallery(["attachment://avatar.png"])
+                .WithActionRow(
+                    new ActionRowBuilder()
+                        .WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl)
+                )
+        ).Build();
 
         return (components, fileAttachment, null);
     }
@@ -59,224 +62,205 @@ public static class UserUtils
             ILogger logger)
     {
         var attachments = new List<FileAttachment>();
-        var container = new ContainerBuilder()
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder("# User Profile Updated"));
-                section.AddComponent(new TextDisplayBuilder($"{after.Mention}"));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
-                });
-            })
-            .WithSeparator();
+        var container = new ContainerBuilder();
 
+        // -- Header --
+        container.WithSection(new SectionBuilder()
+            .AddComponent(new TextDisplayBuilder("# User Profile Updated"))
+            .AddComponent(new TextDisplayBuilder($"{after.Mention}"))
+            .WithAccessory(new ThumbnailBuilder
+            {
+                Media = new UnfurledMediaItemProperties
+                    { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
+            })
+        );
+
+        container.WithSeparator();
+
+        // -- Username Change --
         if (before.Username != after.Username)
             container.WithTextDisplay(
                 new TextDisplayBuilder($"**Username:** `{before.Username}` → `{after.Username}`"));
 
+        // -- Avatar Change --
         var beforeAvatarUrl = before.GetDisplayAvatarUrl(size: 1024) ?? before.GetDefaultAvatarUrl();
         var afterAvatarUrl = after.GetDisplayAvatarUrl(size: 1024) ?? after.GetDefaultAvatarUrl();
 
         if (beforeAvatarUrl != afterAvatarUrl)
         {
             container.WithTextDisplay(new TextDisplayBuilder("**New Avatar**"));
-            var mediaGalleryUrls = new List<string>();
 
+            // Attempt download for better embed support
             var afterAttachment = await AttachmentUtils.DownloadFileAsAttachmentAsync(
                 afterAvatarUrl, "avatar_after.png", httpClientFactory, logger).ConfigureAwait(false);
 
             if (afterAttachment.HasValue)
             {
                 attachments.Add(afterAttachment.Value);
-                mediaGalleryUrls.Add("attachment://avatar_after.png");
+                container.WithMediaGallery(["attachment://avatar_after.png"]);
             }
             else
             {
-                // If download fails, fall back to URLs.
                 afterAttachment?.Dispose();
-                mediaGalleryUrls.Add(afterAvatarUrl);
-                logger.LogWarning(
-                    "Failed to download avatar for user update {UserId}. Falling back to URLs.",
+                logger.LogWarning("Failed to download avatar for user update {UserId}. Falling back to URLs.",
                     after.Id);
+                container.WithMediaGallery([afterAvatarUrl]);
             }
-
-            container.WithMediaGallery(mediaGalleryUrls);
         }
 
-
+        // -- Footer --
         container
             .WithSeparator()
             .WithTextDisplay(
                 new TextDisplayBuilder(
                     $"User ID: {after.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
 
-        var components = new ComponentBuilderV2().WithContainer(container).Build();
-        return (components, attachments);
+        return (new ComponentBuilderV2(container).Build(), attachments);
     }
 
     public static async Task<MessageComponent> GenerateUserInfoV2Async(IUser targetUser, bool showSensitiveInfo,
         UserService userService, DiscordSocketClient client)
     {
-        var componentBuilder = new ComponentBuilderV2();
-        var mainContainer = new ContainerBuilder();
-
         SocketGuildUser? guildUser = null;
         if (targetUser is SocketGuildUser sgu)
         {
             guildUser = sgu;
-            mainContainer.WithAccentColor(GetTopRoleColor(guildUser));
         }
         else
         {
             var mutualGuild = client.Guilds.FirstOrDefault(g => g.GetUser(targetUser.Id) != null);
             if (mutualGuild != null)
-            {
                 guildUser = mutualGuild.GetUser(targetUser.Id);
-                if (guildUser != null)
-                    mainContainer.WithAccentColor(GetTopRoleColor(guildUser));
-            }
         }
 
         var userModel = await userService.GetUserAsync(targetUser.Id).ConfigureAwait(false);
 
-        // --- Header Section ---
-        var headerSection = new SectionBuilder();
+        // -- Data Preparation --
         var displayName = guildUser?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
-        headerSection.AddComponent(new TextDisplayBuilder($"# {displayName}"));
-        headerSection.AddComponent(new TextDisplayBuilder($"@{targetUser.Username} | {targetUser.Mention}"));
+        var avatarUrl = targetUser.GetDisplayAvatarUrl(size: 2048) ?? targetUser.GetDefaultAvatarUrl();
+        var accentColor = GetTopRoleColor(guildUser);
 
-        if (!string.IsNullOrWhiteSpace(userModel?.About))
-            headerSection.AddComponent(new TextDisplayBuilder(userModel.About));
-
-        headerSection.WithAccessory(new ThumbnailBuilder
-        {
-            Media = new UnfurledMediaItemProperties
-                { Url = targetUser.GetDisplayAvatarUrl() ?? targetUser.GetDefaultAvatarUrl() }
-        });
-        mainContainer.AddComponent(headerSection);
-
-        // --- Timestamps Section ---
-        mainContainer.AddComponent(new SeparatorBuilder());
+        // Timestamps
         var timestampsContent = new StringBuilder();
         timestampsContent.AppendLine($"**Account Created:** {targetUser.CreatedAt.GetRelativeTime()}");
-
         if (guildUser?.JoinedAt is { } joinedAt)
             timestampsContent.AppendLine($"**Joined Server:** {joinedAt.GetRelativeTime()}");
-
         if (showSensitiveInfo && userModel?.LastSeen is { } lastSeen)
         {
             var statusFieldName = guildUser?.Status == UserStatus.Offline ? "Last Seen:" : "Online for:";
             timestampsContent.AppendLine($"**{statusFieldName}** {lastSeen.GetRelativeTime()}");
         }
 
-        mainContainer.AddComponent(new TextDisplayBuilder(timestampsContent.ToString()));
-
-        // --- Roles Section ---
+        // Roles
+        string? roleString = null;
         var roles = guildUser?.Roles.Where(r => !r.IsEveryone).OrderByDescending(r => r.Position).ToList();
         if (roles is { Count: > 0 })
-        {
-            mainContainer.AddComponent(new SeparatorBuilder());
-            mainContainer.AddComponent(new TextDisplayBuilder($"## Roles ({roles.Count})"));
-            var roleString = string.Join(" ", roles.Select(r => r.Mention));
-            mainContainer.AddComponent(new TextDisplayBuilder(roleString.Truncate(4000)));
-        }
+            roleString = string.Join(" ", roles.Select(r => r.Mention)).Truncate(4000);
 
-        // --- Activities Section ---
-        var activities = guildUser?.Activities ?? targetUser.Activities;
-        if (activities is { Count: > 0 })
+        // Activities
+        var activities = (guildUser?.Activities ?? targetUser.Activities).ToList();
+
+        // -- Container Construction --
+        var container = new ContainerBuilder()
+            .WithAccentColor(accentColor);
+
+        // Header
+        var headerSection = new SectionBuilder()
+            .AddComponent(new TextDisplayBuilder($"# {displayName}"))
+            .AddComponent(new TextDisplayBuilder($"@{targetUser.Username} | {targetUser.Mention}"));
+
+        if (!string.IsNullOrWhiteSpace(userModel?.About))
+            headerSection.AddComponent(new TextDisplayBuilder(userModel.About));
+
+        headerSection.WithAccessory(new ThumbnailBuilder
         {
-            mainContainer.AddComponent(new SeparatorBuilder());
-            mainContainer.AddComponent(new TextDisplayBuilder("## Activities"));
+            Media = new UnfurledMediaItemProperties { Url = avatarUrl }
+        });
+
+        container.WithSection(headerSection);
+
+        // Timestamps
+        container.WithSeparator()
+            .WithTextDisplay(new TextDisplayBuilder(timestampsContent.ToString()));
+
+        // Roles
+        if (roleString != null)
+            container.WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder($"## Roles ({roles!.Count})"))
+                .WithTextDisplay(new TextDisplayBuilder(roleString));
+
+        // Activities
+        if (activities.Count > 0)
+        {
+            container.WithSeparator()
+                .WithTextDisplay(new TextDisplayBuilder("## Activities"));
 
             foreach (var activity in activities)
             {
-                var activitySection = new SectionBuilder();
-                switch (activity)
-                {
-                    case SpotifyGame spotify:
-                        activitySection.AddComponent(new TextDisplayBuilder(
-                            $"**Listening to Spotify**\n{spotify.TrackTitle.AsMarkdownLink(spotify.TrackUrl)}\nby {string.Join(", ", spotify.Artists)}"));
-                        activitySection.WithAccessory(new ThumbnailBuilder
-                            { Media = new UnfurledMediaItemProperties { Url = spotify.AlbumArtUrl } });
-                        mainContainer.AddComponent(activitySection);
-                        break;
-                    case RichGame richGame:
-                        var richGameText = new StringBuilder($"**Playing {richGame.Name}**");
-                        if (!string.IsNullOrWhiteSpace(richGame.Details))
-                            richGameText.AppendLine($"\n{richGame.Details}");
-                        if (!string.IsNullOrWhiteSpace(richGame.State))
-                            richGameText.AppendLine($"\n{richGame.State}");
-                        if (richGame.Timestamps?.Start is { } startTime)
-                            richGameText.AppendLine($"\nElapsed: {startTime.GetRelativeTime()}");
-
-                        var largeAssetUrl = richGame.LargeAsset?.GetImageUrl();
-
-                        if (!string.IsNullOrWhiteSpace(largeAssetUrl))
-                        {
-                            activitySection.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
-                            activitySection.WithAccessory(new ThumbnailBuilder
-                                { Media = new UnfurledMediaItemProperties { Url = largeAssetUrl } });
-                            mainContainer.AddComponent(activitySection);
-                        }
-                        else
-                        {
-                            mainContainer.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
-                        }
-
-                        break;
-                    case StreamingGame streamingGame:
-                        activitySection.AddComponent(
-                            new TextDisplayBuilder($"**Streaming on {streamingGame.Details}**\n{streamingGame.Name}"));
-                        activitySection.WithAccessory(new ButtonBuilder("Watch Stream", style: ButtonStyle.Link,
-                            url: streamingGame.Url));
-                        mainContainer.AddComponent(activitySection);
-                        break;
-                    case CustomStatusGame custom:
-                        var customStatusContent = new StringBuilder();
-                        if (custom.Emote is Emote customEmote)
-                            customStatusContent.Append($"{customEmote} ");
-                        if (!string.IsNullOrWhiteSpace(custom.State))
-                            customStatusContent.Append(custom.State);
-
-                        if (customStatusContent.Length > 0)
-                            mainContainer.AddComponent(
-                                new TextDisplayBuilder($"**Custom Status:** {customStatusContent}"));
-                        break;
-                    case Game game:
-                        mainContainer.AddComponent(new TextDisplayBuilder($"{game.Type} {game.Name}"));
-                        break;
-                }
+                var section = CreateActivitySection(activity);
+                if (section != null) container.WithSection(section);
             }
         }
 
-        // --- Footer Links ---
-        var linksRow = new ActionRowBuilder();
-        var hasLinks = false;
-
-        var avatarUrl = targetUser.GetDisplayAvatarUrl(size: 2048) ?? targetUser.GetDefaultAvatarUrl();
+        // Footer Links
         if (!string.IsNullOrEmpty(avatarUrl))
+            container.WithSeparator()
+                .WithActionRow(new ActionRowBuilder()
+                    .WithButton("View Avatar", style: ButtonStyle.Link, url: avatarUrl));
+
+        return new ComponentBuilderV2(container).Build();
+    }
+
+    private static SectionBuilder? CreateActivitySection(IActivity activity)
+    {
+        var section = new SectionBuilder();
+
+        switch (activity)
         {
-            linksRow.WithButton("View Avatar", style: ButtonStyle.Link, url: avatarUrl);
-            hasLinks = true;
+            case SpotifyGame spotify:
+                section.AddComponent(new TextDisplayBuilder(
+                    $"**Listening to Spotify**\n{spotify.TrackTitle.AsMarkdownLink(spotify.TrackUrl)}\nby {string.Join(", ", spotify.Artists)}"));
+                section.WithAccessory(new ThumbnailBuilder
+                    { Media = new UnfurledMediaItemProperties { Url = spotify.AlbumArtUrl } });
+                return section;
+
+            case RichGame richGame:
+                var richGameText = new StringBuilder($"**Playing {richGame.Name}**");
+                if (!string.IsNullOrWhiteSpace(richGame.Details)) richGameText.AppendLine($"\n{richGame.Details}");
+                if (!string.IsNullOrWhiteSpace(richGame.State)) richGameText.AppendLine($"\n{richGame.State}");
+                if (richGame.Timestamps?.Start is { } startTime)
+                    richGameText.AppendLine($"\nElapsed: {startTime.GetRelativeTime()}");
+
+                section.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
+
+                var largeAssetUrl = richGame.LargeAsset?.GetImageUrl();
+                if (!string.IsNullOrWhiteSpace(largeAssetUrl))
+                    section.WithAccessory(new ThumbnailBuilder
+                        { Media = new UnfurledMediaItemProperties { Url = largeAssetUrl } });
+                return section;
+
+            case StreamingGame streamingGame:
+                section.AddComponent(
+                    new TextDisplayBuilder($"**Streaming on {streamingGame.Details}**\n{streamingGame.Name}"));
+                section.WithAccessory(new ButtonBuilder("Watch Stream", style: ButtonStyle.Link,
+                    url: streamingGame.Url));
+                return section;
+
+            case CustomStatusGame custom:
+                var customStatusContent = new StringBuilder();
+                if (custom.Emote is Emote customEmote) customStatusContent.Append($"{customEmote} ");
+                if (!string.IsNullOrWhiteSpace(custom.State)) customStatusContent.Append(custom.State);
+
+                if (customStatusContent.Length > 0)
+                    section.AddComponent(new TextDisplayBuilder($"**Custom Status:** {customStatusContent}"));
+                return section;
+
+            case Game game:
+                section.AddComponent(new TextDisplayBuilder($"{game.Type} {game.Name}"));
+                return section;
+
+            default:
+                return null;
         }
-
-        // TODO: figure this out one day
-        // var bannerUrl = targetUser.GetBannerUrl();
-        // if (!string.IsNullOrEmpty(bannerUrl))
-        // {
-        //     linksRow.WithButton("View Banner", style: ButtonStyle.Link, url: bannerUrl);
-        //     hasLinks = true;
-        // }
-
-        if (hasLinks)
-        {
-            mainContainer.AddComponent(new SeparatorBuilder());
-            mainContainer.AddComponent(linksRow);
-        }
-
-        componentBuilder.AddComponent(mainContainer);
-        return componentBuilder.Build();
     }
 }

@@ -8,8 +8,8 @@ namespace Assistant.Net.Modules.Info.Interaction;
 // Constants for Custom IDs
 public static class IntroductionModuleConstants
 {
-    public const string IntroduceModalId = "assistant:introduce_modal";
-    public const string IntroductionTextInputId = "assistant:introduction_text";
+    public const string IntroduceModalId = "introduce_modal";
+    public const string IntroductionTextInputId = "introduction_text";
 }
 
 public class IntroductionModule(UserService userService, ILogger<IntroductionModule> logger)

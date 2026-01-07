@@ -185,7 +185,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
 
     // --- Component Interaction Handlers ---
 
-    [ComponentInteraction("assistant:filters:bb:*:*", true)]
+    [ComponentInteraction("filters:bb:*:*", true)]
     public async Task HandleBassBoostButtonAsync(string level, ulong originalRequesterId)
     {
         if (Context.User.Id != originalRequesterId)
@@ -226,7 +226,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         await player.Filters.CommitAsync().ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:filters:tb:*:*", true)]
+    [ComponentInteraction("filters:tb:*:*", true)]
     public async Task HandleTrebleBoostButtonAsync(string level, ulong originalRequesterId)
     {
         if (Context.User.Id != originalRequesterId)
@@ -267,7 +267,7 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         await player.Filters.CommitAsync().ConfigureAwait(false);
     }
 
-    [ComponentInteraction("assistant:filters:ts:*:*:*", true)]
+    [ComponentInteraction("filters:ts:*:*:*", true)]
     public async Task HandleTimescaleButtonAsync(string action, ulong originalRequesterId, string stepString)
     {
         if (Context.User.Id != originalRequesterId)

@@ -4,7 +4,6 @@ using Assistant.Net.Configuration;
 using Assistant.Net.Services.Music.Logic;
 using Assistant.Net.Utilities.Ui;
 using Discord;
-using Discord.Interactions;
 using Discord.Net;
 using Discord.WebSocket;
 using Lavalink4NET.Clients;
@@ -15,12 +14,10 @@ namespace Assistant.Net.Services.Music;
 
 public class NowPlayingService : IDisposable
 {
-    // Constants for Custom IDs
-    public const string NpCustomIdPrefix = "assistant:np";
+    public const string NpCustomIdPrefix = "np";
 
     private readonly ConcurrentDictionary<ulong, NowPlayingMessageInfo> _activeNowPlayingMessages = new();
 
-    // Dependencies
     private readonly DiscordSocketClient _client;
     private readonly Config _config;
     private readonly ILogger<NowPlayingService> _logger;
@@ -38,7 +35,6 @@ public class NowPlayingService : IDisposable
         _config = config;
         _logger = logger;
 
-        // Hook into player events to remove NP message when player stops
         _musicService.PlayerStopped += OnPlayerStoppedAsync;
         _musicService.QueueEmptied += OnQueueEmptiedAsync;
 
@@ -66,8 +62,6 @@ public class NowPlayingService : IDisposable
 
     private async Task OnQueueEmptiedAsync(ulong guildId, CustomPlayer player)
     {
-        // If player is still connected but queue is empty AND not playing, remove NP.
-        // Player might be paused on last song or stopped.
         if (player.State == PlayerState.NotPlaying ||
             (player.State == PlayerState.Paused && player.CurrentTrack == null))
         {
@@ -78,23 +72,8 @@ public class NowPlayingService : IDisposable
         }
     }
 
-    public async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageAsync(CustomPlayer player,
-        SocketInteractionContext interactionContext)
-    {
-        if (interactionContext.Channel is ITextChannel textChannel)
-            return await CreateOrReplaceNowPlayingMessageInternalAsync(player, textChannel, interactionContext.User)
-                .ConfigureAwait(false);
-        _logger.LogWarning("Interaction context channel is not ITextChannel for NP message. Guild: {GuildId}",
-            interactionContext.Guild.Id);
-        return null;
-    }
-
     public async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageAsync(CustomPlayer player, ITextChannel channel,
-        IUser requester) => await CreateOrReplaceNowPlayingMessageInternalAsync(player, channel, requester)
-        .ConfigureAwait(false);
-
-    private async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageInternalAsync(CustomPlayer player,
-        ITextChannel channel, IUser requester)
+        IUser requester)
     {
         var guildId = player.GuildId;
         await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
@@ -119,35 +98,28 @@ public class NowPlayingService : IDisposable
             return null;
         }
 
+        return TrackNowPlayingMessage(sentMessage, requester, guildId);
+    }
+
+    public IUserMessage? TrackNowPlayingMessage(IUserMessage message, IUser requester, ulong guildId)
+    {
         var cts = new CancellationTokenSource();
-        var npInfo = new NowPlayingMessageInfo(sentMessage.Id, sentMessage, requester.Id, cts, channel.Id);
+        var npInfo = new NowPlayingMessageInfo(message.Id, message, requester.Id, cts, message.Channel.Id);
 
         if (_activeNowPlayingMessages.TryAdd(guildId, npInfo))
         {
             _ = Task.Run(() => GuildNowPlayingUpdateLoopAsync(guildId, cts.Token), cts.Token);
             _logger.LogInformation(
                 "Created Now Playing message {MessageId} for Guild {GuildId} in Channel {ChannelId}. Requested by {RequesterId}",
-                sentMessage.Id, guildId, channel.Id, requester.Id);
-        }
-        else
-        {
-            _logger.LogWarning("Failed to add Now Playing info for Guild {GuildId} due to concurrent modification.",
-                guildId);
-            await cts.CancelAsync();
-            cts.Dispose();
-            try
-            {
-                await sentMessage.DeleteAsync().ConfigureAwait(false);
-            }
-            catch
-            {
-                /* ignored */
-            }
-
-            return null;
+                message.Id, guildId, message.Channel.Id, requester.Id);
+            return message;
         }
 
-        return sentMessage;
+        _logger.LogWarning("Failed to add Now Playing info for Guild {GuildId} due to concurrent modification.",
+            guildId);
+        _ = cts.CancelAsync();
+        cts.Dispose();
+        return null;
     }
 
     public async Task RemoveNowPlayingMessageAsync(ulong guildId, bool deleteDiscordMessage = true)
@@ -217,7 +189,6 @@ public class NowPlayingService : IDisposable
         {
             if (npInfo is { MessageInstance: null })
             {
-                // Info exists but message instance is gone
                 _logger.LogDebug("NP Message instance for guild {GuildId} is null, attempting to re-fetch or remove.",
                     guildId);
                 if (_client.GetChannel(npInfo.TextChannelId) is ITextChannel textChannel)
@@ -229,8 +200,8 @@ public class NowPlayingService : IDisposable
                         {
                             _activeNowPlayingMessages.TryUpdate(guildId,
                                 npInfo with { MessageInstance = fetchedMsg },
-                                npInfo); // Update with fetched instance
-                            npInfo = npInfo with { MessageInstance = fetchedMsg }; // for current scope
+                                npInfo);
+                            npInfo = npInfo with { MessageInstance = fetchedMsg };
                         }
                         else
                         {
@@ -246,14 +217,13 @@ public class NowPlayingService : IDisposable
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error re-fetching NP message for guild {guildId}", guildId);
-                        // Potentially remove to stop trying, or just skip this update
                         return;
                     }
                 }
                 else
                 {
                     await RemoveNowPlayingMessageAsync(guildId, false)
-                        .ConfigureAwait(false); // Channel no longer accessible
+                        .ConfigureAwait(false);
                     return;
                 }
             }
@@ -322,7 +292,6 @@ public class NowPlayingService : IDisposable
         _logger.LogTrace("Exited NP update loop for Guild {GuildId}", guildId);
     }
 
-    // State
     private record NowPlayingMessageInfo(
         ulong MessageId,
         IUserMessage? MessageInstance,

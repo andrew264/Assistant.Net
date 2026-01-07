@@ -13,8 +13,8 @@ namespace Assistant.Net.Utilities.Ui;
 
 public static class MusicUiFactory
 {
-    private const string NpCustomIdPrefix = "assistant:np";
-    private const string LyricsPageButtonPrefix = "assistant:lyrics_page";
+    private const string NpCustomIdPrefix = "np";
+    private const string LyricsPageButtonPrefix = "lyrics_page";
     private const int QueueItemsPerPage = 10;
     private const int PlaylistItemsPerPage = 10;
     private const int WrappedItemsPerPage = 5;
@@ -27,7 +27,6 @@ public static class MusicUiFactory
     {
         if (player.CurrentTrack is null && player.Queue.IsEmpty) return (null, "The queue is empty.");
 
-        var componentBuilder = new ComponentBuilderV2();
         var container = new ContainerBuilder();
 
         if (player.CurrentTrack is not null)
@@ -37,14 +36,12 @@ public static class MusicUiFactory
             if (customCurrentItem != null) title += $"\nAdded by <@{customCurrentItem.RequesterId}>";
 
             if (player.CurrentTrack.ArtworkUri is not null)
-                container.WithSection(section =>
-                {
-                    section.AddComponent(new TextDisplayBuilder(title));
-                    section.WithAccessory(new ThumbnailBuilder
+                container.WithSection(new SectionBuilder()
+                    .AddComponent(new TextDisplayBuilder(title))
+                    .WithAccessory(new ThumbnailBuilder
                     {
                         Media = new UnfurledMediaItemProperties { Url = player.CurrentTrack.ArtworkUri.ToString() }
-                    });
-                });
+                    }));
             else
                 container.WithTextDisplay(new TextDisplayBuilder(title));
         }
@@ -53,8 +50,9 @@ public static class MusicUiFactory
             container.WithTextDisplay(new TextDisplayBuilder("**Queue**\n*Nothing is currently playing.*"));
         }
 
-        var queueCount = player.Queue.Count;
         container.WithSeparator();
+
+        var queueCount = player.Queue.Count;
         if (queueCount > 0)
         {
             var totalPages = (int)Math.Ceiling((double)queueCount / QueueItemsPerPage);
@@ -90,14 +88,16 @@ public static class MusicUiFactory
             container.WithSeparator();
 
             if (totalPages > 1)
-                container.WithActionRow(row => row
-                    .WithButton("◀ Previous",
-                        $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev",
-                        ButtonStyle.Secondary, disabled: currentPage == 1)
-                    .WithButton("Next ▶",
-                        $"assistant:queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next",
-                        ButtonStyle.Secondary, disabled: currentPage == totalPages)
-                );
+                container.WithActionRow(new ActionRowBuilder().WithComponents([
+                    new ButtonBuilder("◀ Previous",
+                            $"queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:prev",
+                            ButtonStyle.Secondary)
+                        .WithDisabled(currentPage == 1),
+                    new ButtonBuilder("Next ▶",
+                            $"queue_page_action:{requesterId}:{interactionMessageId}:{currentPage}:next",
+                            ButtonStyle.Secondary)
+                        .WithDisabled(currentPage == totalPages)
+                ]));
 
             var loopStatus = player.RepeatMode switch
             {
@@ -117,32 +117,29 @@ public static class MusicUiFactory
             container.WithTextDisplay(new TextDisplayBuilder($"Queue is empty • {loopStatus}"));
         }
 
-        componentBuilder.WithContainer(container);
-        return (componentBuilder.Build(), null);
+        return (new ComponentBuilderV2(container).Build(), null);
     }
 
     public static MessageComponent BuildNowPlayingDisplay(CustomPlayer player, ulong guildId, Config config)
     {
-        var builder = new ComponentBuilderV2();
-        var container = new ContainerBuilder();
-
         var currentTrack = player.CurrentTrack;
         var queue = player.Queue;
+        var container = new ContainerBuilder();
 
         if (currentTrack != null)
         {
-            container.WithSection(section =>
-            {
-                var titleAndAuthor =
-                    $"## {currentTrack.Title.AsMarkdownLink(currentTrack.Uri?.ToString())}\nby {currentTrack.Author}";
-                section.AddComponent(new TextDisplayBuilder(titleAndAuthor));
+            var titleAndAuthor =
+                $"## {currentTrack.Title.AsMarkdownLink(currentTrack.Uri?.ToString())}\nby {currentTrack.Author}";
 
-                if (currentTrack.ArtworkUri != null)
-                    section.WithAccessory(new ThumbnailBuilder
+            if (currentTrack.ArtworkUri != null)
+                container.WithSection(new SectionBuilder()
+                    .AddComponent(new TextDisplayBuilder(titleAndAuthor))
+                    .WithAccessory(new ThumbnailBuilder
                     {
                         Media = new UnfurledMediaItemProperties { Url = currentTrack.ArtworkUri.ToString() }
-                    });
-            });
+                    }));
+            else
+                container.WithTextDisplay(new TextDisplayBuilder(titleAndAuthor));
 
             var customItem = player.CurrentItem?.As<CustomTrackQueueItem>();
             if (customItem != null)
@@ -164,25 +161,31 @@ public static class MusicUiFactory
         }
 
         if (currentTrack != null)
-            container.WithSeparator(isDivider: false, spacing: SeparatorSpacingSize.Small);
+            container.WithSeparator(new SeparatorBuilder().WithSpacing(SeparatorSpacingSize.Small)
+                .WithIsDivider(false));
 
         var controlsDisabled = currentTrack == null;
 
-        var playbackRow = new ActionRowBuilder()
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:prev_restart", ButtonStyle.Primary, Emoji.Parse("⏮️"),
-                disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:rewind", ButtonStyle.Primary, Emoji.Parse("⏪"),
-                disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:pause_resume",
-                player.State == PlayerState.Paused ? ButtonStyle.Success : ButtonStyle.Primary,
-                player.State == PlayerState.Paused ? Emoji.Parse("▶️") : Emoji.Parse("⏸️"), disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:forward", ButtonStyle.Primary, Emoji.Parse("⏩"),
-                disabled: controlsDisabled)
-            .WithButton(null, $"{NpCustomIdPrefix}:{guildId}:skip", ButtonStyle.Primary, Emoji.Parse("⏭️"),
-                disabled: controlsDisabled);
-        container.WithActionRow(playbackRow);
+        container.WithActionRow(new ActionRowBuilder().WithComponents([
+            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:prev_restart")
+                .WithEmote(Emoji.Parse("⏮️"))
+                .WithDisabled(controlsDisabled),
+            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:rewind")
+                .WithEmote(Emoji.Parse("⏪"))
+                .WithDisabled(controlsDisabled),
+            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:pause_resume",
+                    player.State == PlayerState.Paused ? ButtonStyle.Success : ButtonStyle.Primary)
+                .WithEmote(player.State == PlayerState.Paused ? Emoji.Parse("▶️") : Emoji.Parse("⏸️"))
+                .WithDisabled(controlsDisabled),
+            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:forward")
+                .WithEmote(Emoji.Parse("⏩"))
+                .WithDisabled(controlsDisabled),
+            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:skip")
+                .WithEmote(Emoji.Parse("⏭️"))
+                .WithDisabled(controlsDisabled)
+        ]));
 
-        container.AddComponent(new SeparatorBuilder());
+        container.WithSeparator();
 
         var footerText = new StringBuilder();
         if (!queue.IsEmpty)
@@ -210,7 +213,8 @@ public static class MusicUiFactory
 
         if (footerText.Length > 0)
         {
-            container.WithSeparator(isDivider: false, spacing: SeparatorSpacingSize.Small);
+            container.WithSeparator(new SeparatorBuilder().WithSpacing(SeparatorSpacingSize.Small)
+                .WithIsDivider(false));
             container.WithTextDisplay(new TextDisplayBuilder(footerText.ToString()));
         }
 
@@ -220,28 +224,32 @@ public static class MusicUiFactory
             TrackRepeatMode.Queue => Emoji.Parse("🔁"),
             _ => Emoji.Parse("➡️")
         };
-        var utilityRow = new ActionRowBuilder()
-            .WithButton("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger, Emoji.Parse("⏹️"),
-                disabled: controlsDisabled)
-            .WithButton("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary, loopEmoji,
-                disabled: controlsDisabled);
-        container.WithActionRow(utilityRow);
 
-        container.AddComponent(new SeparatorBuilder());
+        container.WithActionRow(new ActionRowBuilder().WithComponents([
+            new ButtonBuilder("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger)
+                .WithEmote(Emoji.Parse("⏹️"))
+                .WithDisabled(controlsDisabled),
+            new ButtonBuilder("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary)
+                .WithEmote(loopEmoji)
+                .WithDisabled(controlsDisabled)
+        ]));
+
+        container.WithSeparator();
 
         var currentVolumePercent = (int)(player.Volume * 100);
         var maxVolume = config.Music.MaxPlayerVolumePercent;
-        var volumeRow = new ActionRowBuilder()
-            .WithButton("➖", $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success,
-                disabled: controlsDisabled || currentVolumePercent <= 0)
-            .WithButton($"🔊 {currentVolumePercent}%", $"{NpCustomIdPrefix}:{guildId}:vol_display",
-                ButtonStyle.Secondary, disabled: true)
-            .WithButton("➕", $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success,
-                disabled: controlsDisabled || currentVolumePercent >= maxVolume);
-        container.WithActionRow(volumeRow);
 
-        builder.WithContainer(container);
-        return builder.Build();
+        container.WithActionRow(new ActionRowBuilder().WithComponents([
+            new ButtonBuilder("➖", $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success)
+                .WithDisabled(controlsDisabled || currentVolumePercent <= 0),
+            new ButtonBuilder($"🔊 {currentVolumePercent}%", $"{NpCustomIdPrefix}:{guildId}:vol_display",
+                    ButtonStyle.Secondary)
+                .WithDisabled(true),
+            new ButtonBuilder("➕", $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success)
+                .WithDisabled(controlsDisabled || currentVolumePercent >= maxVolume)
+        ]));
+
+        return new ComponentBuilderV2(container).Build();
     }
 
     public static (MessageComponent? Components, string? ErrorMessage) BuildShowPlaylistResponse(
@@ -254,18 +262,15 @@ public static class MusicUiFactory
             var emptyContainer = new ContainerBuilder()
                 .WithTextDisplay(new TextDisplayBuilder($"**🎵 Playlist: {playlist.Name.Truncate(100)}**"))
                 .WithTextDisplay(new TextDisplayBuilder("*This playlist is empty.*"));
-            return (new ComponentBuilderV2().WithContainer(emptyContainer).Build(), null);
+            return (new ComponentBuilderV2(emptyContainer).Build(), null);
         }
 
         var totalPages = (int)Math.Ceiling((double)totalSongs / PlaylistItemsPerPage);
         currentPage = Math.Clamp(currentPage, 1, totalPages);
 
         var container = new ContainerBuilder()
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"**🎵 Playlist: {playlist.Name.Truncate(100)}**"));
-                section.AddComponent(new TextDisplayBuilder($"*Created by {requester.Mention}*"));
-            })
+            .WithTextDisplay(new TextDisplayBuilder($"**🎵 Playlist: {playlist.Name.Truncate(100)}**"))
+            .WithTextDisplay(new TextDisplayBuilder($"*Created by {requester.Mention}*"))
             .WithSeparator();
 
         var songsOnPage = playlist.Items
@@ -290,19 +295,23 @@ public static class MusicUiFactory
             $"Page {currentPage}/{totalPages}  •  {totalSongs} Songs  •  Updated {playlist.CreatedAt.GetRelativeTime()}";
         container.WithTextDisplay(new TextDisplayBuilder(footerText));
 
-        var controlsRow = new ActionRowBuilder()
-            .WithButton("Previous", $"assistant:playlist:show_prev:{requester.Id}:{playlist.Name}:{currentPage}",
-                ButtonStyle.Secondary, new Emoji("◀"), disabled: currentPage == 1)
-            .WithButton("Next", $"assistant:playlist:show_next:{requester.Id}:{playlist.Name}:{currentPage}",
-                ButtonStyle.Secondary, new Emoji("▶"), disabled: currentPage == totalPages)
-            .WithButton("Shuffle", $"assistant:playlist:action_shuffle:{requester.Id}:{playlist.Name}",
-                ButtonStyle.Primary,
-                new Emoji("🔀"))
-            .WithButton("Play", $"assistant:playlist:action_play:{requester.Id}:{playlist.Name}", ButtonStyle.Success,
-                new Emoji("▶️"));
+        container.WithActionRow(new ActionRowBuilder().WithComponents([
+            new ButtonBuilder("Previous", $"playlist:show_prev:{requester.Id}:{playlist.Name}:{currentPage}",
+                    ButtonStyle.Secondary)
+                .WithEmote(new Emoji("◀"))
+                .WithDisabled(currentPage == 1),
+            new ButtonBuilder("Next", $"playlist:show_next:{requester.Id}:{playlist.Name}:{currentPage}",
+                    ButtonStyle.Secondary)
+                .WithEmote(new Emoji("▶"))
+                .WithDisabled(currentPage == totalPages),
+            new ButtonBuilder("Shuffle", $"playlist:action_shuffle:{requester.Id}:{playlist.Name}")
+                .WithEmote(new Emoji("🔀")),
+            new ButtonBuilder("Play", $"playlist:action_play:{requester.Id}:{playlist.Name}",
+                    ButtonStyle.Success)
+                .WithEmote(new Emoji("▶️"))
+        ]));
 
-        container.WithActionRow(controlsRow);
-        return (new ComponentBuilderV2().WithContainer(container).Build(), null);
+        return (new ComponentBuilderV2(container).Build(), null);
     }
 
     public static MessageComponent BuildLyricsPage(GeniusSong song, List<string> lyricsChunks,
@@ -320,18 +329,25 @@ public static class MusicUiFactory
         }
 
         var container = new ContainerBuilder()
-            .WithAccentColor(accentColor)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"# 🎶 {song.FullTitle.Truncate(250)}"));
-                section.AddComponent(new TextDisplayBuilder($"*by {song.ArtistNames}*"));
+            .WithAccentColor(accentColor);
 
-                if (!string.IsNullOrEmpty(song.SongArtImageThumbnailUrl))
-                    section.WithAccessory(new ThumbnailBuilder
-                    {
-                        Media = new UnfurledMediaItemProperties { Url = song.SongArtImageThumbnailUrl }
-                    });
-            })
+        var headerText = $"# 🎶 {song.FullTitle.Truncate(250)}";
+        var subHeaderText = $"*by {song.ArtistNames}*";
+
+        if (!string.IsNullOrEmpty(song.SongArtImageThumbnailUrl))
+            container.WithSection(new SectionBuilder()
+                .AddComponent(new TextDisplayBuilder(headerText))
+                .AddComponent(new TextDisplayBuilder(subHeaderText))
+                .WithAccessory(new ThumbnailBuilder
+                {
+                    Media = new UnfurledMediaItemProperties { Url = song.SongArtImageThumbnailUrl }
+                }));
+        else
+            container
+                .WithTextDisplay(new TextDisplayBuilder(headerText))
+                .WithTextDisplay(new TextDisplayBuilder(subHeaderText));
+
+        container
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder(lyricsChunks.ElementAtOrDefault(currentPage) ??
                                                     "Lyrics page out of bounds."));
@@ -342,25 +358,28 @@ public static class MusicUiFactory
             container.WithTextDisplay(new TextDisplayBuilder($"Page {currentPage + 1}/{totalPages}"));
         }
 
-        var actionRow = new ActionRowBuilder();
-        var hasPagination = false;
+        var buttons = new List<ButtonBuilder>();
+
         if (totalPages > 1)
         {
-            actionRow.WithButton("Previous", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:prev",
-                ButtonStyle.Secondary,
-                new Emoji("◀️"), disabled: currentPage == 0);
-            actionRow.WithButton("Next", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:next",
-                ButtonStyle.Secondary,
-                new Emoji("▶️"), disabled: currentPage == totalPages - 1);
-            hasPagination = true;
+            buttons.Add(new ButtonBuilder("Previous", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:prev",
+                    ButtonStyle.Secondary)
+                .WithEmote(new Emoji("◀️"))
+                .WithDisabled(currentPage == 0));
+
+            buttons.Add(new ButtonBuilder("Next", $"{LyricsPageButtonPrefix}:{song.Id}:{currentPage}:next",
+                    ButtonStyle.Secondary)
+                .WithEmote(new Emoji("▶️"))
+                .WithDisabled(currentPage == totalPages - 1));
         }
 
-        actionRow.WithButton("View on Genius", style: ButtonStyle.Link, url: song.Url);
+        if (!string.IsNullOrEmpty(song.Url))
+            buttons.Add(new ButtonBuilder("View on Genius", style: ButtonStyle.Link, url: song.Url));
 
-        if (hasPagination || !string.IsNullOrEmpty(song.Url))
-            container.WithActionRow(actionRow);
+        if (buttons.Count > 0)
+            container.WithActionRow(new ActionRowBuilder().WithComponents(buttons));
 
-        return new ComponentBuilderV2().WithContainer(container).Build();
+        return new ComponentBuilderV2(container).Build();
     }
 
     public static MessageComponent BuildWrappedComponents(
@@ -375,21 +394,24 @@ public static class MusicUiFactory
         if (totalPages == 0) totalPages = 1;
         var currentPage = Math.Clamp(page, 1, totalPages);
 
-        var container = new ContainerBuilder()
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"# {title}"));
-                section.AddComponent(new TextDisplayBuilder($"**Top Songs** • {totalItems} Total"));
-                if (!string.IsNullOrEmpty(iconUrl))
-                    section.WithAccessory(new ThumbnailBuilder
-                        { Media = new UnfurledMediaItemProperties { Url = iconUrl } });
-            })
-            .WithSeparator();
+        var container = new ContainerBuilder();
+
+        if (!string.IsNullOrEmpty(iconUrl))
+            container.WithSection(new SectionBuilder()
+                .AddComponent(new TextDisplayBuilder($"# {title}"))
+                .AddComponent(new TextDisplayBuilder($"**Top Songs** • {totalItems} Total"))
+                .WithAccessory(new ThumbnailBuilder { Media = new UnfurledMediaItemProperties { Url = iconUrl } }));
+        else
+            container
+                .WithTextDisplay(new TextDisplayBuilder($"# {title}"))
+                .WithTextDisplay(new TextDisplayBuilder($"**Top Songs** • {totalItems} Total"));
+
+        container.WithSeparator();
 
         if (totalItems == 0)
         {
             container.WithTextDisplay(new TextDisplayBuilder("No play history found."));
-            return new ComponentBuilderV2().WithContainer(container).Build();
+            return new ComponentBuilderV2(container).Build();
         }
 
         var tracksOnPage = allTracks
@@ -397,38 +419,45 @@ public static class MusicUiFactory
             .Take(WrappedItemsPerPage)
             .ToList();
 
-        for (var i = 0; i < tracksOnPage.Count; i++)
-        {
-            var item = tracksOnPage[i];
-            var rank = (currentPage - 1) * WrappedItemsPerPage + i + 1;
-            var duration = TimeSpan.FromSeconds(item.Track.Duration).FormatPlayerTime();
+        foreach (var trackSection in tracksOnPage.Select((item, i) =>
+                 {
+                     var rank = (currentPage - 1) * WrappedItemsPerPage + i + 1;
+                     var duration = TimeSpan.FromSeconds(item.Track.Duration).FormatPlayerTime();
 
-            var trackSection = new SectionBuilder()
-                .AddComponent(new TextDisplayBuilder(
-                    $"**#{rank}** {item.Track.Title.Truncate(80).AsMarkdownLink(item.Track.Uri)}"))
-                .AddComponent(new TextDisplayBuilder($"**Artist:** {item.Track.Artist?.Truncate(50) ?? "Unknown"}"))
-                .AddComponent(new TextDisplayBuilder($"**Plays:** {item.Count} • **Duration:** {duration}"));
+                     var section = new SectionBuilder()
+                         .AddComponent(new TextDisplayBuilder(
+                             $"**#{rank}** {item.Track.Title.Truncate(80).AsMarkdownLink(item.Track.Uri)}"))
+                         .AddComponent(new TextDisplayBuilder(
+                             $"**Artist:** {item.Track.Artist?.Truncate(50) ?? "Unknown"}"))
+                         .AddComponent(new TextDisplayBuilder($"**Plays:** {item.Count} • **Duration:** {duration}"));
 
-            if (!string.IsNullOrEmpty(item.Track.ThumbnailUrl))
-                trackSection.WithAccessory(new ThumbnailBuilder
-                    { Media = new UnfurledMediaItemProperties { Url = item.Track.ThumbnailUrl } });
+                     if (!string.IsNullOrEmpty(item.Track.ThumbnailUrl))
+                         section.WithAccessory(new ThumbnailBuilder
+                             { Media = new UnfurledMediaItemProperties { Url = item.Track.ThumbnailUrl } });
 
-            container.WithSection(trackSection);
-        }
+                     return section;
+                 }))
+            if (trackSection.Accessory != null)
+                container.WithSection(trackSection);
+            else
+                foreach (var component in trackSection.Components)
+                    if (component is TextDisplayBuilder textBuilder)
+                        container.WithTextDisplay(textBuilder);
 
         container.WithSeparator();
         container.WithTextDisplay(
             new TextDisplayBuilder($"Page {currentPage}/{totalPages} • {DateTime.UtcNow.GetLongDateTime()}"));
 
-        if (totalPages <= 1) return new ComponentBuilderV2().WithContainer(container).Build();
+        if (totalPages > 1)
+            container.WithActionRow(new ActionRowBuilder().WithComponents([
+                new ButtonBuilder("◀ Previous", $"wrapped:{targetUserId}:{currentPage - 1}",
+                        ButtonStyle.Secondary)
+                    .WithDisabled(currentPage <= 1),
+                new ButtonBuilder("Next ▶", $"wrapped:{targetUserId}:{currentPage + 1}",
+                        ButtonStyle.Secondary)
+                    .WithDisabled(currentPage >= totalPages)
+            ]));
 
-        var navRow = new ActionRowBuilder()
-            .WithButton("◀ Previous", $"assistant:wrapped:{targetUserId}:{currentPage - 1}",
-                ButtonStyle.Secondary, disabled: currentPage <= 1)
-            .WithButton("Next ▶", $"assistant:wrapped:{targetUserId}:{currentPage + 1}",
-                ButtonStyle.Secondary, disabled: currentPage >= totalPages);
-        container.WithActionRow(navRow);
-
-        return new ComponentBuilderV2().WithContainer(container).Build();
+        return new ComponentBuilderV2(container).Build();
     }
 }

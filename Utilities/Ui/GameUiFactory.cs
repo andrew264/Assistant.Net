@@ -6,9 +6,9 @@ namespace Assistant.Net.Utilities.Ui;
 
 public static class GameUiFactory
 {
-    private const string RpsCustomIdPrefix = "assistant:rps";
-    private const string TttCustomIdPrefix = "assistant:tictactoe";
-    private const string HcCustomIdPrefix = "assistant:hc";
+    private const string RpsCustomIdPrefix = "rps";
+    private const string TttCustomIdPrefix = "tictactoe";
+    private const string HcCustomIdPrefix = "hc";
 
     // --- Timeouts ---
     public static MessageComponent GetRpsTimeoutDisplay()
