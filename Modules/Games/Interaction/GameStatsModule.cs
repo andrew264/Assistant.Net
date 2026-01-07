@@ -17,7 +17,6 @@ public class GameStatsModule(
     : InteractionModuleBase<SocketInteractionContext>
 {
     private const int ResultsPerPage = 10;
-    private const string TrophyEmojiUrl = "https://em-content.zobj.net/source/twitter/376/trophy_1f3c6.png";
 
     [SlashCommand("leaderboard", "Shows the leaderboard for a game in this server.")]
     [RequireContext(ContextType.Guild)]
@@ -54,7 +53,7 @@ public class GameStatsModule(
                         new TextDisplayBuilder($"# {gameName.CapitalizeFirstLetter()} Leaderboard"));
                     section.AddComponent(new TextDisplayBuilder($"Top players in {Context.Guild.Name}"));
                     section.WithAccessory(new ThumbnailBuilder
-                        { Media = new UnfurledMediaItemProperties { Url = TrophyEmojiUrl } });
+                        { Media = new UnfurledMediaItemProperties { Url = Context.Guild.IconUrl } });
                 })
                 .WithSeparator();
 

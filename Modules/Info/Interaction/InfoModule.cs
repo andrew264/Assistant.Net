@@ -35,31 +35,6 @@ public class InfoModule(
         await RespondAsync($"Pong! Latency: {latency}ms", ephemeral: true).ConfigureAwait(false);
     }
 
-    [SlashCommand("info", "Get information about the bot.")]
-    public async Task InfoAsync()
-    {
-        var container = new ContainerBuilder()
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"## About {client.CurrentUser.Username}"));
-                section.AddComponent(new TextDisplayBuilder(
-                    "This is a multipurpose Discord bot built with Discord.Net and the .NET platform."));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = client.CurrentUser.GetDisplayAvatarUrl() ?? client.CurrentUser.GetDefaultAvatarUrl() }
-                });
-            })
-            .WithSeparator()
-            .WithTextDisplay(new TextDisplayBuilder(
-                "Use `/botinfo` for detailed statistics or visit the [GitHub Repo](https://github.com/a-k-s-h-a-y/Assistant.Net) for more info."));
-
-        var components = new ComponentBuilderV2().WithContainer(container).Build();
-
-        await RespondAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
-            .ConfigureAwait(false);
-    }
-
     [SlashCommand("botinfo", "Get detailed information about the bot.")]
     public async Task BotInfoAsync()
     {

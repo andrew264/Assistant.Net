@@ -88,6 +88,19 @@ public class PlaylistService(
             .ConfigureAwait(false);
     }
 
+    public async Task<PlaylistEntity?> GetPlaylistAsync(ulong userId, ulong guildId, long playlistId)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var dUserId = (decimal)userId;
+        var dGuildId = (decimal)guildId;
+
+        return await context.Playlists
+            .Include(p => p.Items)
+            .ThenInclude(i => i.Track)
+            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Id == playlistId)
+            .ConfigureAwait(false);
+    }
+
     public async Task<bool> DeletePlaylistAsync(ulong userId, ulong guildId, string name)
     {
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
