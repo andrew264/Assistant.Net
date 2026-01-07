@@ -18,7 +18,6 @@ public static class FilterOperations
     private const float VaporwaveEqBand0 = 0.3f;
     private const float VaporwaveEqBand1 = 0.3f;
 
-
     // --- 8D Audio ---
     private const float EightDFrequency = 0.2f;
 
