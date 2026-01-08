@@ -13,6 +13,7 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
     public DbSet<PlayHistoryEntity> PlayHistories { get; set; }
     public DbSet<PlaylistEntity> Playlists { get; set; }
     public DbSet<PlaylistItemEntity> PlaylistItems { get; set; }
+    public DbSet<LogSettingsEntity> LogSettings { get; set; }
 
     public DbSet<GameStatEntity> GameStats { get; set; }
 

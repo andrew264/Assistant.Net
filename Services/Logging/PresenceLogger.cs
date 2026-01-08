@@ -1,5 +1,6 @@
-using Assistant.Net.Configuration;
+using Assistant.Net.Data.Enums;
 using Assistant.Net.Services.Core;
+using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.WebSocket;
@@ -9,37 +10,33 @@ namespace Assistant.Net.Services.Logging;
 
 public class PresenceLogger
 {
-    private const int DeleteDelay = 24 * 60 * 60 * 1000;
-    private readonly Config _config;
     private readonly ILogger<PresenceLogger> _logger;
+    private readonly LoggingConfigService _loggingConfigService;
     private readonly WebhookService _webhookService;
 
     public PresenceLogger(
         DiscordSocketClient client,
-        Config config,
         ILogger<PresenceLogger> logger,
-        WebhookService webhookService)
+        WebhookService webhookService,
+        LoggingConfigService loggingConfigService)
     {
-        _config = config;
         _logger = logger;
         _webhookService = webhookService;
+        _loggingConfigService = loggingConfigService;
 
         client.PresenceUpdated += HandlePresenceUpdatedAsync;
 
         _logger.LogInformation("PresenceLogger initialized.");
     }
 
-    private LoggingGuildConfig? GetLoggingGuildConfig(ulong guildId)
-    {
-        return _config.LoggingGuilds?.FirstOrDefault(kvp => kvp.Value.GuildId == guildId).Value;
-    }
-
     private async Task HandlePresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
     {
         if (user.IsBot || user is not SocketGuildUser guildUser) return;
 
-        var loggingConfig = GetLoggingGuildConfig(guildUser.Guild.Id);
-        if (loggingConfig is not { LogPresenceUpdates: true }) return;
+        var logConfig = await _loggingConfigService.GetLogConfigAsync(guildUser.Guild.Id, LogType.Presence)
+            .ConfigureAwait(false);
+
+        if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
         var bClients = ActivityUtils.GetClients(before);
         var aClients = ActivityUtils.GetClients(after);
@@ -50,8 +47,7 @@ public class PresenceLogger
             bClients.SetEquals(aClients) &&
             before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
 
-
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -118,8 +114,10 @@ public class PresenceLogger
                 allowedMentions: AllowedMentions.None,
                 flags: MessageFlags.SuppressEmbeds
             ).ConfigureAwait(false);
-            _ = Task.Delay(DeleteDelay)
-                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
+
+            if (logConfig.DeleteDelayMs > 0)
+                _ = Task.Delay(logConfig.DeleteDelayMs)
+                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {

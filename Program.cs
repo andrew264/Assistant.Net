@@ -172,6 +172,7 @@ public class Program
                 services.AddSingleton<UserActivityTrackingService>();
 
                 // --- Surveillance / Logging Services ---
+                services.AddSingleton<LoggingConfigService>();
                 services.AddSingleton<MessageLogger>();
                 services.AddSingleton<UserLogger>();
                 services.AddSingleton<VoiceLogger>();

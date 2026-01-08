@@ -1,5 +1,6 @@
-using Assistant.Net.Configuration;
+using Assistant.Net.Data.Enums;
 using Assistant.Net.Services.Core;
+using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities;
 using Assistant.Net.Utilities.Ui;
 using Discord;
@@ -10,25 +11,24 @@ namespace Assistant.Net.Services.Logging;
 
 public class UserLogger
 {
-    private const int DeleteDelay = 24 * 60 * 60 * 1000;
     private readonly DiscordSocketClient _client;
-    private readonly Config _config;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<UserLogger> _logger;
+    private readonly LoggingConfigService _loggingConfigService;
     private readonly WebhookService _webhookService;
 
     public UserLogger(
         DiscordSocketClient client,
-        Config config,
         ILogger<UserLogger> logger,
         WebhookService webhookService,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        LoggingConfigService loggingConfigService)
     {
         _client = client;
-        _config = config;
         _logger = logger;
         _webhookService = webhookService;
         _httpClientFactory = httpClientFactory;
+        _loggingConfigService = loggingConfigService;
 
         _client.GuildMemberUpdated += HandleGuildMemberUpdatedAsync;
         _client.UserUpdated += HandleUserUpdatedAsync;
@@ -40,11 +40,6 @@ public class UserLogger
         _logger.LogInformation("UserLogger initialized.");
     }
 
-    private LoggingGuildConfig? GetLoggingGuildConfig(ulong guildId)
-    {
-        return _config.LoggingGuilds?.FirstOrDefault(kvp => kvp.Value.GuildId == guildId).Value;
-    }
-
     private async Task HandleGuildMemberUpdatedAsync(Cacheable<SocketGuildUser, ulong> beforeCache,
         SocketGuildUser after)
     {
@@ -53,10 +48,12 @@ public class UserLogger
         var before = beforeCache.HasValue ? beforeCache.Value : null;
         if (before == null || before.DisplayName == after.DisplayName) return;
 
-        var loggingConfig = GetLoggingGuildConfig(after.Guild.Id);
-        if (loggingConfig == null) return;
+        var logConfig = await _loggingConfigService.GetLogConfigAsync(after.Guild.Id, LogType.User)
+            .ConfigureAwait(false);
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
+        if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
+
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -72,8 +69,10 @@ public class UserLogger
             ).ConfigureAwait(false);
             _logger.LogInformation("[UPDATE] Nickname {GuildName}: @{OldName} -> @{NewName}", after.Guild.Name,
                 before.DisplayName, after.DisplayName);
-            _ = Task.Delay(DeleteDelay)
-                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
+
+            if (logConfig.DeleteDelayMs > 0)
+                _ = Task.Delay(logConfig.DeleteDelayMs)
+                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -90,10 +89,12 @@ public class UserLogger
 
         foreach (var guild in _client.Guilds)
         {
-            var loggingConfig = GetLoggingGuildConfig(guild.Id);
-            if (loggingConfig == null || guild.GetUser(after.Id) == null) continue;
+            if (guild.GetUser(after.Id) == null) continue;
 
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
+            var logConfig = await _loggingConfigService.GetLogConfigAsync(guild.Id, LogType.User).ConfigureAwait(false);
+            if (!logConfig.IsEnabled || logConfig.ChannelId == null) continue;
+
+            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) continue;
 
@@ -113,8 +114,10 @@ public class UserLogger
                 ).ConfigureAwait(false);
                 _logger.LogInformation("[UPDATE] User Profile {GuildName}: @{BeforeUser} -> @{AfterUser}", guild.Name,
                     before, after);
-                _ = Task.Delay(DeleteDelay)
-                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
+
+                if (logConfig.DeleteDelayMs > 0)
+                    _ = Task.Delay(logConfig.DeleteDelayMs)
+                        .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
             }
             catch (Exception ex)
             {
@@ -133,10 +136,10 @@ public class UserLogger
     {
         if (user.IsBot) return;
 
-        var loggingConfig = GetLoggingGuildConfig(guild.Id);
-        if (loggingConfig == null) return;
+        var logConfig = await _loggingConfigService.GetLogConfigAsync(guild.Id, LogType.User).ConfigureAwait(false);
+        if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -151,8 +154,10 @@ public class UserLogger
                 flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Leave @{User}: {GuildName}", user.Username, guild.Name);
-            _ = Task.Delay(DeleteDelay)
-                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
+
+            if (logConfig.DeleteDelayMs > 0)
+                _ = Task.Delay(logConfig.DeleteDelayMs)
+                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -165,10 +170,11 @@ public class UserLogger
     {
         if (member.IsBot) return;
 
-        var loggingConfig = GetLoggingGuildConfig(member.Guild.Id);
-        if (loggingConfig == null) return;
+        var logConfig = await _loggingConfigService.GetLogConfigAsync(member.Guild.Id, LogType.User)
+            .ConfigureAwait(false);
+        if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -183,8 +189,10 @@ public class UserLogger
                 flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Join @{User}: {GuildName}", member.Username, member.Guild.Name);
-            _ = Task.Delay(DeleteDelay)
-                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
+
+            if (logConfig.DeleteDelayMs > 0)
+                _ = Task.Delay(logConfig.DeleteDelayMs)
+                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -197,10 +205,10 @@ public class UserLogger
     {
         if (user.IsBot) return;
 
-        var loggingConfig = GetLoggingGuildConfig(guild.Id);
-        if (loggingConfig == null) return;
+        var logConfig = await _loggingConfigService.GetLogConfigAsync(guild.Id, LogType.User).ConfigureAwait(false);
+        if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -228,8 +236,10 @@ public class UserLogger
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Ban @{User}: {GuildName}. Reason: {Reason}", user.Username, guild.Name,
                 banReason);
-            _ = Task.Delay(DeleteDelay)
-                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
+
+            if (logConfig.DeleteDelayMs > 0)
+                _ = Task.Delay(logConfig.DeleteDelayMs)
+                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {
@@ -242,10 +252,10 @@ public class UserLogger
     {
         if (user.IsBot) return;
 
-        var loggingConfig = GetLoggingGuildConfig(guild.Id);
-        if (loggingConfig == null) return;
+        var logConfig = await _loggingConfigService.GetLogConfigAsync(guild.Id, LogType.User).ConfigureAwait(false);
+        if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync(loggingConfig.ChannelId)
+        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
             .ConfigureAwait(false);
         if (webhookClient == null) return;
 
@@ -260,8 +270,10 @@ public class UserLogger
                 flags: MessageFlags.ComponentsV2
             ).ConfigureAwait(false);
             _logger.LogInformation("[GUILD] Unban @{User}: {GuildName}", user.Username, guild.Name);
-            _ = Task.Delay(DeleteDelay)
-                .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
+
+            if (logConfig.DeleteDelayMs > 0)
+                _ = Task.Delay(logConfig.DeleteDelayMs)
+                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
         }
         catch (Exception ex)
         {

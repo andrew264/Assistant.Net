@@ -9,7 +9,6 @@ public class Config
     public RedditConfig Reddit { get; set; } = new();
     public MusicConfig Music { get; set; } = new();
     public DatabaseConfig Database { get; set; } = new();
-    public Dictionary<string, LoggingGuildConfig>? LoggingGuilds { get; set; }
 
     [YamlIgnore] public string ResourcePath { get; set; } = "Resources";
 
@@ -68,11 +67,4 @@ public class MusicConfig
 public class DatabaseConfig
 {
     public string ConnectionString { get; set; } = string.Empty;
-}
-
-public class LoggingGuildConfig
-{
-    public ulong GuildId { get; set; }
-    public ulong ChannelId { get; set; }
-    public bool LogPresenceUpdates { get; set; } = false;
 }
