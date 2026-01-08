@@ -11,16 +11,8 @@ public static class LogUiBuilder
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.Orange)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder("# Message Edit"));
-                section.AddComponent(new TextDisplayBuilder($"in <#{guildChannel.Id}>"));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = after.Author.GetDisplayAvatarUrl() ?? after.Author.GetDefaultAvatarUrl() }
-                });
-            })
+            .WithTextDisplay(new TextDisplayBuilder("# Message Edit"))
+            .WithTextDisplay(new TextDisplayBuilder($"in <#{guildChannel.Id}>"))
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder(
                 $"**Before:**\n> {(string.IsNullOrWhiteSpace(before.Content) ? "*(Empty)*" : before.Content.Truncate(1000))}"))
@@ -38,16 +30,8 @@ public static class LogUiBuilder
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.Red)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder("# Message Deleted"));
-                section.AddComponent(new TextDisplayBuilder($"from <#{guildChannel.Id}>"));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl() }
-                });
-            })
+            .WithTextDisplay(new TextDisplayBuilder("# Message Deleted"))
+            .WithTextDisplay(new TextDisplayBuilder($"from <#{guildChannel.Id}>"))
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder(
                 $"**Content:**\n> {(string.IsNullOrWhiteSpace(message.Content) ? "*(Empty)*" : message.Content.Truncate(2000))}"
@@ -72,16 +56,8 @@ public static class LogUiBuilder
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.LightOrange)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder("# Nickname Changed"));
-                section.AddComponent(new TextDisplayBuilder($"{after.Mention}"));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
-                });
-            })
+            .WithTextDisplay(new TextDisplayBuilder("# Nickname Changed"))
+            .WithTextDisplay(new TextDisplayBuilder($"{after.Mention}"))
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder($"**Before:** `{before.DisplayName}`"))
             .WithTextDisplay(new TextDisplayBuilder($"**After:** `{after.DisplayName}`"))
@@ -105,16 +81,8 @@ public static class LogUiBuilder
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.DarkGreen)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder("# Voice State Update"));
-                section.AddComponent(new TextDisplayBuilder(member.Mention));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = member.GetDisplayAvatarUrl() ?? member.GetDefaultAvatarUrl() }
-                });
-            })
+            .WithTextDisplay(new TextDisplayBuilder("# Voice State Update"))
+            .WithTextDisplay(new TextDisplayBuilder(member.Mention))
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder(actionDescription))
             .WithSeparator()
@@ -128,16 +96,8 @@ public static class LogUiBuilder
     {
         var container = new ContainerBuilder()
             .WithAccentColor(color)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"# {user.Username} {title}"));
-                section.AddComponent(new TextDisplayBuilder(user.Mention));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl() }
-                });
-            });
+            .WithTextDisplay(new TextDisplayBuilder($"# {user.Username} {title}"))
+            .WithTextDisplay(new TextDisplayBuilder(user.Mention));
 
         if (title.Equals("Joined", StringComparison.OrdinalIgnoreCase))
             container.WithTextDisplay(
@@ -155,16 +115,8 @@ public static class LogUiBuilder
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.DarkRed)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"# {user.Username} Banned"));
-                section.AddComponent(new TextDisplayBuilder(user.Mention));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl() }
-                });
-            })
+            .WithTextDisplay(new TextDisplayBuilder($"# {user.Username} Banned"))
+            .WithTextDisplay(new TextDisplayBuilder(user.Mention))
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder($"**Reason:** {banReason}"))
             .WithSeparator()
@@ -178,16 +130,8 @@ public static class LogUiBuilder
     {
         var container = new ContainerBuilder()
             .WithAccentColor(Color.DarkGreen)
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"# {user.Username} Unbanned"));
-                section.AddComponent(new TextDisplayBuilder(user.Mention));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl() }
-                });
-            })
+            .WithTextDisplay(new TextDisplayBuilder($"# {user.Username} Unbanned"))
+            .WithTextDisplay(new TextDisplayBuilder(user.Mention))
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder(
                 $"User ID: {user.Id} | {TimestampTag.FromDateTimeOffset(DateTimeOffset.UtcNow)}"));
