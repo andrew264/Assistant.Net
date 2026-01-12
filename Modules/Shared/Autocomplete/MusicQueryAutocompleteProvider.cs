@@ -27,16 +27,13 @@ public class MusicQueryAutocompleteProvider : AutocompleteHandler
                 : new AutocompleteResult("Search for a song or paste a URL...", string.Empty)
         };
 
-        // Add suggestions from history if user has typed something
         if (string.IsNullOrWhiteSpace(userInput)) return AutocompletionResult.FromSuccess(suggestions.Take(25));
-        var historyResults = await musicHistoryService.SearchSongHistoryAsync(context.Guild.Id, userInput)
+
+        var historyResults = await musicHistoryService.SearchSongHistoryAsync(userInput)
             .ConfigureAwait(false);
-        foreach (var entry in historyResults)
-        {
-            if (suggestions.Count >= 25) break;
-            if (entry.Uri != userInput)
-                suggestions.Add(new AutocompleteResult(entry.Title.Truncate(90), entry.Uri));
-        }
+
+        suggestions.AddRange(
+            historyResults.Select(entry => new AutocompleteResult(entry.Title.Truncate(90), entry.Uri)));
 
         return AutocompletionResult.FromSuccess(suggestions.Take(25));
     }

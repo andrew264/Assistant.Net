@@ -149,33 +149,42 @@ public class MusicHistoryService
         return result.Select(x => new TrackPlayCount(x.Track, x.Count)).ToList();
     }
 
-    public async Task<IEnumerable<SongHistoryEntryInfo>> SearchSongHistoryAsync(ulong guildId, string searchTerm)
+    public async Task<IEnumerable<TrackEntity>> SearchSongHistoryAsync(string searchTerm)
     {
         if (string.IsNullOrWhiteSpace(searchTerm)) return [];
 
         await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalGuildId = (decimal)guildId;
+
+        if (searchTerm.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
+            searchTerm.StartsWith("www", StringComparison.OrdinalIgnoreCase))
+        {
+            return await context.Tracks
+                .Where(t => EF.Functions.ILike(t.Uri, $"%{searchTerm}%"))
+                .OrderBy(t => t.Title)
+                .Take(24)
+                .Select(t => new TrackEntity
+                {
+                    Title = t.Title,
+                    Uri = t.Uri
+                })
+                .ToListAsync()
+                .ConfigureAwait(false);
+        }
+
         var cutoff = _musicConfig.TitleSimilarityCutoff;
 
-        var tracks = await context.PlayHistories
-            .Where(ph => ph.GuildId == decimalGuildId)
-            .Include(ph => ph.Track)
-            .Select(ph => ph.Track)
-            .Where(t =>
-                EF.Functions.TrigramsSimilarity(t.Title, searchTerm) > cutoff ||
-                EF.Functions.TrigramsSimilarity(t.Uri, searchTerm) > cutoff ||
-                (t.Artist != null && EF.Functions.TrigramsSimilarity(t.Artist, searchTerm) > cutoff))
-            .OrderByDescending(t =>
-                EF.Functions.TrigramsSimilarity(t.Title, searchTerm) +
-                EF.Functions.TrigramsSimilarity(t.Uri, searchTerm) +
-                (t.Artist == null ? 0 : EF.Functions.TrigramsSimilarity(t.Artist, searchTerm))
-            )
-            .Distinct()
+        var tracks = await context.Tracks
+            .Where(t => EF.Functions.TrigramsSimilarity(t.Title, searchTerm) > cutoff ||
+                        EF.Functions.ILike(t.Title, $"%{searchTerm}%"))
             .Take(24)
-            .ToListAsync()
-            .ConfigureAwait(false);
+            .Select(t => new TrackEntity
+            {
+                Title = t.Title,
+                Uri = t.Uri
+            })
+            .ToListAsync();
 
-        return tracks.Select(t => new SongHistoryEntryInfo(t.Title, t.Uri));
+        return tracks;
     }
 
     public async Task<float> GetGuildVolumeAsync(ulong guildId)
@@ -214,5 +223,3 @@ public class MusicHistoryService
         }
     }
 }
-
-public record SongHistoryEntryInfo(string Title, string Uri);
