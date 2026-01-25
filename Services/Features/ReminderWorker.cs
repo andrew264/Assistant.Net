@@ -11,28 +11,35 @@ public class ReminderWorker(
     ILogger<ReminderWorker> logger)
     : BackgroundService
 {
-    private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(30);
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("ReminderWorker started.");
-
-        await Task.Delay(5000, stoppingToken);
+        logger.LogInformation("ReminderWorker started. Waiting for Discord connection...");
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            if (client is { ConnectionState: ConnectionState.Connected, LoginState: LoginState.LoggedIn })
+                break;
+            await Task.Delay(1000, stoppingToken);
+        }
+
+        await reminderService.InitializeAsync();
+
+        logger.LogInformation("ReminderWorker processing loop started.");
+
+        while (!stoppingToken.IsCancellationRequested)
             try
             {
-                if (client is { ConnectionState: ConnectionState.Connected, LoginState: LoginState.LoggedIn })
-                    await reminderService.ProcessDueRemindersAsync().ConfigureAwait(false);
+                await reminderService.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error in ReminderWorker loop.");
+                logger.LogError(ex, "Unexpected error in ReminderWorker loop.");
+                await Task.Delay(5000, stoppingToken);
             }
-
-            await Task.Delay(_checkInterval, stoppingToken).ConfigureAwait(false);
-        }
 
         logger.LogInformation("ReminderWorker stopping.");
     }
