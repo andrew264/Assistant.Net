@@ -1,8 +1,5 @@
 namespace Assistant.Net.Models.Reddit;
 
-/// <summary>
-///     Represents a processed Reddit submission ready for display.
-/// </summary>
 public record ProcessedRedditPost
 {
     public RedditPostData Submission { get; init; } = null!;

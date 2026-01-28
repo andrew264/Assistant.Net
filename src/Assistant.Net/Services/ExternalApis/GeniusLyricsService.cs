@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.Json;
 using System.Web;
 using Assistant.Net.Models.Lyrics;
 using Assistant.Net.Options;
@@ -6,7 +7,6 @@ using HtmlAgilityPack;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
 
 namespace Assistant.Net.Services.ExternalApis;
 
@@ -25,6 +25,8 @@ public class GeniusLyricsService(
     private const string GeniusBaseUrl = "https://genius.com";
     private const string UserAgent = "Assistant.Net/1.0";
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(6);
+
+    private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public async Task<List<GeniusSong>?> SearchSongsAsync(string title, string? artist = null)
     {
@@ -68,7 +70,7 @@ public class GeniusLyricsService(
                 return null;
             }
 
-            var geniusResponse = JsonConvert.DeserializeObject<GeniusSearchResponse>(responseContent);
+            var geniusResponse = JsonSerializer.Deserialize<GeniusSearchResponse>(responseContent, _jsonOptions);
 
             if (geniusResponse?.Meta.Status != 200 || geniusResponse.Response?.Hits == null)
             {
@@ -151,7 +153,7 @@ public class GeniusLyricsService(
                 return null;
             }
 
-            var geniusResponse = JsonConvert.DeserializeObject<GeniusSongResponse>(responseContent);
+            var geniusResponse = JsonSerializer.Deserialize<GeniusSongResponse>(responseContent, _jsonOptions);
 
             if (geniusResponse?.Meta.Status != 200 || geniusResponse.Response?.Song == null)
             {

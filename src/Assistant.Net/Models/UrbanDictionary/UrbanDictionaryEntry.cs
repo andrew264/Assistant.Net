@@ -1,6 +1,6 @@
+using System.Text.Json.Serialization;
 using System.Web;
 using Assistant.Net.Utilities;
-using Newtonsoft.Json;
 
 namespace Assistant.Net.Models.UrbanDictionary;
 
@@ -8,23 +8,23 @@ public class UrbanDictionaryEntry
 {
     private const string UdBaseUrl = "https://www.urbandictionary.com/define.php?term={0}";
 
-    [JsonProperty("definition")] public string Definition { get; set; } = "No definition found.";
+    [JsonPropertyName("definition")] private string Definition { get; } = "No definition found.";
 
-    [JsonProperty("example")] public string Example { get; set; } = string.Empty;
+    [JsonPropertyName("example")] private string Example { get; } = string.Empty;
 
-    [JsonProperty("word")] public string Word { get; set; } = string.Empty;
+    [JsonPropertyName("word")] public string Word { get; set; } = string.Empty;
 
-    [JsonProperty("author")] public string Author { get; set; } = "Unknown";
+    [JsonPropertyName("author")] public string Author { get; set; } = "Unknown";
 
-    [JsonProperty("permalink")] public string Permalink { get; set; } = string.Empty;
+    [JsonPropertyName("permalink")] public string Permalink { get; set; } = string.Empty;
 
-    [JsonProperty("thumbs_up")] public int ThumbsUp { get; set; }
+    [JsonPropertyName("thumbs_up")] public int ThumbsUp { get; set; }
 
-    [JsonProperty("thumbs_down")] public int ThumbsDown { get; set; }
+    [JsonPropertyName("thumbs_down")] public int ThumbsDown { get; set; }
 
-    [JsonProperty("defid")] public long DefId { get; set; }
+    [JsonPropertyName("defid")] public long DefId { get; set; }
 
-    [JsonProperty("written_on")] public string WrittenOn { get; set; } = string.Empty;
+    [JsonPropertyName("written_on")] public string WrittenOn { get; set; } = string.Empty;
 
     [JsonIgnore] public string FormattedDefinition => FormatLinks(Definition);
 

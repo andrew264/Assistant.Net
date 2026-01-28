@@ -1,10 +1,10 @@
+using System.Text.Json;
 using Assistant.Net.Options;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
 
 namespace Assistant.Net.Modules.Games.Interaction;
 
@@ -51,7 +51,8 @@ public class FunCommands : InteractionModuleBase<SocketInteractionContext>
         try
         {
             var content = File.ReadAllText(filePath);
-            var config = JsonConvert.DeserializeObject<DeathMessagesConfig>(content);
+            var config = JsonSerializer.Deserialize<DeathMessagesConfig>(content,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
             if (config?.Messages.Count > 0)
             {

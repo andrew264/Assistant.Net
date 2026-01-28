@@ -1,8 +1,8 @@
+using System.Text.Json;
 using System.Web;
 using Assistant.Net.Models.UrbanDictionary;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 
 namespace Assistant.Net.Services.ExternalApis;
 
@@ -14,6 +14,7 @@ public class UrbanDictionaryService(
     private const string UdApiRandom = "https://api.urbandictionary.com/v0/random";
     private const string UdApiDefine = "https://api.urbandictionary.com/v0/define?term={0}";
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(3); // 3-hour cache
+    private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public async Task<List<UrbanDictionaryEntry>?> GetDefinitionsAsync(string? term)
     {
@@ -44,7 +45,7 @@ public class UrbanDictionaryService(
             }
 
             var jsonString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            var apiResponse = JsonConvert.DeserializeObject<UrbanDictionaryResponse>(jsonString);
+            var apiResponse = JsonSerializer.Deserialize<UrbanDictionaryResponse>(jsonString, _jsonOptions);
 
             if (apiResponse?.List == null || apiResponse.List.Count == 0)
             {

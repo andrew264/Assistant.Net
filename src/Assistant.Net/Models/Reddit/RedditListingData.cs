@@ -1,15 +1,14 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Assistant.Net.Models.Reddit;
 
-// Represents the "data" object within the main listing response
 public class RedditListingData
 {
-    [JsonProperty("children")] public List<RedditPostContainer> Children { get; set; } = [];
+    [JsonPropertyName("children")] public List<RedditPostContainer> Children { get; set; } = [];
 
-    [JsonProperty("after")] public string? After { get; set; }
+    [JsonPropertyName("after")] public string? After { get; set; }
 
-    [JsonProperty("before")] public string? Before { get; set; }
+    [JsonPropertyName("before")] public string? Before { get; set; }
 
-    [JsonProperty("dist")] public int? Dist { get; set; }
+    [JsonPropertyName("dist")] public int? Dist { get; set; }
 }

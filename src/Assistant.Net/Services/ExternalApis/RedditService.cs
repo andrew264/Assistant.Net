@@ -1,13 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Assistant.Net.Models.Reddit;
 using Assistant.Net.Options;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Assistant.Net.Services.ExternalApis;
 
@@ -25,6 +25,8 @@ public class RedditService(
 
     private static readonly HashSet<string> ValidTimeframes =
         ["hour", "day", "week", "month", "year", "all"];
+
+    private readonly JsonSerializerOptions _jsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
@@ -103,9 +105,9 @@ public class RedditService(
 
             try
             {
-                var jsonResponse = JObject.Parse(responseBody);
-                var token = jsonResponse["access_token"]?.Value<string>();
-                var expiresIn = jsonResponse["expires_in"]?.Value<int>();
+                var jsonResponse = JsonNode.Parse(responseBody);
+                var token = jsonResponse?["access_token"]?.GetValue<string>();
+                var expiresIn = jsonResponse?["expires_in"]?.GetValue<int>();
 
                 if (string.IsNullOrEmpty(token) || !expiresIn.HasValue)
                 {
@@ -234,7 +236,7 @@ public class RedditService(
             }
 
             var jsonString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-            var listingResponse = JsonConvert.DeserializeObject<RedditListingResponse>(jsonString);
+            var listingResponse = JsonSerializer.Deserialize<RedditListingResponse>(jsonString, _jsonOptions);
 
             if (listingResponse?.Data.Children == null)
             {

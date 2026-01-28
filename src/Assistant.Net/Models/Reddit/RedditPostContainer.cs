@@ -1,11 +1,10 @@
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
 
 namespace Assistant.Net.Models.Reddit;
 
-// Represents one item in the "children" array
 public class RedditPostContainer
 {
-    [JsonProperty("kind")] public string Kind { get; set; } = string.Empty;
+    [JsonPropertyName("kind")] public string Kind { get; set; } = string.Empty;
 
-    [JsonProperty("data")] public RedditPostData Data { get; set; } = new();
+    [JsonPropertyName("data")] public RedditPostData Data { get; set; } = new();
 }
