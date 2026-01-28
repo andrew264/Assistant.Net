@@ -25,15 +25,16 @@ public static class UserUtils
     public static async Task<(MessageComponent? Components, FileAttachment? Attachment, string? ErrorMessage)>
         GenerateAvatarComponentsAsync(IUser targetUser, IHttpClientFactory httpClientFactory, ILogger logger)
     {
-        var avatarUrl = targetUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ?? targetUser.GetDefaultAvatarUrl();
+        var avatarUrl = targetUser.GetDisplayAvatarUrl(size: 2048) ?? targetUser.GetDefaultAvatarUrl();
 
         if (string.IsNullOrEmpty(avatarUrl))
             return (null, null, "Could not retrieve avatar URL for this user.");
 
         var displayUserName = (targetUser as IGuildUser)?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
 
+        var fileName = Path.GetFileName(new Uri(avatarUrl).AbsolutePath);
         var fileAttachment = await AttachmentUtils
-            .DownloadFileAsAttachmentAsync(avatarUrl, "avatar.png", httpClientFactory, logger).ConfigureAwait(false);
+            .DownloadFileAsAttachmentAsync(avatarUrl, fileName, httpClientFactory, logger).ConfigureAwait(false);
 
         if (fileAttachment == null)
             return (null, null, $"Could not download avatar for {displayUserName}.");
@@ -44,7 +45,7 @@ public static class UserUtils
             new ContainerBuilder()
                 .WithAccentColor(userColor)
                 .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
-                .WithMediaGallery(["attachment://avatar.png"])
+                .WithMediaGallery([$"attachment://{fileName}"])
                 .WithActionRow(
                     new ActionRowBuilder()
                         .WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl)
@@ -65,15 +66,7 @@ public static class UserUtils
         var container = new ContainerBuilder();
 
         // -- Header --
-        container.WithSection(new SectionBuilder()
-            .AddComponent(new TextDisplayBuilder("# User Profile Updated"))
-            .AddComponent(new TextDisplayBuilder($"{after.Mention}"))
-            .WithAccessory(new ThumbnailBuilder
-            {
-                Media = new UnfurledMediaItemProperties
-                    { Url = after.GetDisplayAvatarUrl() ?? after.GetDefaultAvatarUrl() }
-            })
-        );
+        container.WithTextDisplay(new TextDisplayBuilder($"{after.Mention}'s Profile Updated"));
 
         container.WithSeparator();
 
@@ -83,21 +76,21 @@ public static class UserUtils
                 new TextDisplayBuilder($"**Username:** `{before.Username}` → `{after.Username}`"));
 
         // -- Avatar Change --
-        var beforeAvatarUrl = before.GetDisplayAvatarUrl(size: 1024) ?? before.GetDefaultAvatarUrl();
-        var afterAvatarUrl = after.GetDisplayAvatarUrl(size: 1024) ?? after.GetDefaultAvatarUrl();
+        var beforeAvatarUrl = before.GetDisplayAvatarUrl(size: 1024);
+        var afterAvatarUrl = after.GetDisplayAvatarUrl(size: 1024);
 
         if (beforeAvatarUrl != afterAvatarUrl)
         {
             container.WithTextDisplay(new TextDisplayBuilder("**New Avatar**"));
-
-            // Attempt download for better embed support
-            var afterAttachment = await AttachmentUtils.DownloadFileAsAttachmentAsync(
-                afterAvatarUrl, "avatar_after.png", httpClientFactory, logger).ConfigureAwait(false);
+            var fileName = Path.GetFileName(new Uri(afterAvatarUrl).AbsolutePath);
+            var afterAttachment = await AttachmentUtils
+                .DownloadFileAsAttachmentAsync(afterAvatarUrl, fileName, httpClientFactory, logger)
+                .ConfigureAwait(false);
 
             if (afterAttachment.HasValue)
             {
                 attachments.Add(afterAttachment.Value);
-                container.WithMediaGallery(["attachment://avatar_after.png"]);
+                container.WithMediaGallery([$"attachment://{fileName}"]);
             }
             else
             {
