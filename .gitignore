@@ -5,11 +5,11 @@ riderModule.iml
 /_ReSharper.Caches/
 
 # configs
-*.yaml
+appsettings.*.json
 
 # ide
 .idea/
 *.DotSettings.user
 
 # resources
-*.json
+src/Assistant.Net/Resources/*.json

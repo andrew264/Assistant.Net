@@ -86,23 +86,20 @@ To run your own instance of Assistant.Net, you'll need to follow these steps.
    cd Assistant.Net
    ```
 
-2. Configure the bot by creating your own `config.yaml` file. You can start by copying the `example.yaml`:
-   ```sh
-   cp Configuration/example.yaml Configuration/config.yaml
-   ```
+2. Configure the bot by editing `src/Assistant.Net/appsettings.json` or creating an `appsettings.Development.json`.
 
-3. Fill in the `Configuration/config.yaml` with your own tokens, keys, and database credentials. See the Configuration
+3. Fill in the configuration file with your own tokens, keys, and database credentials. See the Configuration
    section below for more details.
 
 4. Build and run the project:
    ```sh
-   dotnet run
+   dotnet run --project src/Assistant.Net
    ```
 
 ### Building
 
 ```
-dotnet publish -r linux-x64 -c Release \
+dotnet publish src/Assistant.Net -r linux-x64 -c Release \
   -p:PublishSingleFile=true \
   -p:SelfContained=true \
   -p:PublishAot=false \
@@ -111,18 +108,16 @@ dotnet publish -r linux-x64 -c Release \
 
 ## Configuration
 
-The bot's behavior is controlled by the `Configuration/config.yaml` file. Here are the main sections you'll need to
+The bot's behavior is controlled by the `appsettings.json` file. Here are the main sections you'll need to
 set up:
 
-* **client**: Contains essential Discord bot settings like the token, owner ID, command prefix, and the category for DM
+* **Discord**: Contains essential Discord bot settings like the token, owner ID, command prefix, and the category for DM
   relay channels.
-* **database**: Your PostgreSQL connection string.
-* **lavalink**: Credentials for your Lavalink server, which is required for all music features.
-* **reddit**: API credentials for a Reddit application if you want to use the Reddit commands. You can also configure
+* **Database**: Your PostgreSQL connection string.
+* **Lavalink**: Credentials for your Lavalink server, which is required for all music features.
+* **Reddit**: API credentials for a Reddit application if you want to use the Reddit commands. You can also configure
   the subreddits for the meme and NSFW commands here.
-* **geniusToken**: An API token from Genius for fetching song lyrics.
-* **loggingGuilds**: Configure channels where the bot should log server events like message edits, deletions, and member
-  updates.
+* **ExternalApis**: API tokens for services like Genius (lyrics) and others.
 
 ## Technology Stack
 

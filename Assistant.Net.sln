@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assistant.Net", "Assistant.Net.csproj", "{A820146F-10D1-49EB-882C-EF054F67B504}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assistant.Net", "src/Assistant.Net/Assistant.Net.csproj", "{A820146F-10D1-49EB-882C-EF054F67B504}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
