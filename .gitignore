@@ -13,3 +13,6 @@ appsettings.*.json
 
 # resources
 src/Assistant.Net/Resources/*.json
+
+# logs
+log-*.txt

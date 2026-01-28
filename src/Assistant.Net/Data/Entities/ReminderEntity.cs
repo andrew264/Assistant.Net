@@ -24,15 +24,15 @@ public class ReminderEntity
 
     public decimal ChannelId { get; set; }
 
-    [Required] public string Message { get; set; } = null!;
+    [Required] [MaxLength(2000)] public string Message { get; set; } = null!;
 
     public DateTime TriggerTime { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    public string? Recurrence { get; set; }
+    [MaxLength(50)] public string? Recurrence { get; set; }
 
-    public string? Title { get; set; }
+    [MaxLength(200)] public string? Title { get; set; }
 
     public DateTime? LastTriggered { get; set; }
 

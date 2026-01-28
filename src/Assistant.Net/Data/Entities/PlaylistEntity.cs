@@ -18,7 +18,7 @@ public class PlaylistEntity
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 
-    [Required] public string Name { get; set; } = null!;
+    [Required] [MaxLength(100)] public string Name { get; set; } = null!;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

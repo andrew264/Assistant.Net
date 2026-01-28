@@ -12,15 +12,15 @@ public class TrackEntity
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
 
-    [Required] public string Uri { get; set; } = null!;
+    [Required] [MaxLength(2048)] public string Uri { get; set; } = null!;
 
-    [Required] public string Title { get; set; } = null!;
+    [Required] [MaxLength(512)] public string Title { get; set; } = null!;
 
-    public string? Artist { get; set; }
+    [MaxLength(255)] public string? Artist { get; set; }
 
-    public string? ThumbnailUrl { get; set; }
+    [MaxLength(2048)] public string? ThumbnailUrl { get; set; }
 
     public double Duration { get; set; }
 
-    public string Source { get; set; } = "unknown";
+    [MaxLength(50)] public string Source { get; set; } = "unknown";
 }

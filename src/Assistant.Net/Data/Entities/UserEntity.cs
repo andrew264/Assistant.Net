@@ -10,7 +10,7 @@ public class UserEntity
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     public decimal Id { get; set; }
 
-    public string? About { get; set; }
+    [MaxLength(4000)] public string? About { get; set; }
 
     public DateTime? LastSeen { get; set; }
 }
