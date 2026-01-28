@@ -176,6 +176,7 @@ public class MusicHistoryService
         var tracks = await context.Tracks
             .Where(t => EF.Functions.TrigramsSimilarity(t.Title, searchTerm) > cutoff ||
                         EF.Functions.ILike(t.Title, $"%{searchTerm}%"))
+            .OrderByDescending(t => t.Title)
             .Take(24)
             .Select(t => new TrackEntity
             {
