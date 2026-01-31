@@ -1,7 +1,5 @@
-using Assistant.Net.Options;
 using Assistant.Net.Services.Data;
 using Assistant.Net.Utilities;
-using Discord;
 using Discord.WebSocket;
 using Lavalink4NET.InactivityTracking.Players;
 using Lavalink4NET.InactivityTracking.Trackers;
@@ -16,18 +14,21 @@ namespace Assistant.Net.Services.Music.Logic;
 public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOptions> properties)
     : QueuedLavalinkPlayer(properties), IInactivityPlayerListener
 {
+    private const string StatusPrefix = "▶️ ";
+
     private readonly MusicHistoryService _historyService =
         properties.ServiceProvider!.GetRequiredService<MusicHistoryService>();
 
-    private readonly ILogger<CustomPlayer> _logger =
-        properties.ServiceProvider!.GetRequiredService<ILogger<CustomPlayer>>();
-
-    private DiscordSocketClient SocketClient => properties.Options.Value.SocketClient;
-    private DiscordOptions DiscordOptions => properties.Options.Value.DiscordOptions;
-    private bool IsHomeGuildPlayer => GuildId == DiscordOptions.HomeGuildId;
+    private readonly ILogger<CustomPlayer> _logger = properties.Logger;
+    private readonly DiscordSocketClient _socketClient = properties.Options.Value.SocketClient;
 
     public ValueTask NotifyPlayerActiveAsync(PlayerTrackingState trackingState,
-        CancellationToken cancellationToken = default) => default;
+        CancellationToken cancellationToken = default)
+        => default;
+
+    public ValueTask NotifyPlayerTrackedAsync(PlayerTrackingState trackingState,
+        CancellationToken cancellationToken = default)
+        => default;
 
     public async ValueTask NotifyPlayerInactiveAsync(PlayerTrackingState trackingState,
         CancellationToken cancellationToken = default)
@@ -36,35 +37,22 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
         await DisconnectAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public ValueTask NotifyPlayerTrackedAsync(PlayerTrackingState trackingState,
-        CancellationToken cancellationToken = default) => default;
-
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem queueItem,
         CancellationToken cancellationToken = default)
     {
         await base.NotifyTrackStartedAsync(queueItem, cancellationToken).ConfigureAwait(false);
-
-        if (IsHomeGuildPlayer)
-        {
-            var title = queueItem.Track?.Title ?? "Unknown Track";
-            var cleanTitle = title.RemoveStuffInBrackets().Trim().Truncate(128);
-
-            try
-            {
-                await SocketClient.SetActivityAsync(new Game(cleanTitle, ActivityType.Listening)).ConfigureAwait(false);
-                _logger.LogDebug("Updated bot presence for Home Guild {GuildId}: Listening to {TrackTitle}", GuildId,
-                    cleanTitle);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to update bot presence for Home Guild {GuildId}", GuildId);
-            }
-        }
-
         await _historyService.AddSongToHistoryAsync(GuildId, queueItem).ConfigureAwait(false);
 
-        _logger.LogInformation("[Player:{GuildId}] Track started: {TrackTitle} ({TrackUri})", GuildId,
-            queueItem.Track?.Title, queueItem.Track?.Uri);
+        _logger.LogInformation("[Player:{GuildId}] Track started: {TrackTitle} ({TrackUri})",
+            GuildId, queueItem.Track?.Title, queueItem.Track?.Uri);
+
+        if (queueItem.Track is null) return;
+
+        var rawTitle = queueItem.Track.Title;
+        var cleanTitle = rawTitle.RemoveStuffInBrackets().Trim().Truncate(128);
+        var statusText = $"{StatusPrefix}{cleanTitle}";
+
+        await SetVoiceChannelStatusAsync(statusText, false).ConfigureAwait(false);
     }
 
     protected override async ValueTask NotifyTrackEndedAsync(ITrackQueueItem queueItem, TrackEndReason endReason,
@@ -72,26 +60,34 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
     {
         await base.NotifyTrackEndedAsync(queueItem, endReason, cancellationToken).ConfigureAwait(false);
 
-        if (IsHomeGuildPlayer && Queue.IsEmpty)
-            try
-            {
-                var activityText = DiscordOptions.ActivityText;
-                var activityType = Enum.TryParse<ActivityType>(DiscordOptions.ActivityType, true, out var type)
-                    ? type
-                    : ActivityType.Playing;
+        _logger.LogInformation("[Player:{GuildId}] Track ended: {TrackTitle} ({TrackUri}). Reason: {Reason}",
+            GuildId, queueItem.Track?.Title, queueItem.Track?.Uri, endReason);
 
-                if (!string.IsNullOrEmpty(activityText))
-                    await SocketClient.SetActivityAsync(new Game(activityText, activityType)).ConfigureAwait(false);
-                else
-                    await SocketClient.SetActivityAsync(null).ConfigureAwait(false);
-                _logger.LogDebug("Reset bot presence for Home Guild {GuildId} as queue ended.", GuildId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to reset bot presence for Home Guild {GuildId}", GuildId);
-            }
+        if (Queue.IsEmpty)
+        {
+            _logger.LogTrace("Resetting VC Status for {GuildId} as queue ended.", GuildId);
+            await SetVoiceChannelStatusAsync(string.Empty, true).ConfigureAwait(false);
+        }
+    }
 
-        _logger.LogInformation("[Player:{GuildId}] Track ended: {TrackTitle} ({TrackUri}). Reason: {Reason}", GuildId,
-            queueItem.Track?.Title, queueItem.Track?.Uri, endReason);
+    private async ValueTask SetVoiceChannelStatusAsync(string status, bool isResetting)
+    {
+        if (VoiceState.VoiceChannelId is not { } voiceChannelId) return;
+        var guild = _socketClient.GetGuild(GuildId);
+        var voiceChannel = guild?.GetVoiceChannel(voiceChannelId);
+        if (voiceChannel is null) return;
+
+        var currentStatus = voiceChannel.Status ?? string.Empty;
+        if (!string.IsNullOrEmpty(currentStatus) && !currentStatus.StartsWith(StatusPrefix)) return;
+
+        try
+        {
+            await voiceChannel.SetStatusAsync(status).ConfigureAwait(false);
+            if (!isResetting) _logger.LogTrace("Updated VC Status in #{VCName}: {Status}", voiceChannel.Name, status);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to update VC Status in #{VCName}", voiceChannel.Name);
+        }
     }
 }

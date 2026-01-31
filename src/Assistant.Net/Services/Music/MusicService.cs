@@ -21,7 +21,6 @@ namespace Assistant.Net.Services.Music;
 public class MusicService(
     IAudioService audioService,
     MusicHistoryService musicHistoryService,
-    IOptions<DiscordOptions> options,
     IOptions<MusicOptions> musicOptions,
     DiscordSocketClient client,
     ILogger<MusicService> logger)
@@ -49,10 +48,7 @@ public class MusicService(
 
         var playerOptions = new CustomPlayerOptions
         {
-            TextChannel = targetTextChannel,
             SocketClient = client,
-            DiscordOptions = options.Value,
-            MusicOptions = musicOptions.Value,
             InitialVolume = await musicHistoryService.GetGuildVolumeAsync(guildId).ConfigureAwait(false)
         };
 
