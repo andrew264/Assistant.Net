@@ -16,9 +16,6 @@ using Lavalink4NET.Cluster;
 using Lavalink4NET.Cluster.Extensions;
 using Lavalink4NET.Cluster.Nodes;
 using Lavalink4NET.DiscordNet;
-using Lavalink4NET.InactivityTracking;
-using Lavalink4NET.InactivityTracking.Extensions;
-using Lavalink4NET.InactivityTracking.Trackers.Users;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -117,14 +114,6 @@ builder.Services.AddOptions<ClusterAudioServiceOptions>()
 
         clusterOptions.ReadyTimeout = TimeSpan.FromSeconds(30);
     });
-
-builder.Services.AddInactivityTracking();
-builder.Services.ConfigureInactivityTracking(options =>
-{
-    options.InactivityBehavior = PlayerInactivityBehavior.None;
-    options.DefaultPollInterval = TimeSpan.FromSeconds(600);
-});
-builder.Services.Configure<UsersInactivityTrackerOptions>(options => { options.Timeout = TimeSpan.FromSeconds(600); });
 
 // --- Application Services ---
 
