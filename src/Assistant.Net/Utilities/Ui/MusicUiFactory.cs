@@ -164,34 +164,59 @@ public static class MusicUiFactory
                 .WithIsDivider(false));
 
         var controlsDisabled = currentTrack == null;
+        var currentVolumePercent = (int)(player.Volume * 100);
 
-        container.WithActionRow(new ActionRowBuilder().WithComponents([
+        // --- Row 1: Stop | Prev | Pause | Skip | Loop ---
+        var loopEmoji = player.RepeatMode switch
+        {
+            TrackRepeatMode.Track => Emoji.Parse("🔂"),
+            TrackRepeatMode.Queue => Emoji.Parse("🔁"),
+            _ => Emoji.Parse("➡️")
+        };
+
+        var row1 = new ActionRowBuilder().WithComponents([
+            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger)
+                .WithEmote(Emoji.Parse("⏹️"))
+                .WithDisabled(controlsDisabled),
             new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:prev_restart")
                 .WithEmote(Emoji.Parse("⏮️"))
-                .WithDisabled(controlsDisabled),
-            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:rewind")
-                .WithEmote(Emoji.Parse("⏪"))
                 .WithDisabled(controlsDisabled),
             new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:pause_resume",
                     player.State == PlayerState.Paused ? ButtonStyle.Success : ButtonStyle.Primary)
                 .WithEmote(player.State == PlayerState.Paused ? Emoji.Parse("▶️") : Emoji.Parse("⏸️"))
                 .WithDisabled(controlsDisabled),
-            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:forward")
-                .WithEmote(Emoji.Parse("⏩"))
-                .WithDisabled(controlsDisabled),
             new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:skip")
                 .WithEmote(Emoji.Parse("⏭️"))
+                .WithDisabled(controlsDisabled),
+            new ButtonBuilder(null, $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary)
+                .WithEmote(loopEmoji)
                 .WithDisabled(controlsDisabled)
-        ]));
+        ]);
 
-        container.WithSeparator();
+        container.WithActionRow(row1);
 
+        // --- Row 2: Vol - | Save | Vol + ---
+        var row2 = new ActionRowBuilder().WithComponents([
+            new ButtonBuilder("Vol -", $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Secondary)
+                .WithEmote(Emoji.Parse("🔉"))
+                .WithDisabled(controlsDisabled || currentVolumePercent <= 0),
+            new ButtonBuilder("Save", $"{NpCustomIdPrefix}:{guildId}:add_to_playlist", ButtonStyle.Success)
+                .WithEmote(Emoji.Parse("💟"))
+                .WithDisabled(controlsDisabled),
+            new ButtonBuilder("Vol +", $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Secondary)
+                .WithEmote(Emoji.Parse("🔊"))
+                .WithDisabled(controlsDisabled || currentVolumePercent >= maxVolumePercent)
+        ]);
+
+        container.WithActionRow(row2);
+
+        // --- Footer Text ---
         var footerText = new StringBuilder();
         if (!queue.IsEmpty)
         {
             var nextTrack = queue[0].Track;
             if (nextTrack != null)
-                footerText.Append($"Next: {nextTrack.Title.Truncate(50)} | {queue.Count} in queue");
+                footerText.Append($"Next: {nextTrack.Title.Truncate(40)} | {queue.Count} in queue");
             else
                 footerText.Append($"{queue.Count} songs in queue");
         }
@@ -210,43 +235,56 @@ public static class MusicUiFactory
                 break;
         }
 
-        if (footerText.Length > 0)
+        footerText.Append($" | Vol: {currentVolumePercent}%");
+
+        container.WithSeparator(new SeparatorBuilder().WithSpacing(SeparatorSpacingSize.Small)
+            .WithIsDivider(false));
+        container.WithTextDisplay(new TextDisplayBuilder(footerText.ToString()));
+
+        return new ComponentBuilderV2(container).Build();
+    }
+
+    public static MessageComponent BuildAddToPlaylistMenu(List<PlaylistEntity> playlists, string songTitle)
+    {
+        var container = new ContainerBuilder()
+            .WithTextDisplay(new TextDisplayBuilder("## Add to Playlist"))
+            .WithTextDisplay(new TextDisplayBuilder(
+                $"Select a playlist to add **{songTitle.Truncate(50)}** to:"));
+
+        if (playlists.Count > 0)
         {
-            container.WithSeparator(new SeparatorBuilder().WithSpacing(SeparatorSpacingSize.Small)
-                .WithIsDivider(false));
-            container.WithTextDisplay(new TextDisplayBuilder(footerText.ToString()));
+            var options = playlists.Select(p => new SelectMenuOptionBuilder()
+                .WithLabel(p.Name.Truncate(50))
+                .WithValue(p.Id.ToString())
+                .WithDescription($"{p.Items.Count} songs")
+            ).Take(25).ToList();
+
+            container.WithActionRow(new ActionRowBuilder()
+                .WithSelectMenu(new SelectMenuBuilder()
+                    .WithCustomId("np:playlist:select")
+                    .WithPlaceholder("Select a playlist...")
+                    .WithOptions(options)
+                ));
+        }
+        else
+        {
+            container.WithTextDisplay(new TextDisplayBuilder("*You don't have any playlists yet.*"));
         }
 
-        var loopEmoji = player.RepeatMode switch
-        {
-            TrackRepeatMode.Track => Emoji.Parse("🔂"),
-            TrackRepeatMode.Queue => Emoji.Parse("🔁"),
-            _ => Emoji.Parse("➡️")
-        };
+        container.WithActionRow(new ActionRowBuilder()
+            .WithButton("Create New Playlist", "np:playlist:create", ButtonStyle.Secondary, new Emoji("➕"))
+        );
 
-        container.WithActionRow(new ActionRowBuilder().WithComponents([
-            new ButtonBuilder("Stop", $"{NpCustomIdPrefix}:{guildId}:stop", ButtonStyle.Danger)
-                .WithEmote(Emoji.Parse("⏹️"))
-                .WithDisabled(controlsDisabled),
-            new ButtonBuilder("Loop", $"{NpCustomIdPrefix}:{guildId}:loop", ButtonStyle.Secondary)
-                .WithEmote(loopEmoji)
-                .WithDisabled(controlsDisabled)
-        ]));
+        return new ComponentBuilderV2(container).Build();
+    }
 
-        container.WithSeparator();
-
-        var currentVolumePercent = (int)(player.Volume * 100);
-
-        container.WithActionRow(new ActionRowBuilder().WithComponents([
-            new ButtonBuilder("➖", $"{NpCustomIdPrefix}:{guildId}:vol_down", ButtonStyle.Success)
-                .WithDisabled(controlsDisabled || currentVolumePercent <= 0),
-            new ButtonBuilder($"🔊 {currentVolumePercent}%", $"{NpCustomIdPrefix}:{guildId}:vol_display",
-                    ButtonStyle.Secondary)
-                .WithDisabled(true),
-            new ButtonBuilder("➕", $"{NpCustomIdPrefix}:{guildId}:vol_up", ButtonStyle.Success)
-                .WithDisabled(controlsDisabled || currentVolumePercent >= maxVolumePercent)
-        ]));
-
+    public static MessageComponent BuildAddToPlaylistSuccess(string songTitle, string playlistName)
+    {
+        var container = new ContainerBuilder()
+            .WithAccentColor(Color.Green)
+            .WithTextDisplay(
+                new TextDisplayBuilder(
+                    $"✅ Added **{songTitle.Truncate(50)}** to **{playlistName}**!"));
         return new ComponentBuilderV2(container).Build();
     }
 

@@ -23,7 +23,7 @@ public class NowPlayingService : IDisposable
     private readonly ILogger<NowPlayingService> _logger;
     private readonly MusicOptions _musicOptions;
     private readonly MusicService _musicService;
-    private readonly TimeSpan _updateInterval = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _updateInterval = TimeSpan.FromSeconds(10);
 
     public NowPlayingService(
         DiscordSocketClient client,

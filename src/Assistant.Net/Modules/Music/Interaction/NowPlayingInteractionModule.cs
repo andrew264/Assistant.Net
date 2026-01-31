@@ -1,10 +1,12 @@
 using Assistant.Net.Options;
+using Assistant.Net.Services.Data;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Services.Music.Logic;
 using Assistant.Net.Utilities;
 using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players.Queued;
 using Microsoft.Extensions.Logging;
@@ -16,6 +18,7 @@ namespace Assistant.Net.Modules.Music.Interaction;
 public class NowPlayingInteractionModule(
     NowPlayingService nowPlayingService,
     MusicService musicService,
+    PlaylistService playlistService,
     IOptions<MusicOptions> musicOptions,
     ILogger<NowPlayingInteractionModule> logger) : MusicInteractionModuleBase(musicService, logger)
 {
@@ -73,6 +76,17 @@ public class NowPlayingInteractionModule(
 
         switch (action)
         {
+            case "add_to_playlist":
+                var playlists = await playlistService.GetUserPlaylistsAsync(Context.User.Id, Context.Guild.Id)
+                    .ConfigureAwait(false);
+
+                var components =
+                    MusicUiFactory.BuildAddToPlaylistMenu(playlists, player.CurrentTrack?.Title ?? "Unknown");
+
+                await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
+                    .ConfigureAwait(false);
+                return;
+
             case "prev_restart":
                 if (player.CurrentTrack != null)
                 {
@@ -82,32 +96,8 @@ public class NowPlayingInteractionModule(
                 }
 
                 break;
-            case "rewind":
-                if (player.CurrentTrack != null && player.Position != null)
-                {
-                    var newPosition = player.Position.Value.Position - TimeSpan.FromSeconds(10);
-                    if (newPosition < TimeSpan.Zero) newPosition = TimeSpan.Zero;
-                    await player.SeekAsync(newPosition).ConfigureAwait(false);
-                    Logger.LogInformation("[NP Button] User {User} rewound track in Guild {GuildId}",
-                        Context.User.Username, guildIdParam);
-                }
-
-                break;
             case "pause_resume":
                 await MusicService.PauseOrResumeAsync(player, Context.User).ConfigureAwait(false);
-                break;
-            case "forward":
-                if (player.CurrentTrack != null && player.Position != null)
-                {
-                    if (player.Position.Value.Position < player.CurrentTrack.Duration - TimeSpan.FromSeconds(10))
-                        await player.SeekAsync(player.Position.Value.Position + TimeSpan.FromSeconds(10))
-                            .ConfigureAwait(false);
-                    else
-                        await MusicService.SkipTrackAsync(player, Context.User).ConfigureAwait(false);
-                    Logger.LogInformation("[NP Button] User {User} forwarded track in Guild {GuildId}",
-                        Context.User.Username, guildIdParam);
-                }
-
                 break;
             case "skip":
                 await MusicService.SkipTrackAsync(player, Context.User).ConfigureAwait(false);
@@ -162,5 +152,90 @@ public class NowPlayingInteractionModule(
 
         if (!string.IsNullOrEmpty(ephemeralFollowupMessage))
             await FollowupAsync(ephemeralFollowupMessage, ephemeral: true).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction("np:playlist:select")]
+    public async Task HandleAddToPlaylistSelect(string[] selection)
+    {
+        if (selection.Length == 0) return;
+
+        await DeferAsync(true).ConfigureAwait(false);
+
+        var (player, isError) = await GetVerifiedPlayerAsync(memberBehavior: MemberVoiceStateBehavior.Ignore)
+            .ConfigureAwait(false);
+
+        if (isError || player?.CurrentTrack == null)
+        {
+            await FollowupAsync("Something went wrong or nothing is playing.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        if (!long.TryParse(selection[0], out var playlistId)) return;
+
+        var playlist = await playlistService.GetPlaylistAsync(Context.User.Id, Context.Guild.Id, playlistId)
+            .ConfigureAwait(false);
+
+        if (playlist == null)
+        {
+            await FollowupAsync("Playlist not found.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var result = await playlistService
+            .AddTracksToPlaylistAsync(Context.User.Id, Context.Guild.Id, playlist.Name, [player.CurrentTrack])
+            .ConfigureAwait(false);
+
+        if (result.Success)
+        {
+            var components = MusicUiFactory.BuildAddToPlaylistSuccess(player.CurrentTrack.Title, playlist.Name);
+            await ModifyOriginalResponseAsync(msg =>
+            {
+                msg.Content = "";
+                msg.Components = components;
+                msg.Flags = MessageFlags.ComponentsV2;
+            }).ConfigureAwait(false);
+        }
+        else
+        {
+            await FollowupAsync(result.Message, ephemeral: true).ConfigureAwait(false);
+        }
+    }
+
+    [ComponentInteraction("np:playlist:create")]
+    public async Task HandleAddToPlaylistCreate()
+    {
+        var modal = new ModalBuilder()
+            .WithTitle("Create Playlist")
+            .WithCustomId("np:modal:create")
+            .AddTextInput("Playlist Name", "name", placeholder: "My Awesome Playlist", maxLength: 100)
+            .Build();
+        await RespondWithModalAsync(modal).ConfigureAwait(false);
+    }
+
+    [ModalInteraction("np:modal:create")]
+    public async Task HandleCreatePlaylistModal(PlaylistInteractionModule.CreatePlaylistModal modal)
+    {
+        var result = await playlistService.CreatePlaylistAsync(Context.User.Id, Context.Guild.Id, modal.Name)
+            .ConfigureAwait(false);
+        if (Context.Interaction is not SocketModal modalInteraction || !result.Success)
+        {
+            await RespondAsync(result.Message, ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var (player, _) = await GetVerifiedPlayerAsync(memberBehavior: MemberVoiceStateBehavior.Ignore)
+            .ConfigureAwait(false);
+        var songTitle = player?.CurrentTrack?.Title ?? "Unknown Song";
+
+        var playlists = await playlistService.GetUserPlaylistsAsync(Context.User.Id, Context.Guild.Id)
+            .ConfigureAwait(false);
+
+        var components = MusicUiFactory.BuildAddToPlaylistMenu(playlists, songTitle);
+
+        await modalInteraction.UpdateAsync(msg =>
+        {
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
     }
 }
