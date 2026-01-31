@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Options;
 using Lavalink4NET.Players;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -11,45 +13,78 @@ namespace Assistant.Net.Services.Data;
 
 public class MusicHistoryService
 {
+    private const string SettingsCachePrefix = "music:settings:";
+    private static readonly TimeSpan SettingsCacheDuration = TimeSpan.FromHours(2);
+
     private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
     private readonly GuildService _guildService;
     private readonly ILogger<MusicHistoryService> _logger;
+    private readonly IMemoryCache _memoryCache;
     private readonly MusicOptions _musicOptions;
+    private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _settingsLocks = new();
     private readonly UserService _userService;
 
     public MusicHistoryService(
         IDbContextFactory<AssistantDbContext> dbFactory,
         ILogger<MusicHistoryService> logger,
         IOptions<MusicOptions> musicOptions,
-        UserService userService, GuildService guildService)
+        UserService userService, GuildService guildService, IMemoryCache memoryCache)
     {
         _dbFactory = dbFactory;
         _logger = logger;
         _musicOptions = musicOptions.Value;
         _userService = userService;
         _guildService = guildService;
+        _memoryCache = memoryCache;
 
         _logger.LogInformation("MusicHistoryService initialized.");
     }
 
     private async Task<GuildMusicSettingsEntity> GetSettingsAsync(ulong guildId)
     {
-        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalGuildId = (decimal)guildId;
+        var cacheKey = $"{SettingsCachePrefix}{guildId}";
 
-        var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
+        if (_memoryCache.TryGetValue(cacheKey, out GuildMusicSettingsEntity? cachedSettings) && cachedSettings != null)
+            return cachedSettings;
 
-        if (settings != null) return settings;
-        await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
-        settings = new GuildMusicSettingsEntity
+        var guildLock = _settingsLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+        await guildLock.WaitAsync().ConfigureAwait(false);
+
+        try
         {
-            GuildId = decimalGuildId,
-            Volume = _musicOptions.DefaultVolume
-        };
-        context.GuildMusicSettings.Add(settings);
-        await context.SaveChangesAsync().ConfigureAwait(false);
+            if (_memoryCache.TryGetValue(cacheKey, out cachedSettings) && cachedSettings != null) return cachedSettings;
 
-        return settings;
+            _logger.LogTrace("Music settings cache miss for Guild {GuildId}. Fetching from DB.", guildId);
+            await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+            var decimalGuildId = (decimal)guildId;
+
+            var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
+
+            if (settings == null)
+            {
+                await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
+                settings = new GuildMusicSettingsEntity
+                {
+                    GuildId = decimalGuildId,
+                    Volume = _musicOptions.DefaultVolume
+                };
+                context.GuildMusicSettings.Add(settings);
+                await context.SaveChangesAsync().ConfigureAwait(false);
+                _logger.LogInformation("Created default music settings for Guild {GuildId}", guildId);
+            }
+
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(SettingsCacheDuration)
+                .SetSize(1);
+            _memoryCache.Set(cacheKey, settings, cacheEntryOptions);
+
+            return settings;
+        }
+        finally
+        {
+            guildLock.Release();
+            _settingsLocks.TryRemove(guildId, out _);
+        }
     }
 
     public async Task AddSongToHistoryAsync(ulong guildId, ITrackQueueItem queueItem)
@@ -59,6 +94,8 @@ public class MusicHistoryService
             _logger.LogWarning("Cannot add track to history: Track or URI is null. Guild: {GuildId}", guildId);
             return;
         }
+
+        await GetSettingsAsync(guildId).ConfigureAwait(false);
 
         var requesterId = 0UL;
         var customQueueItem = queueItem.As<CustomTrackQueueItem>();
@@ -75,18 +112,6 @@ public class MusicHistoryService
 
         try
         {
-            var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
-            if (settings == null)
-            {
-                await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
-                settings = new GuildMusicSettingsEntity
-                {
-                    GuildId = decimalGuildId,
-                    Volume = _musicOptions.DefaultVolume
-                };
-                context.GuildMusicSettings.Add(settings);
-            }
-
             await _userService.EnsureUserExistsAsync(context, requesterId).ConfigureAwait(false);
 
             var trackUri = queueItem.Track.Uri.ToString();
@@ -107,7 +132,7 @@ public class MusicHistoryService
 
             var playHistory = new PlayHistoryEntity
             {
-                GuildId = settings.GuildId,
+                GuildId = decimalGuildId,
                 Track = track,
                 RequestedBy = decimalRequesterId,
                 PlayedAt = DateTime.UtcNow
@@ -196,6 +221,7 @@ public class MusicHistoryService
     public async Task SetGuildVolumeAsync(ulong guildId, double volume)
     {
         var clampedVolume = (float)Math.Clamp(volume, 0.0, 2.0);
+        var cacheKey = $"{SettingsCachePrefix}{guildId}";
 
         await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var decimalGuildId = (decimal)guildId;
@@ -216,6 +242,11 @@ public class MusicHistoryService
         {
             await context.SaveChangesAsync().ConfigureAwait(false);
             _logger.LogInformation("Set volume for Guild {GuildId} to {Volume}%.", guildId, clampedVolume * 100);
+
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(SettingsCacheDuration)
+                .SetSize(1);
+            _memoryCache.Set(cacheKey, settings, cacheEntryOptions);
         }
         catch (Exception ex)
         {
