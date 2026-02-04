@@ -15,12 +15,17 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
     : QueuedLavalinkPlayer(properties), IInactivityPlayerListener
 {
     private const string StatusPrefix = "▶️ ";
+    private static readonly TimeSpan HistoryRecordThreshold = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan StatusDebounceInterval = TimeSpan.FromSeconds(10);
 
     private readonly MusicHistoryService _historyService =
         properties.ServiceProvider!.GetRequiredService<MusicHistoryService>();
 
     private readonly ILogger<CustomPlayer> _logger = properties.Logger;
     private readonly DiscordSocketClient _socketClient = properties.Options.Value.SocketClient;
+    private DateTimeOffset _lastStatusUpdate = DateTimeOffset.MinValue;
+
+    private CancellationTokenSource? _statusUpdateCts;
 
     public ValueTask NotifyPlayerActiveAsync(PlayerTrackingState trackingState,
         CancellationToken cancellationToken = default)
@@ -41,7 +46,21 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
         CancellationToken cancellationToken = default)
     {
         await base.NotifyTrackStartedAsync(queueItem, cancellationToken).ConfigureAwait(false);
-        await _historyService.AddSongToHistoryAsync(GuildId, queueItem).ConfigureAwait(false);
+
+        if (queueItem.Track != null && queueItem.Track.Duration >= HistoryRecordThreshold)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(HistoryRecordThreshold, CancellationToken.None).ConfigureAwait(false);
+                    if (Equals(CurrentItem, queueItem) && State == PlayerState.Playing)
+                        await _historyService.AddSongToHistoryAsync(GuildId, queueItem).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error recording history for Guild {GuildId}", GuildId);
+                }
+            }, CancellationToken.None);
 
         _logger.LogInformation("[Player:{GuildId}] Track started: {TrackTitle} ({TrackUri})",
             GuildId, queueItem.Track?.Title, queueItem.Track?.Uri);
@@ -78,11 +97,44 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
         if (voiceChannel is null) return;
 
         var currentStatus = voiceChannel.Status ?? string.Empty;
-        if (!string.IsNullOrEmpty(currentStatus) && !currentStatus.StartsWith(StatusPrefix)) return;
+        if (!string.IsNullOrEmpty(currentStatus) && !currentStatus.StartsWith(StatusPrefix) && !isResetting) return;
 
+        if (_statusUpdateCts != null)
+        {
+            await _statusUpdateCts.CancelAsync().ConfigureAwait(false);
+            _statusUpdateCts.Dispose();
+        }
+
+        _statusUpdateCts = new CancellationTokenSource();
+        var token = _statusUpdateCts.Token;
+
+        var now = DateTimeOffset.UtcNow;
+        var timeSinceLast = now - _lastStatusUpdate;
+        var delay = StatusDebounceInterval - timeSinceLast;
+
+        if (delay <= TimeSpan.Zero || isResetting)
+            await PerformStatusUpdateAsync(voiceChannel, status, isResetting).ConfigureAwait(false);
+        else
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delay, token).ConfigureAwait(false);
+                    if (token.IsCancellationRequested) return;
+                    await PerformStatusUpdateAsync(voiceChannel, status, isResetting).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }, token);
+    }
+
+    private async Task PerformStatusUpdateAsync(SocketVoiceChannel voiceChannel, string status, bool isResetting)
+    {
         try
         {
             await voiceChannel.SetStatusAsync(status).ConfigureAwait(false);
+            _lastStatusUpdate = DateTimeOffset.UtcNow;
             if (!isResetting) _logger.LogTrace("Updated VC Status in #{VCName}: {Status}", voiceChannel.Name, status);
         }
         catch (Exception ex)
