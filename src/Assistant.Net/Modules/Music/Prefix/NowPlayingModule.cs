@@ -35,7 +35,7 @@ public class NowPlayingModule(
             return;
         }
 
-        var npMessage = await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, textChannel, Context.User)
+        var npMessage = await nowPlayingService.CreateOrReplaceNowPlayingMessageAsync(player, textChannel)
             .ConfigureAwait(false);
 
         if (npMessage != null)

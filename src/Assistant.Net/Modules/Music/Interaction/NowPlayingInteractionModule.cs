@@ -42,7 +42,7 @@ public class NowPlayingInteractionModule(
         await RespondAsync(components: components).ConfigureAwait(false);
         var message = await GetOriginalResponseAsync().ConfigureAwait(false);
 
-        nowPlayingService.TrackNowPlayingMessage(message, Context.User, Context.Guild.Id);
+        nowPlayingService.TrackNowPlayingMessage(message, Context.Guild.Id);
     }
 
     [ComponentInteraction(NowPlayingService.NpCustomIdPrefix + ":*:*", true)]

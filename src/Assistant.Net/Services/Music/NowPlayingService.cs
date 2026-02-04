@@ -8,6 +8,7 @@ using Discord.Net;
 using Discord.WebSocket;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
+using Lavalink4NET.Players.Queued;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -45,8 +46,19 @@ public class NowPlayingService : IDisposable
     public void Dispose()
     {
         _logger.LogInformation("Disposing NowPlayingService and clearing active messages.");
-        foreach (var guildId in _activeNowPlayingMessages.Keys.ToList())
-            RemoveNowPlayingMessageAsync(guildId, false).GetAwaiter().GetResult();
+
+        foreach (var kvp in _activeNowPlayingMessages)
+            try
+            {
+                if (!kvp.Value.UpdateTaskCts.IsCancellationRequested)
+                    kvp.Value.UpdateTaskCts.Cancel();
+                kvp.Value.UpdateTaskCts.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disposing CTS for guild {GuildId}", kvp.Key);
+            }
+
         _activeNowPlayingMessages.Clear();
 
         _musicService.PlayerStopped -= OnPlayerStoppedAsync;
@@ -73,8 +85,7 @@ public class NowPlayingService : IDisposable
         }
     }
 
-    public async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageAsync(CustomPlayer player, ITextChannel channel,
-        IUser requester)
+    public async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageAsync(CustomPlayer player, ITextChannel channel)
     {
         var guildId = player.GuildId;
         await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
@@ -99,20 +110,20 @@ public class NowPlayingService : IDisposable
             return null;
         }
 
-        return TrackNowPlayingMessage(sentMessage, requester, guildId);
+        return TrackNowPlayingMessage(sentMessage, guildId);
     }
 
-    public IUserMessage? TrackNowPlayingMessage(IUserMessage message, IUser requester, ulong guildId)
+    public IUserMessage? TrackNowPlayingMessage(IUserMessage message, ulong guildId)
     {
         var cts = new CancellationTokenSource();
-        var npInfo = new NowPlayingMessageInfo(message.Id, message, requester.Id, cts, message.Channel.Id);
+        var npInfo = new NowPlayingMessageInfo(message.Id, message, cts, message.Channel.Id);
 
         if (_activeNowPlayingMessages.TryAdd(guildId, npInfo))
         {
             _ = Task.Run(() => GuildNowPlayingUpdateLoopAsync(guildId, cts.Token), cts.Token);
             _logger.LogInformation(
-                "Created Now Playing message {MessageId} for Guild {GuildId} in Channel {ChannelId}. Requested by {RequesterId}",
-                message.Id, guildId, message.Channel.Id, requester.Id);
+                "Created Now Playing message {MessageId} for Guild {GuildId} in Channel {ChannelId}.",
+                message.Id, guildId, message.Channel.Id);
             return message;
         }
 
@@ -186,50 +197,41 @@ public class NowPlayingService : IDisposable
 
     public async Task UpdateNowPlayingMessageAsync(ulong guildId, CustomPlayer? playerInstance = null)
     {
-        if (!_activeNowPlayingMessages.TryGetValue(guildId, out var npInfo) || npInfo.MessageInstance == null)
+        if (!_activeNowPlayingMessages.TryGetValue(guildId, out var npInfo)) return;
+
+        if (npInfo.MessageInstance == null)
         {
-            if (npInfo is { MessageInstance: null })
+            _logger.LogDebug("NP Message instance for guild {GuildId} is null, attempting to re-fetch or remove.",
+                guildId);
+            if (_client.GetChannel(npInfo.TextChannelId) is ITextChannel textChannel)
             {
-                _logger.LogDebug("NP Message instance for guild {GuildId} is null, attempting to re-fetch or remove.",
-                    guildId);
-                if (_client.GetChannel(npInfo.TextChannelId) is ITextChannel textChannel)
+                try
                 {
-                    try
+                    if (await textChannel.GetMessageAsync(npInfo.MessageId).ConfigureAwait(false) is IUserMessage
+                        fetchedMsg)
                     {
-                        if (await textChannel.GetMessageAsync(npInfo.MessageId).ConfigureAwait(false) is IUserMessage
-                            fetchedMsg)
-                        {
-                            _activeNowPlayingMessages.TryUpdate(guildId,
-                                npInfo with { MessageInstance = fetchedMsg },
-                                npInfo);
-                            npInfo = npInfo with { MessageInstance = fetchedMsg };
-                        }
-                        else
-                        {
-                            await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
-                            return;
-                        }
+                        npInfo.MessageInstance = fetchedMsg;
                     }
-                    catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
+                    else
                     {
                         await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
                         return;
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error re-fetching NP message for guild {guildId}", guildId);
-                        return;
-                    }
                 }
-                else
+                catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
                 {
-                    await RemoveNowPlayingMessageAsync(guildId, false)
-                        .ConfigureAwait(false);
+                    await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error re-fetching NP message for guild {guildId}", guildId);
                     return;
                 }
             }
             else
             {
+                await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
                 return;
             }
         }
@@ -250,12 +252,26 @@ public class NowPlayingService : IDisposable
             return;
         }
 
+        var currentState = new NowPlayingState(
+            player.CurrentTrack.Uri?.ToString(),
+            player.State,
+            player.Position?.Position.TotalSeconds ?? 0d,
+            player.Volume,
+            player.RepeatMode,
+            player.Queue.Count,
+            player.Queue.Count > 0 ? player.Queue[0].Track?.Uri?.ToString() : null
+        );
+
+        if (npInfo.LastState != null && npInfo.LastState.Equals(currentState)) return;
+
         try
         {
             var components =
                 MusicUiFactory.BuildNowPlayingDisplay(player, guildId, _musicOptions.MaxPlayerVolumePercent);
             await npInfo.MessageInstance!.ModifyAsync(props => { props.Components = components; })
                 .ConfigureAwait(false);
+
+            npInfo.LastState = currentState;
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
         {
@@ -294,10 +310,27 @@ public class NowPlayingService : IDisposable
         _logger.LogTrace("Exited NP update loop for Guild {GuildId}", guildId);
     }
 
-    private record NowPlayingMessageInfo(
-        ulong MessageId,
-        IUserMessage? MessageInstance,
-        ulong RequesterId,
-        CancellationTokenSource UpdateTaskCts,
-        ulong TextChannelId);
+    private class NowPlayingMessageInfo(
+        ulong messageId,
+        IUserMessage? messageInstance,
+        CancellationTokenSource updateTaskCts,
+        ulong textChannelId)
+    {
+        public ulong MessageId { get; } = messageId;
+        public IUserMessage? MessageInstance { get; set; } = messageInstance;
+        public CancellationTokenSource UpdateTaskCts { get; } = updateTaskCts;
+        public ulong TextChannelId { get; } = textChannelId;
+
+        public NowPlayingState? LastState { get; set; }
+    }
+
+    private record NowPlayingState(
+        string? TrackUri,
+        PlayerState PlayerState,
+        double PositionSeconds,
+        float Volume,
+        TrackRepeatMode RepeatMode,
+        int QueueCount,
+        string? NextTrackUri
+    );
 }
