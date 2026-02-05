@@ -42,6 +42,13 @@ public sealed class CustomPlayer(IPlayerProperties<CustomPlayer, CustomPlayerOpt
         await DisconnectAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    public new async ValueTask DisconnectAsync(CancellationToken cancellationToken = default)
+    {
+        _logger.LogTrace("[Player:{GuildId}] Disconnecting. Attempting to clear VC status.", GuildId);
+        await SetVoiceChannelStatusAsync(string.Empty, true).ConfigureAwait(false);
+        await base.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     protected override async ValueTask NotifyTrackStartedAsync(ITrackQueueItem queueItem,
         CancellationToken cancellationToken = default)
     {
