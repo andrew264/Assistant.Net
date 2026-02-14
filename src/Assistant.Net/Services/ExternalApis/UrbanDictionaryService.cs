@@ -55,21 +55,20 @@ public class UrbanDictionaryService(
                 return [];
             }
 
-            // Sort results by thumbs up, descending (most popular first)
-            var sortedResults = apiResponse.List.OrderByDescending(e => e.ThumbsUp).ToList();
+            var searchResults = apiResponse.List;
 
             if (!isRandom)
             {
                 logger.LogDebug("Cache miss for Urban Dictionary term: {Term}. Caching {Count} results.", searchTerm,
-                    sortedResults.Count);
-                memoryCache.Set(cacheKey, sortedResults, CacheDuration);
+                    searchResults.Count);
+                memoryCache.Set(cacheKey, searchResults, CacheDuration);
             }
             else
             {
-                logger.LogDebug("Fetched {Count} random Urban Dictionary definitions.", sortedResults.Count);
+                logger.LogDebug("Fetched {Count} random Urban Dictionary definitions.", searchResults.Count);
             }
 
-            return sortedResults;
+            return searchResults;
         }
         catch (HttpRequestException ex)
         {

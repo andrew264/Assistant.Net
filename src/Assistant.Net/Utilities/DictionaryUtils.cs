@@ -32,9 +32,7 @@ public static class DictionaryUtils
                 .WithTextDisplay(new TextDisplayBuilder(
                     $"*Example:*\n{entry.FormattedExample.Truncate(1024)}"));
 
-        container
-            .WithSeparator()
-            .WithTextDisplay(new TextDisplayBuilder($"{entry.ThumbsUp} 👍  •  {entry.ThumbsDown} 👎"));
+        container.WithSeparator();
 
         if (totalPages <= 1) return new ComponentBuilderV2().WithContainer(container).Build();
         // Encode search term to safely include in custom ID
