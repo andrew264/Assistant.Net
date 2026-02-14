@@ -118,26 +118,23 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
         var now = DateTimeOffset.UtcNow;
         var fourteenDaysAgo = now - FourteenDays;
 
-        if (targetMessage.Timestamp < fourteenDaysAgo)
-        {
-            await FollowupAsync("The selected message is too old (>14 days) to start deleting from.", ephemeral: true)
-                .ConfigureAwait(false);
-            return;
-        }
-
         List<IMessage> messagesToDelete;
+        int skippedCount;
+
         try
         {
             var messagesAfter = await Context.Channel
                 .GetMessagesAsync(targetMessage.Id, Direction.After)
-                .FlattenAsync().ConfigureAwait(false);
+                .FlattenAsync()
+                .ConfigureAwait(false);
 
-            messagesToDelete = messagesAfter
+            var messageList = messagesAfter.ToList();
+
+            skippedCount = messageList.Count(m => m.Timestamp <= fourteenDaysAgo);
+
+            messagesToDelete = messageList
                 .Where(m => m.Timestamp > fourteenDaysAgo)
                 .ToList();
-
-            // messagesToDelete.Add(targetMessage);
-            messagesToDelete = messagesToDelete.OrderBy(m => m.Timestamp).Take(MaxMessagesPerBulkDelete).ToList();
         }
         catch (Exception ex)
         {
@@ -147,19 +144,28 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
             return;
         }
 
-        if (messagesToDelete.Count == 0) // Only the target message itself
+        if (messagesToDelete.Count == 0)
         {
-            await FollowupAsync("🗑️ No newer messages found!",
-                ephemeral: true).ConfigureAwait(false);
+            if (skippedCount > 0)
+                await FollowupAsync(
+                    $"found {skippedCount} message(s), but they are older than 14 days and cannot be bulk deleted.",
+                    ephemeral: true).ConfigureAwait(false);
+            else
+                await FollowupAsync("🗑️ No newer messages found to delete!",
+                    ephemeral: true).ConfigureAwait(false);
             return;
         }
 
         try
         {
             await textChannel.DeleteMessagesAsync(messagesToDelete).ConfigureAwait(false);
-            await FollowupAsync(
-                $"🗑️ Successfully deleted {messagesToDelete.Count} message(s).",
-                ephemeral: true).ConfigureAwait(false);
+
+            var msg = $"🗑️ Successfully deleted {messagesToDelete.Count} message(s).";
+            if (skippedCount > 0)
+                msg += $" ({skippedCount} messages were skipped because they are older than 14 days).";
+
+            await FollowupAsync(msg, ephemeral: true).ConfigureAwait(false);
+
             logger.LogInformation(
                 "[MOD ACTION] Delete till here: {User} deleted {Count} messages in #{Channel} ({Guild})",
                 Context.User, messagesToDelete.Count, textChannel.Name, Context.Guild.Name);
@@ -172,7 +178,7 @@ public class ModerationInteractionModule(ILogger<ModerationInteractionModule> lo
         catch (ArgumentOutOfRangeException)
         {
             await FollowupAsync(
-                "Cannot delete messages - ensure they are less than 14 days old and there's at least one message to delete.",
+                "Cannot delete messages - ensure they are less than 14 days old.",
                 ephemeral: true).ConfigureAwait(false);
         }
         catch (Exception ex)
