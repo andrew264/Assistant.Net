@@ -12,10 +12,12 @@ using Discord.Commands;
 using Discord.Interactions;
 using Discord.Rest;
 using Discord.WebSocket;
+using Lavalink4NET;
 using Lavalink4NET.Cluster;
 using Lavalink4NET.Cluster.Extensions;
 using Lavalink4NET.Cluster.Nodes;
 using Lavalink4NET.DiscordNet;
+using Lavalink4NET.Extensions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -94,26 +96,45 @@ builder.Services.AddHttpClient().ConfigureHttpClientDefaults(defaults => default
 builder.Services.AddMemoryCache();
 
 // --- Lavalink ---
-builder.Services.AddLavalinkCluster<DiscordClientWrapper>();
-builder.Services.AddOptions<ClusterAudioServiceOptions>()
-    .Configure<IOptions<LavalinkOptions>>((clusterOptions, appLavalinkOptionsWrapper) =>
-    {
-        var appLavalinkOptions = appLavalinkOptionsWrapper.Value;
-        var nodesList = new List<LavalinkClusterNodeOptions>();
+var lavalinkSettings = builder.Configuration.GetSection(LavalinkOptions.SectionName).Get<LavalinkOptions>();
 
-        if (!appLavalinkOptions.IsValid)
+if (lavalinkSettings is { Nodes.Count: 1 })
+{
+    builder.Services.AddLavalink<DiscordClientWrapper>();
+    builder.Services.AddOptions<AudioServiceOptions>()
+        .Configure<IOptions<LavalinkOptions>>((options, appLavalinkOptionsWrapper) =>
         {
-            Log.Warning("Lavalink configuration is invalid or empty. Music features will fail.");
-            return;
-        }
+            var node = appLavalinkOptionsWrapper.Value.Nodes.First();
+            options.BaseAddress = new Uri(node.Uri);
+            options.Passphrase = node.Password;
+            options.Label = node.Name;
+            options.ReadyTimeout = TimeSpan.FromSeconds(30);
+        });
+}
+else
+{
+    builder.Services.AddLavalinkCluster<DiscordClientWrapper>();
+    builder.Services.AddOptions<ClusterAudioServiceOptions>()
+        .Configure<IOptions<LavalinkOptions>>((clusterOptions, appLavalinkOptionsWrapper) =>
+        {
+            var appLavalinkOptions = appLavalinkOptionsWrapper.Value;
+            var nodesList = new List<LavalinkClusterNodeOptions>();
 
-        nodesList.AddRange(appLavalinkOptions.Nodes.Select(node => new LavalinkClusterNodeOptions
-            { BaseAddress = new Uri(node.Uri), Passphrase = node.Password, Label = node.Name }));
+            if (!appLavalinkOptions.IsValid)
+            {
+                Log.Warning("Lavalink configuration is invalid or empty. Music features will fail.");
+                return;
+            }
 
-        clusterOptions.Nodes = [..nodesList];
+            nodesList.AddRange(appLavalinkOptions.Nodes.Select(node => new LavalinkClusterNodeOptions
+                { BaseAddress = new Uri(node.Uri), Passphrase = node.Password, Label = node.Name }));
 
-        clusterOptions.ReadyTimeout = TimeSpan.FromSeconds(30);
-    });
+            clusterOptions.Nodes = [.. nodesList];
+
+            clusterOptions.ReadyTimeout = TimeSpan.FromSeconds(30);
+        });
+}
+
 
 // --- Application Services ---
 

@@ -1,7 +1,9 @@
+using System.Text;
 using Assistant.Net.Modules.Shared.Attributes;
 using Discord.Commands;
 using Lavalink4NET;
 using Lavalink4NET.Cluster;
+using Lavalink4NET.Rest;
 
 namespace Assistant.Net.Modules.Admin.Prefix;
 
@@ -10,46 +12,56 @@ namespace Assistant.Net.Modules.Admin.Prefix;
 [Alias("ll")]
 public class LavalinkAdminModule(IAudioService audioService) : ModuleBase<SocketCommandContext>
 {
-    private IClusterAudioService ClusterService =>
-        audioService as IClusterAudioService ??
-        throw new InvalidOperationException("Audio service is not a cluster service.");
-
     [Command("status")]
     [Alias("nodes", "list")]
-    [Summary("Lists all configured Lavalink nodes and their status.")]
+    [Summary("Lists configured Lavalink nodes and their status.")]
     [RequireBotOwner]
     public async Task ListNodesAsync()
     {
-        var nodes = ClusterService.Nodes;
-        var response = "📡 **Lavalink Nodes Status:**\n";
+        var sb = new StringBuilder();
 
-        if (nodes.Length == 0)
+        if (audioService is IClusterAudioService clusterService)
         {
-            await ReplyAsync("No nodes configured.");
-            return;
-        }
+            sb.AppendLine("📡 **Lavalink Cluster Status:**");
+            var nodes = clusterService.Nodes;
 
-        foreach (var node in nodes)
-        {
-            string statusEmoji;
-            string loadInfo;
-
-            try
+            if (nodes.Length == 0)
             {
-                var stats = await node.ApiClient.RetrieveStatisticsAsync().ConfigureAwait(false);
-                statusEmoji = "🟢";
-                loadInfo =
-                    $"| Players: {stats.PlayingPlayers}/{stats.ConnectedPlayers} | CPU: {stats.ProcessorUsage.LavalinkLoad * 100:F1}% | RAM: {stats.MemoryUsage.UsedMemory / 1024 / 1024}MB";
-            }
-            catch
-            {
-                statusEmoji = "🔴";
-                loadInfo = "| *Offline / Connection Refused*";
+                await ReplyAsync("No nodes configured in cluster.");
+                return;
             }
 
-            response += $"{statusEmoji} **{node.Label}** ({node.ApiClient.Endpoints.BaseAddress}) {loadInfo}\n";
+            foreach (var node in nodes)
+                await AppendNodeStatsAsync(sb, node.Label, node.ApiClient).ConfigureAwait(false);
+        }
+        else
+        {
+            sb.AppendLine("📡 **Lavalink Node Status:**");
+            await AppendNodeStatsAsync(sb, "Primary Node", await audioService.ApiClientProvider.GetClientAsync())
+                .ConfigureAwait(false);
         }
 
-        await ReplyAsync(response);
+        await ReplyAsync(sb.ToString());
+    }
+
+    private static async Task AppendNodeStatsAsync(StringBuilder sb, string label, ILavalinkApiClient apiClient)
+    {
+        string statusEmoji;
+        string loadInfo;
+
+        try
+        {
+            var stats = await apiClient.RetrieveStatisticsAsync().ConfigureAwait(false);
+            statusEmoji = "🟢";
+            loadInfo =
+                $"| Players: {stats.PlayingPlayers}/{stats.ConnectedPlayers} | CPU: {stats.ProcessorUsage.LavalinkLoad * 100:F1}% | RAM: {stats.MemoryUsage.UsedMemory / 1024 / 1024}MB";
+        }
+        catch
+        {
+            statusEmoji = "🔴";
+            loadInfo = "| *Offline / Connection Refused*";
+        }
+
+        sb.AppendLine($"{statusEmoji} **{label}** ({apiClient.Endpoints.BaseAddress}) {loadInfo}");
     }
 }
