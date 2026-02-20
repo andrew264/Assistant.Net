@@ -256,7 +256,10 @@ public class ReminderService(
         string? newMessage = null,
         DateTime? newTriggerTime = null,
         string? newRecurrence = null,
-        string? newTitle = null)
+        string? newTitle = null,
+        ulong? newChannelId = null,
+        ulong? newTargetUserId = null,
+        bool? isActive = null)
     {
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var decimalUserId = (decimal)userId;
@@ -265,14 +268,13 @@ public class ReminderService(
         {
             var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
 
-            if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId) ||
-                !reminder.IsActive)
+            if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId))
                 return (false, false, null);
 
             var hasChanges = false;
             var reSchedule = false;
 
-            if (newMessage != null)
+            if (newMessage != null && reminder.Message != newMessage)
             {
                 reminder.Message = newMessage;
                 hasChanges = true;
@@ -280,28 +282,57 @@ public class ReminderService(
 
             if (newTitle != null)
             {
-                reminder.Title = newTitle;
-                hasChanges = true;
+                var titleToSet = string.IsNullOrWhiteSpace(newTitle) ? null : newTitle;
+                if (reminder.Title != titleToSet)
+                {
+                    reminder.Title = titleToSet;
+                    hasChanges = true;
+                }
             }
 
             if (newRecurrence != null)
             {
-                reminder.Recurrence = newRecurrence.Equals("none", StringComparison.OrdinalIgnoreCase)
+                var rec = newRecurrence.Equals("none", StringComparison.OrdinalIgnoreCase)
                     ? null
                     : newRecurrence.ToLowerInvariant();
-                reminder.LastTriggered = null;
-                hasChanges = true;
+                if (reminder.Recurrence != rec)
+                {
+                    reminder.Recurrence = rec;
+                    reminder.LastTriggered = null;
+                    hasChanges = true;
+                }
             }
 
             if (newTriggerTime.HasValue)
             {
                 var utcTime = newTriggerTime.Value.ToUniversalTime();
-                if (utcTime <= DateTime.UtcNow) return (false, true, null);
+                if (utcTime > DateTime.UtcNow && reminder.TriggerTime != utcTime)
+                {
+                    reminder.TriggerTime = utcTime;
+                    reminder.LastTriggered = null;
+                    hasChanges = true;
+                    reSchedule = true;
+                }
+            }
 
-                reminder.TriggerTime = utcTime;
-                reminder.LastTriggered = null;
+            if (newChannelId.HasValue && reminder.ChannelId != newChannelId.Value)
+            {
+                reminder.ChannelId = newChannelId.Value;
                 hasChanges = true;
-                reSchedule = true;
+            }
+
+            if (newTargetUserId.HasValue && reminder.TargetUserId != newTargetUserId.Value)
+            {
+                await userService.EnsureUserExistsAsync(context, newTargetUserId.Value).ConfigureAwait(false);
+                reminder.TargetUserId = newTargetUserId.Value;
+                hasChanges = true;
+            }
+
+            if (isActive.HasValue && reminder.IsActive != isActive.Value)
+            {
+                reminder.IsActive = isActive.Value;
+                hasChanges = true;
+                if (isActive.Value && reminder.TriggerTime > DateTime.UtcNow) reSchedule = true;
             }
 
             if (!hasChanges) return (true, true, reminder);
@@ -328,8 +359,7 @@ public class ReminderService(
         }
     }
 
-    public async Task<(bool success, bool found)> CancelReminderAsync(ulong userId, int reminderId,
-        bool deletePermanently = false)
+    public async Task<(bool success, bool found)> DeleteReminderAsync(ulong userId, int reminderId)
     {
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var decimalUserId = (decimal)userId;
@@ -340,25 +370,28 @@ public class ReminderService(
             if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId))
                 return (false, false);
 
-            if (deletePermanently)
-            {
-                context.Reminders.Remove(reminder);
-            }
-            else
-            {
-                if (!reminder.IsActive) return (true, true);
-                reminder.IsActive = false;
-            }
-
+            context.Reminders.Remove(reminder);
             await context.SaveChangesAsync().ConfigureAwait(false);
 
             return (true, true);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to cancel/delete reminder (ID: {Id}).", reminderId);
+            logger.LogError(ex, "Failed to delete reminder (ID: {Id}).", reminderId);
             return (false, true);
         }
+    }
+
+    public async Task<ReminderEntity?> GetReminderAsync(ulong userId, int reminderId)
+    {
+        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        var decimalUserId = (decimal)userId;
+
+        var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
+        if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId))
+            return null;
+
+        return reminder;
     }
 
     public async Task<List<ReminderEntity>> ListUserRemindersAsync(ulong userId)
@@ -368,8 +401,7 @@ public class ReminderService(
         {
             var decimalUserId = (decimal)userId;
             return await context.Reminders
-                .Where(r => (r.CreatorId == decimalUserId || r.TargetUserId == decimalUserId) && r.IsActive &&
-                            r.TriggerTime > DateTime.UtcNow)
+                .Where(r => r.CreatorId == decimalUserId || r.TargetUserId == decimalUserId)
                 .OrderBy(r => r.TriggerTime)
                 .ToListAsync()
                 .ConfigureAwait(false);

@@ -1,5 +1,6 @@
 using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities;
+using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.Interactions;
 
@@ -10,7 +11,6 @@ namespace Assistant.Net.Modules.Utility.Interaction;
 public class ReminderModule(ReminderService reminderService)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    // --- Helper to create reminders ---
     private async Task CreateReminderInteractionAsync(
         string timeString,
         string message,
@@ -112,8 +112,6 @@ public class ReminderModule(ReminderService reminderService)
         return validEveryUnits.Contains(parts[2]);
     }
 
-
-    // --- Commands ---
     [SlashCommand("me", "Sets a reminder for yourself (DM).")]
     public async Task RemindMeAsync(
         [Summary(description: "When to remind (e.g., 'in 5 minutes', 'tomorrow at 9am')")]
@@ -169,239 +167,253 @@ public class ReminderModule(ReminderService reminderService)
         await CreateReminderInteractionAsync(time, message, true, user, repeat, title).ConfigureAwait(false);
     }
 
-    [SlashCommand("list", "Lists your upcoming reminders.")]
+    [SlashCommand("list", "Manage your reminders.")]
     public async Task ListRemindersAsync()
     {
         await DeferAsync(true).ConfigureAwait(false);
         var reminders = await reminderService.ListUserRemindersAsync(Context.User.Id).ConfigureAwait(false);
 
-        if (reminders.Count == 0)
-        {
-            await FollowupAsync("You have no pending reminders.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        var container = new ContainerBuilder()
-            .WithSection(section =>
-            {
-                section.AddComponent(new TextDisplayBuilder($"# 🗓️ Your Pending Reminders ({reminders.Count})"));
-                section.WithAccessory(new ThumbnailBuilder
-                {
-                    Media = new UnfurledMediaItemProperties
-                        { Url = Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl() }
-                });
-            });
-
-        var count = 0;
-        foreach (var reminder in reminders.OrderBy(r => r.TriggerTime))
-        {
-            if (count >= 25)
-            {
-                container.WithSeparator();
-                container.WithTextDisplay(new TextDisplayBuilder("*Showing first 25 reminders.*"));
-                break;
-            }
-
-            container.WithSeparator();
-            var titleText = string.IsNullOrWhiteSpace(reminder.Title)
-                ? $"**ID: `{reminder.Id}`**"
-                : $"**ID: `{reminder.Id}`** - {reminder.Title.Truncate(100)}";
-
-            var targetStr = reminder.IsDm
-                ? reminder.CreatorId != Context.User.Id
-                    ? $"DM from <@{reminder.CreatorId}>"
-                    : reminder.TargetUserId == reminder.CreatorId
-                        ? "DM to Self"
-                        : $"DM to <@{reminder.TargetUserId}>"
-                : $"in <#{reminder.ChannelId}>";
-            var recurrenceStr = reminder.Recurrence != null ? $" (Repeats {reminder.Recurrence})" : "";
-
-            container.WithTextDisplay(new TextDisplayBuilder(titleText));
-            container.WithTextDisplay(new TextDisplayBuilder($"> {reminder.Message.Truncate(50)}"));
-            container.WithTextDisplay(new TextDisplayBuilder(
-                $"Triggers {reminder.TriggerTime.GetRelativeTime()} in {targetStr}{recurrenceStr}"));
-            count++;
-        }
-
-        var components = new ComponentBuilderV2().WithContainer(container).Build();
+        var components = ReminderUiBuilder.BuildReminderList(reminders, Context.User, 1);
         await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
             .ConfigureAwait(false);
     }
 
-    [SlashCommand("cancel", "Cancels or deletes one of your reminders.")]
-    public async Task CancelReminderAsync(
-        [Summary(description: "The ID number of the reminder to cancel (from /remind list).")]
-        int id,
-        [Summary(description: "Permanently delete the reminder instead of just deactivating it.")]
-        bool delete = false)
+
+    [ComponentInteraction(ReminderUiBuilder.IdPage + ":*", true)]
+    private async Task HandlePaginationAsync(int page)
     {
         await DeferAsync(true).ConfigureAwait(false);
+        var reminders = await reminderService.ListUserRemindersAsync(Context.User.Id).ConfigureAwait(false);
+        var components = ReminderUiBuilder.BuildReminderList(reminders, Context.User, page);
 
-        var (success, found) =
-            await reminderService.CancelReminderAsync(Context.User.Id, id, delete).ConfigureAwait(false);
-
-        if (found)
+        await ModifyOriginalResponseAsync(msg =>
         {
-            if (success)
-                await FollowupAsync($"Reminder ID `{id}` {(delete ? "deleted" : "deactivated")}.", ephemeral: true)
-                    .ConfigureAwait(false);
-            else
-                await FollowupAsync(
-                    $"Failed to {(delete ? "delete" : "deactivate")} reminder ID `{id}`. An internal error occurred.",
-                    ephemeral: true).ConfigureAwait(false);
-        }
-        else
-        {
-            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true)
-                .ConfigureAwait(false);
-        }
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
     }
 
-    [SlashCommand("edit", "Edits an existing reminder.")]
-    public async Task EditReminderAsync(
-        [Summary(description: "The ID number of the reminder to edit (from /remind list).")]
-        int id,
-        [Summary(description: "The new message for the reminder.")]
-        string? message = null,
-        [Summary(description: "The new time for the reminder (e.g., 'in 1 hour', 'next friday 5pm').")]
-        string? time = null,
-        [Summary(description: "The new recurrence interval (e.g., 'daily', 'weekly', 'none').")]
-        [Autocomplete(typeof(RecurrenceAutocompleteProvider))]
-        string? repeat = null,
-        [Summary(description: "The new title for the reminder.")]
-        string? title = null
-    )
+    [ComponentInteraction(ReminderUiBuilder.IdList + ":*", true)]
+    public async Task HandleBackToListAsync(int page)
     {
-        if (message == null && time == null && repeat == null && title == null)
+        await HandlePaginationAsync(page);
+    }
+
+    [ComponentInteraction(ReminderUiBuilder.IdManage + ":*", true)]
+    public async Task HandleManageAsync(int reminderId)
+    {
+        await DeferAsync(true).ConfigureAwait(false);
+        var reminder = await reminderService.GetReminderAsync(Context.User.Id, reminderId).ConfigureAwait(false);
+
+        if (reminder == null)
         {
-            await RespondAsync("You must provide at least one field to edit (message, time, repeat, or title).",
-                ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("Reminder not found or you don't have permission to manage it.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
+        var components = ReminderUiBuilder.BuildManageReminder(reminder);
+        await ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction(ReminderUiBuilder.IdDelete + ":*", true)]
+    public async Task HandleDeleteAsync(int reminderId)
+    {
+        await DeferAsync(true).ConfigureAwait(false);
+        var (success, found) =
+            await reminderService.DeleteReminderAsync(Context.User.Id, reminderId).ConfigureAwait(false);
+
+        if (!found || !success)
+        {
+            await FollowupAsync("Failed to delete the reminder. It may no longer exist.", ephemeral: true)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        // Return to list after deletion
+        var reminders = await reminderService.ListUserRemindersAsync(Context.User.Id).ConfigureAwait(false);
+        var components = ReminderUiBuilder.BuildReminderList(reminders, Context.User, 1);
+
+        await ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction(ReminderUiBuilder.IdToggle + ":*", true)]
+    public async Task HandleToggleAsync(int reminderId)
+    {
+        await DeferAsync(true).ConfigureAwait(false);
+        var reminder = await reminderService.GetReminderAsync(Context.User.Id, reminderId).ConfigureAwait(false);
+
+        if (reminder == null)
+        {
+            await FollowupAsync("Reminder not found.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var (success, _, updatedReminder) = await reminderService.EditReminderAsync(
+            Context.User.Id, reminderId, isActive: !reminder.IsActive).ConfigureAwait(false);
+
+        if (!success || updatedReminder == null)
+        {
+            await FollowupAsync("Failed to update reminder status.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var components = ReminderUiBuilder.BuildManageReminder(updatedReminder);
+        await ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction(ReminderUiBuilder.IdTargetUser + ":*", true)]
+    public async Task HandleTargetUserSelectAsync(int reminderId, string[] selectedUsers)
+    {
+        await DeferAsync(true).ConfigureAwait(false);
+
+        if (selectedUsers.Length == 0 || !ulong.TryParse(selectedUsers[0], out var targetUserId)) return;
+
+        var user = await Context.Client.GetUserAsync(targetUserId);
+        if (user is { IsBot: true })
+        {
+            await FollowupAsync("You cannot set a reminder for a bot.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var (success, _, updatedReminder) = await reminderService.EditReminderAsync(
+            Context.User.Id, reminderId, newTargetUserId: targetUserId).ConfigureAwait(false);
+
+        if (!success || updatedReminder == null)
+        {
+            await FollowupAsync("Failed to update target user.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var components = ReminderUiBuilder.BuildManageReminder(updatedReminder);
+        await ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction(ReminderUiBuilder.IdTargetChannel + ":*", true)]
+    public async Task HandleTargetChannelSelectAsync(int reminderId, string[] selectedChannels)
+    {
+        await DeferAsync(true).ConfigureAwait(false);
+
+        if (selectedChannels.Length == 0 || !ulong.TryParse(selectedChannels[0], out var channelId)) return;
+
+        var (success, _, updatedReminder) = await reminderService.EditReminderAsync(
+            Context.User.Id, reminderId, newChannelId: channelId).ConfigureAwait(false);
+
+        if (!success || updatedReminder == null)
+        {
+            await FollowupAsync("Failed to update target channel.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var components = ReminderUiBuilder.BuildManageReminder(updatedReminder);
+        await ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
+    }
+
+    [ComponentInteraction(ReminderUiBuilder.IdEditModal + ":*", true)]
+    public async Task HandleEditModalPromptAsync(int reminderId)
+    {
+        var reminder = await reminderService.GetReminderAsync(Context.User.Id, reminderId).ConfigureAwait(false);
+        if (reminder == null)
+        {
+            await RespondAsync("Reminder not found.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var modal = new ModalBuilder()
+            .WithTitle($"Edit Reminder #{reminder.Id}")
+            .WithCustomId($"remind:modal:edit:{reminder.Id}")
+            .AddTextInput("Title (Optional)", "title", value: reminder.Title, required: false, maxLength: 200)
+            .AddTextInput("Message", "message", TextInputStyle.Paragraph, value: reminder.Message, maxLength: 1000)
+            .AddTextInput("Time (e.g., 'in 1 hour', 'tomorrow')", "time", placeholder: "Leave empty to keep current",
+                required: false)
+            .AddTextInput("Repeat (e.g., 'daily', 'none')", "repeat", value: reminder.Recurrence ?? "none",
+                required: false, maxLength: 50)
+            .Build();
+
+        await RespondWithModalAsync(modal).ConfigureAwait(false);
+    }
+
+    [ModalInteraction("remind:modal:edit:*", true)]
+    public async Task HandleEditModalSubmitAsync(int reminderId, ReminderEditModal modal)
+    {
         await DeferAsync(true).ConfigureAwait(false);
 
         DateTime? newParsedTime = null;
-        if (time != null)
+        if (!string.IsNullOrWhiteSpace(modal.Time))
         {
-            newParsedTime = ReminderService.ParseTime(time);
+            newParsedTime = ReminderService.ParseTime(modal.Time);
             if (newParsedTime == null)
             {
-                await FollowupAsync("Invalid new time format provided.", ephemeral: true).ConfigureAwait(false);
+                await FollowupAsync("Invalid time format provided.", ephemeral: true)
+                    .ConfigureAwait(false);
                 return;
             }
 
             if (newParsedTime <= DateTime.UtcNow)
             {
-                await FollowupAsync("New reminder time must be in the future.", ephemeral: true).ConfigureAwait(false);
+                await FollowupAsync("New reminder time must be in the future.", ephemeral: true)
+                    .ConfigureAwait(false);
                 return;
             }
         }
 
-        if (message?.Length > 1000)
+        if (!string.IsNullOrWhiteSpace(modal.Repeat) && !IsValidRecurrence(modal.Repeat))
         {
-            await FollowupAsync("New reminder message is too long (max 1000 characters).", ephemeral: true)
+            await FollowupAsync("Invalid recurrence interval provided.", ephemeral: true)
                 .ConfigureAwait(false);
             return;
         }
-
-        if (repeat != null && !IsValidRecurrence(repeat))
-        {
-            await FollowupAsync("Invalid recurrence interval provided.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
 
         var (success, found, updatedReminder) = await reminderService.EditReminderAsync(
             Context.User.Id,
-            id,
-            message,
+            reminderId,
+            modal.Message,
             newParsedTime,
-            repeat,
-            title
+            modal.Repeat,
+            modal.Title
         ).ConfigureAwait(false);
 
-        if (found)
+        if (!found)
         {
-            if (success && updatedReminder != null)
-            {
-                var container = new ContainerBuilder()
-                    .WithTextDisplay(new TextDisplayBuilder($"# ✅ Reminder ID `{id}` Updated"));
-
-                var recurrenceStr = updatedReminder.Recurrence != null
-                    ? $" (Repeats {updatedReminder.Recurrence})"
-                    : "";
-                var targetStr = updatedReminder.IsDm
-                    ? updatedReminder.TargetUserId == updatedReminder.CreatorId
-                        ? "DM to Self"
-                        : $"DM to <@{updatedReminder.TargetUserId}>"
-                    : $"in <#{updatedReminder.ChannelId}>";
-
-                container.WithSeparator()
-                    .WithTextDisplay(new TextDisplayBuilder(
-                        $"**New Trigger Time:** {updatedReminder.TriggerTime.GetLongDateTime()} ({updatedReminder.TriggerTime.GetRelativeTime()}){recurrenceStr}"))
-                    .WithTextDisplay(new TextDisplayBuilder($"**Message:** {updatedReminder.Message}"))
-                    .WithTextDisplay(new TextDisplayBuilder($"**Target:** {targetStr}"));
-
-                if (!string.IsNullOrWhiteSpace(updatedReminder.Title))
-                    container.WithTextDisplay(new TextDisplayBuilder($"**Title:** {updatedReminder.Title}"));
-
-
-                var components = new ComponentBuilderV2().WithContainer(container).Build();
-                await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
-                    .ConfigureAwait(false);
-            }
-            else
-            {
-                await FollowupAsync(
-                    $"Failed to edit reminder ID `{id}`. An internal error occurred or input was invalid (e.g., time in the past).",
-                    ephemeral: true).ConfigureAwait(false);
-            }
+            await FollowupAsync("Reminder not found.", ephemeral: true).ConfigureAwait(false);
+            return;
         }
-        else
+
+        if (!success || updatedReminder == null)
         {
-            await FollowupAsync($"Could not find an active reminder with ID `{id}` belonging to you.", ephemeral: true)
+            await FollowupAsync("Failed to apply edits due to an internal error.", ephemeral: true)
                 .ConfigureAwait(false);
+            return;
         }
-    }
 
-    [SlashCommand("help", "Shows help information for reminder commands.")]
-    public async Task RemindHelpAsync()
-    {
-        var container = new ContainerBuilder()
-            .WithTextDisplay(new TextDisplayBuilder("# ⏰ Remind Help"))
-            .WithTextDisplay(
-                new TextDisplayBuilder("`/remind` commands allow you to set reminders for yourself or others."))
-            .WithSeparator()
-            .WithTextDisplay(new TextDisplayBuilder("### Commands"))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "**`/remind me <time> <message> [title] [repeat]`**\nSets a reminder sent via DM."))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "**`/remind channel <time> <message> [title] [repeat]`**\nSets a reminder posted in the current channel."))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "**`/remind other <user> <time> <message> [title] [repeat]`**\nSets a reminder for another user via DM (Requires `Manage Messages` permission)."))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "**`/remind list`**\nLists your upcoming reminders."))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "**`/remind cancel <id> [delete]`**\nDeactivates (or permanently deletes if `delete:True`) a reminder by its ID number."))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "**`/remind edit <id> [message] [time] [repeat] [title]`**\nEdits an existing reminder."))
-            .WithSeparator()
-            .WithTextDisplay(new TextDisplayBuilder("### Time Format Examples"))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "`in 5 minutes`, `1 hour`, `tomorrow at 9am`, `next friday 5pm`, `25 dec 10:00`"))
-            .WithSeparator()
-            .WithTextDisplay(new TextDisplayBuilder("### Repeat Format Examples"))
-            .WithTextDisplay(new TextDisplayBuilder(
-                "`none`, `daily`, `weekly`, `monthly`, `yearly`, `hourly`, `minutely`, `every 2 days`, `every 3 weeks`"));
-
-        var components = new ComponentBuilderV2().WithContainer(container).Build();
-        await RespondAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
-            .ConfigureAwait(false);
+        var components = ReminderUiBuilder.BuildManageReminder(updatedReminder);
+        await ModifyOriginalResponseAsync(msg =>
+        {
+            msg.Components = components;
+            msg.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
     }
 }
-
-// --- Autocomplete Providers ---
 
 public class RecurrenceAutocompleteProvider : AutocompleteHandler
 {
@@ -430,7 +442,6 @@ public class ReminderTimeAutocompleteProvider : AutocompleteHandler
     public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
         IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services)
     {
-        // Simple suggestions - more advanced parsing could be done here
         string[] suggestions =
         [
             "in 5 minutes", "in 15 minutes", "in 30 minutes", "in 1 hour", "in 2 hours",
@@ -446,4 +457,17 @@ public class ReminderTimeAutocompleteProvider : AutocompleteHandler
 
         return Task.FromResult(AutocompletionResult.FromSuccess(results));
     }
+}
+
+public class ReminderEditModal : IModal
+{
+    [ModalTextInput("title")] public string? TitleInput { get; set; }
+
+    [ModalTextInput("message")] public string Message { get; set; } = string.Empty;
+
+    [ModalTextInput("time")] public string? Time { get; set; }
+
+    [ModalTextInput("repeat")] public string? Repeat { get; set; }
+
+    public string Title => "Edit Reminder";
 }
