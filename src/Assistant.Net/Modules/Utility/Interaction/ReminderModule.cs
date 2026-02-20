@@ -208,7 +208,11 @@ public class ReminderModule(ReminderService reminderService)
                 : $"**ID: `{reminder.Id}`** - {reminder.Title.Truncate(100)}";
 
             var targetStr = reminder.IsDm
-                ? reminder.TargetUserId == reminder.CreatorId ? "DM to Self" : $"DM to <@{reminder.TargetUserId}>"
+                ? reminder.CreatorId != Context.User.Id
+                    ? $"DM from <@{reminder.CreatorId}>"
+                    : reminder.TargetUserId == reminder.CreatorId
+                        ? "DM to Self"
+                        : $"DM to <@{reminder.TargetUserId}>"
                 : $"in <#{reminder.ChannelId}>";
             var recurrenceStr = reminder.Recurrence != null ? $" (Repeats {reminder.Recurrence})" : "";
 

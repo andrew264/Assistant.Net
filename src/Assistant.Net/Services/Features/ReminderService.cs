@@ -265,7 +265,8 @@ public class ReminderService(
         {
             var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
 
-            if (reminder == null || reminder.CreatorId != decimalUserId || !reminder.IsActive)
+            if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId) ||
+                !reminder.IsActive)
                 return (false, false, null);
 
             var hasChanges = false;
@@ -336,7 +337,8 @@ public class ReminderService(
         try
         {
             var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
-            if (reminder == null || reminder.CreatorId != decimalUserId) return (false, false);
+            if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId))
+                return (false, false);
 
             if (deletePermanently)
             {
@@ -366,7 +368,8 @@ public class ReminderService(
         {
             var decimalUserId = (decimal)userId;
             return await context.Reminders
-                .Where(r => r.CreatorId == decimalUserId && r.IsActive && r.TriggerTime > DateTime.UtcNow)
+                .Where(r => (r.CreatorId == decimalUserId || r.TargetUserId == decimalUserId) && r.IsActive &&
+                            r.TriggerTime > DateTime.UtcNow)
                 .OrderBy(r => r.TriggerTime)
                 .ToListAsync()
                 .ConfigureAwait(false);
@@ -455,7 +458,7 @@ public class ReminderService(
 
         var creatorInfo = creator != null ? creator.Mention : $"<@{reminder.CreatorId}>";
         container.WithTextDisplay(
-            new TextDisplayBuilder($"**Set by:** {creatorInfo} | **Set at:** {reminder.CreatedAt.GetRelativeTime()}"));
+            new TextDisplayBuilder($"**Set by:** {creatorInfo} {reminder.CreatedAt.GetRelativeTime()}"));
 
         if (reminder.Recurrence != null)
             container.WithTextDisplay(new TextDisplayBuilder($"*This reminder repeats {reminder.Recurrence}*"));
