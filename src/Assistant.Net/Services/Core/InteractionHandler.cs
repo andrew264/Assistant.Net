@@ -27,60 +27,66 @@ public class InteractionHandler(
         await interactionService.AddModulesAsync(Assembly.GetEntryAssembly(), services).ConfigureAwait(false);
         await commandService.AddModulesAsync(Assembly.GetEntryAssembly(), services).ConfigureAwait(false);
 
+        client.Ready += OnReadyAsync;
         client.InteractionCreated += HandleInteraction;
         client.MessageReceived += HandleMessageReceived;
-        client.Ready += OnReadyAsync;
 
         commandService.Log += LogAsync;
     }
 
-    private async Task OnReadyAsync()
+    private Task OnReadyAsync()
     {
-        try
+        return Task.Run(async () =>
         {
-            if (_config.TestGuilds.Count > 0)
+            try
             {
-                foreach (var guildId in _config.TestGuilds)
+                if (_config.TestGuilds.Count > 0)
                 {
-                    await interactionService.RegisterCommandsToGuildAsync(guildId).ConfigureAwait(false);
-                    logger.LogInformation("Registered commands to test guild: {GuildId}", guildId);
+                    foreach (var guildId in _config.TestGuilds)
+                    {
+                        await interactionService.RegisterCommandsToGuildAsync(guildId).ConfigureAwait(false);
+                        logger.LogInformation("Registered commands to test guild: {GuildId}", guildId);
+                    }
+                }
+                else
+                {
+                    await interactionService.RegisterCommandsGloballyAsync().ConfigureAwait(false);
+                    logger.LogInformation("Registered commands globally.");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                await interactionService.RegisterCommandsGloballyAsync().ConfigureAwait(false);
-                logger.LogInformation("Registered commands globally.");
+                logger.LogError(ex, "Failed to register commands.");
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to register commands.");
-        }
+        });
     }
 
-    private async Task HandleInteraction(SocketInteraction interaction)
+    private Task HandleInteraction(SocketInteraction interaction)
     {
-        try
+        return Task.Run(async () =>
         {
-            var context = new SocketInteractionContext(client, interaction);
-            var result = await interactionService.ExecuteCommandAsync(context, services).ConfigureAwait(false);
-
-            if (!result.IsSuccess)
-                await HandleInteractionExecutionResult(interaction, result).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Uncaught exception in interaction handler.");
-            if (interaction.Type is InteractionType.ApplicationCommand or InteractionType.MessageComponent)
+            try
             {
-                if (!interaction.HasResponded)
-                    await interaction.RespondAsync("An internal error occurred.", ephemeral: true)
-                        .ConfigureAwait(false);
-                else
-                    await interaction.FollowupAsync("An internal error occurred.", ephemeral: true)
-                        .ConfigureAwait(false);
+                var context = new SocketInteractionContext(client, interaction);
+                var result = await interactionService.ExecuteCommandAsync(context, services).ConfigureAwait(false);
+
+                if (!result.IsSuccess)
+                    await HandleInteractionExecutionResult(interaction, result).ConfigureAwait(false);
             }
-        }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Uncaught exception in interaction handler.");
+                if (interaction.Type is InteractionType.ApplicationCommand or InteractionType.MessageComponent)
+                {
+                    if (!interaction.HasResponded)
+                        await interaction.RespondAsync("An internal error occurred.", ephemeral: true)
+                            .ConfigureAwait(false);
+                    else
+                        await interaction.FollowupAsync("An internal error occurred.", ephemeral: true)
+                            .ConfigureAwait(false);
+                }
+            }
+        });
     }
 
     private async Task HandleInteractionExecutionResult(IDiscordInteraction interaction, IResult result)
@@ -111,25 +117,28 @@ public class InteractionHandler(
             }
     }
 
-    private async Task HandleMessageReceived(SocketMessage rawMessage)
+    private Task HandleMessageReceived(SocketMessage rawMessage)
     {
-        if (rawMessage is not SocketUserMessage { Source: MessageSource.User } message) return;
-
-        var argPos = 0;
-        var prefix = _config.Prefix;
-
-        if (!(message.HasStringPrefix(prefix, ref argPos) ||
-              message.HasMentionPrefix(client.CurrentUser, ref argPos)))
-            return;
-
-        var context = new SocketCommandContext(client, message);
-        var result = await commandService.ExecuteAsync(context, argPos, services).ConfigureAwait(false);
-
-        if (!result.IsSuccess && result.Error != CommandError.UnknownCommand)
+        return Task.Run(async () =>
         {
-            logger.LogError("Prefix Command Error: {Error} - {Reason}", result.Error, result.ErrorReason);
-            await context.Channel.SendMessageAsync($"Error: {result.ErrorReason}").ConfigureAwait(false);
-        }
+            if (rawMessage is not SocketUserMessage { Source: MessageSource.User } message) return;
+
+            var argPos = 0;
+            var prefix = _config.Prefix;
+
+            if (!(message.HasStringPrefix(prefix, ref argPos) ||
+                  message.HasMentionPrefix(client.CurrentUser, ref argPos)))
+                return;
+
+            var context = new SocketCommandContext(client, message);
+            var result = await commandService.ExecuteAsync(context, argPos, services).ConfigureAwait(false);
+
+            if (!result.IsSuccess && result.Error != CommandError.UnknownCommand)
+            {
+                logger.LogError("Prefix Command Error: {Error} - {Reason}", result.Error, result.ErrorReason);
+                await context.Channel.SendMessageAsync($"Error: {result.ErrorReason}").ConfigureAwait(false);
+            }
+        });
     }
 
     private Task LogAsync(LogMessage msg)

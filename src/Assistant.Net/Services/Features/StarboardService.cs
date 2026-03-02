@@ -47,7 +47,7 @@ public class StarboardService
     private Task HandleReactionAddedAsync(Cacheable<IUserMessage, ulong> msg, Cacheable<IMessageChannel, ulong> chan,
         SocketReaction reaction)
     {
-        _ = Task.Run(async () =>
+        return Task.Run(async () =>
         {
             try
             {
@@ -58,13 +58,12 @@ public class StarboardService
                 _logger.LogError(ex, "Error processing ReactionAdded event.");
             }
         });
-        return Task.CompletedTask;
     }
 
     private Task HandleReactionRemovedAsync(Cacheable<IUserMessage, ulong> msg, Cacheable<IMessageChannel, ulong> chan,
         SocketReaction reaction)
     {
-        _ = Task.Run(async () =>
+        return Task.Run(async () =>
         {
             try
             {
@@ -75,13 +74,12 @@ public class StarboardService
                 _logger.LogError(ex, "Error processing ReactionRemoved event.");
             }
         });
-        return Task.CompletedTask;
     }
 
     private Task HandleReactionsClearedAsync(Cacheable<IUserMessage, ulong> msg,
         Cacheable<IMessageChannel, ulong> chan)
     {
-        _ = Task.Run(async () =>
+        return Task.Run(async () =>
         {
             try
             {
@@ -92,12 +90,11 @@ public class StarboardService
                 _logger.LogError(ex, "Error processing ReactionsCleared event.");
             }
         });
-        return Task.CompletedTask;
     }
 
     private Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> msg, Cacheable<IMessageChannel, ulong> chan)
     {
-        _ = Task.Run(async () =>
+        return Task.Run(async () =>
         {
             try
             {
@@ -108,13 +105,12 @@ public class StarboardService
                 _logger.LogError(ex, "Error processing MessageDeleted event.");
             }
         });
-        return Task.CompletedTask;
     }
 
     private Task HandleMessagesBulkDeletedAsync(IReadOnlyCollection<Cacheable<IMessage, ulong>> msgs,
         Cacheable<IMessageChannel, ulong> chan)
     {
-        _ = Task.Run(async () =>
+        return Task.Run(async () =>
         {
             try
             {
@@ -125,7 +121,6 @@ public class StarboardService
                 _logger.LogError(ex, "Error processing MessagesBulkDeleted event.");
             }
         });
-        return Task.CompletedTask;
     }
 
 

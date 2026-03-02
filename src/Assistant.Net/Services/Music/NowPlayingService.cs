@@ -67,22 +67,29 @@ public class NowPlayingService : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private async Task OnPlayerStoppedAsync(ulong guildId)
+    private Task OnPlayerStoppedAsync(ulong guildId)
     {
-        _logger.LogDebug("[NP Service] Player stopped for guild {GuildId}, ensuring NP message is removed.", guildId);
-        await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
-    }
-
-    private async Task OnQueueEmptiedAsync(ulong guildId, CustomPlayer player)
-    {
-        if (player.State == PlayerState.NotPlaying ||
-            (player.State == PlayerState.Paused && player.CurrentTrack == null))
+        return Task.Run(async () =>
         {
-            _logger.LogDebug(
-                "[NP Service] Queue emptied and player not actively playing for guild {GuildId}, ensuring NP message is removed.",
+            _logger.LogDebug("[NP Service] Player stopped for guild {GuildId}, ensuring NP message is removed.",
                 guildId);
             await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
-        }
+        });
+    }
+
+    private Task OnQueueEmptiedAsync(ulong guildId, CustomPlayer player)
+    {
+        return Task.Run(async () =>
+        {
+            if (player.State == PlayerState.NotPlaying ||
+                (player.State == PlayerState.Paused && player.CurrentTrack == null))
+            {
+                _logger.LogDebug(
+                    "[NP Service] Queue emptied and player not actively playing for guild {GuildId}, ensuring NP message is removed.",
+                    guildId);
+                await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
+            }
+        });
     }
 
     public async Task<IUserMessage?> CreateOrReplaceNowPlayingMessageAsync(CustomPlayer player, ITextChannel channel)

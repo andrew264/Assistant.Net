@@ -49,24 +49,25 @@ public class DiscordBotService(
 
     private Task ClientReady()
     {
-        logger.LogInformation("Logged in as {User}", client.CurrentUser);
-        return Task.CompletedTask;
+        return Task.Run(() => { logger.LogInformation("Logged in as {User}", client.CurrentUser); });
     }
 
     private Task LogAsync(LogMessage msg)
     {
-        var severity = msg.Severity switch
+        return Task.Run(() =>
         {
-            LogSeverity.Critical => LogLevel.Critical,
-            LogSeverity.Error => LogLevel.Error,
-            LogSeverity.Warning => LogLevel.Warning,
-            LogSeverity.Info => LogLevel.Information,
-            LogSeverity.Verbose => LogLevel.Trace,
-            LogSeverity.Debug => LogLevel.Debug,
-            _ => LogLevel.Information
-        };
+            var severity = msg.Severity switch
+            {
+                LogSeverity.Critical => LogLevel.Critical,
+                LogSeverity.Error => LogLevel.Error,
+                LogSeverity.Warning => LogLevel.Warning,
+                LogSeverity.Info => LogLevel.Information,
+                LogSeverity.Verbose => LogLevel.Trace,
+                LogSeverity.Debug => LogLevel.Debug,
+                _ => LogLevel.Information
+            };
 
-        logger.Log(severity, msg.Exception, "[{Source}] {Message}", msg.Source, msg.Message);
-        return Task.CompletedTask;
+            logger.Log(severity, msg.Exception, "[{Source}] {Message}", msg.Source, msg.Message);
+        });
     }
 }

@@ -11,7 +11,6 @@ namespace Assistant.Net.Modules.Moderation.Interaction;
 public class ModerationInteractionModule(ILogger<ModerationInteractionModule> logger)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private const int MaxMessagesPerBulkDelete = 100;
     private static readonly TimeSpan FourteenDays = TimeSpan.FromDays(14);
 
     // --- Slash Command: /clear ---

@@ -29,65 +29,80 @@ public class UserActivityTrackingService
     }
 
 
-    private async Task OnPresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
+    private Task OnPresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
     {
-        if (user.IsBot) return;
-
-        var beforeStatus = before.Status;
-        var afterStatus = after.Status;
-
-        var transitioned = (beforeStatus == UserStatus.Offline && afterStatus != UserStatus.Offline) ||
-                           (beforeStatus != UserStatus.Offline && afterStatus == UserStatus.Offline);
-
-        if (transitioned)
+        return Task.Run(async () =>
         {
-            _logger.LogTrace("Presence transition detected for {User} ({Before} -> {After}). Updating LastSeen.",
-                user.Username, beforeStatus, afterStatus);
-            await UpdateUserLastSeen(user.Id, "PresenceUpdate").ConfigureAwait(false);
-        }
+            if (user.IsBot) return;
+
+            var beforeStatus = before.Status;
+            var afterStatus = after.Status;
+
+            var transitioned = (beforeStatus == UserStatus.Offline && afterStatus != UserStatus.Offline) ||
+                               (beforeStatus != UserStatus.Offline && afterStatus == UserStatus.Offline);
+
+            if (transitioned)
+            {
+                _logger.LogTrace("Presence transition detected for {User} ({Before} -> {After}). Updating LastSeen.",
+                    user.Username, beforeStatus, afterStatus);
+                await UpdateUserLastSeen(user.Id, "PresenceUpdate").ConfigureAwait(false);
+            }
+        });
     }
 
 
-    private async Task OnMessageReceivedAsync(SocketMessage message)
+    private Task OnMessageReceivedAsync(SocketMessage message)
     {
-        if (message is not SocketUserMessage { Source: MessageSource.User } userMessage ||
-            userMessage.Author.IsBot ||
-            userMessage.Channel is IDMChannel ||
-            userMessage.Author.Status != UserStatus.Offline) return;
+        return Task.Run(async () =>
+        {
+            if (message is not SocketUserMessage { Source: MessageSource.User } userMessage ||
+                userMessage.Author.IsBot ||
+                userMessage.Channel is IDMChannel ||
+                userMessage.Author.Status != UserStatus.Offline) return;
 
-        _logger.LogTrace("Message received from {User} in guild channel. Updating LastSeen.",
-            userMessage.Author.Username);
-        await UpdateUserLastSeen(userMessage.Author.Id, "MessageReceived").ConfigureAwait(false);
+            _logger.LogTrace("Message received from {User} in guild channel. Updating LastSeen.",
+                userMessage.Author.Username);
+            await UpdateUserLastSeen(userMessage.Author.Id, "MessageReceived").ConfigureAwait(false);
+        });
     }
 
 
-    private async Task OnTypingStartedAsync(Cacheable<IUser, ulong> userCacheable,
+    private Task OnTypingStartedAsync(Cacheable<IUser, ulong> userCacheable,
         Cacheable<IMessageChannel, ulong> channelCacheable)
     {
-        if (!channelCacheable.HasValue || channelCacheable.Value is IDMChannel) return;
-        if (!userCacheable.HasValue || userCacheable.Value.IsBot) return;
+        return Task.Run(async () =>
+        {
+            if (!channelCacheable.HasValue || channelCacheable.Value is IDMChannel) return;
+            if (!userCacheable.HasValue || userCacheable.Value.IsBot) return;
 
-        var user = userCacheable.Value;
-        if (user.Status != UserStatus.Offline) return;
+            var user = userCacheable.Value;
+            if (user.Status != UserStatus.Offline) return;
 
-        _logger.LogTrace("Typing started by {User}(offline) in guild channel. Updating LastSeen.", user.Username);
-        await UpdateUserLastSeen(user.Id, "TypingStarted").ConfigureAwait(false);
+            _logger.LogTrace("Typing started by {User}(offline) in guild channel. Updating LastSeen.", user.Username);
+            await UpdateUserLastSeen(user.Id, "TypingStarted").ConfigureAwait(false);
+        });
     }
 
-    private async Task OnVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
+    private Task OnVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
     {
-        if (user.IsBot || user is not SocketGuildUser || user.Status != UserStatus.Offline) return;
+        return Task.Run(async () =>
+        {
+            if (user.IsBot || user is not SocketGuildUser || user.Status != UserStatus.Offline) return;
 
-        _logger.LogTrace("Voice state updated for {User}(offline). Updating LastSeen.", user.Username);
-        await UpdateUserLastSeen(user.Id, "VoiceStateUpdate").ConfigureAwait(false);
+            _logger.LogTrace("Voice state updated for {User}(offline). Updating LastSeen.", user.Username);
+            await UpdateUserLastSeen(user.Id, "VoiceStateUpdate").ConfigureAwait(false);
+        });
     }
 
-    private async Task OnUserJoinedAsync(SocketGuildUser user)
+    private Task OnUserJoinedAsync(SocketGuildUser user)
     {
-        if (user.IsBot) return;
+        return Task.Run(async () =>
+        {
+            if (user.IsBot) return;
 
-        _logger.LogTrace("User {User} joined guild. Updating LastSeen.", user.Username);
-        await UpdateUserLastSeen(user.Id, "UserJoined").ConfigureAwait(false);
+            _logger.LogTrace("User {User} joined guild. Updating LastSeen.", user.Username);
+            await UpdateUserLastSeen(user.Id, "UserJoined").ConfigureAwait(false);
+        });
     }
 
     private async Task UpdateUserLastSeen(ulong userId, string eventSource)

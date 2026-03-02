@@ -29,100 +29,103 @@ public class PresenceLogger
         _logger.LogInformation("PresenceLogger initialized.");
     }
 
-    private async Task HandlePresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
+    private Task HandlePresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
     {
-        if (user.IsBot || user is not SocketGuildUser guildUser) return;
-
-        var logConfig = await _loggingConfigService.GetLogConfigAsync(guildUser.Guild.Id, LogType.Presence)
-            .ConfigureAwait(false);
-
-        if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
-
-        var bClients = ActivityUtils.GetClients(before);
-        var aClients = ActivityUtils.GetClients(after);
-        var bStatus = before.Status.ToString().ToLowerInvariant();
-        var aStatus = after.Status.ToString().ToLowerInvariant();
-
-        if (bStatus == aStatus &&
-            bClients.SetEquals(aClients) &&
-            before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
-
-        var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
-            .ConfigureAwait(false);
-        if (webhookClient == null) return;
-
-        var statusSummary = ActivityUtils.SummarizeStatusChange(bClients, bStatus, aClients, aStatus);
-        var logParts = new List<string>();
-        if (statusSummary != null) logParts.Add(statusSummary);
-
-        _logger.LogInformation("[UPDATE] Presence @{User} from {GuildName} {Summary}", user.Username,
-            guildUser.Guild.Name,
-            statusSummary ?? "No direct status/client change.");
-
-        var bActivities = ActivityUtils.GetAllUserActivities(before.Activities, false, true, true);
-        var aActivities = ActivityUtils.GetAllUserActivities(after.Activities, false, true, true);
-        var allActivityKeys = bActivities.Keys.Union(aActivities.Keys).ToHashSet();
-
-        var activityChanged = false;
-        foreach (var key in allActivityKeys.Where(key => key != "Spotify"))
+        return Task.Run(async () =>
         {
-            bActivities.TryGetValue(key, out var bValue);
-            aActivities.TryGetValue(key, out var aValue);
+            if (user.IsBot || user is not SocketGuildUser guildUser) return;
 
-            if (bValue == aValue) continue;
-            activityChanged = true;
+            var logConfig = await _loggingConfigService.GetLogConfigAsync(guildUser.Guild.Id, LogType.Presence)
+                .ConfigureAwait(false);
 
-            var changeDescription = "";
-            if (key == "Custom Status")
+            if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
+
+            var bClients = ActivityUtils.GetClients(before);
+            var aClients = ActivityUtils.GetClients(after);
+            var bStatus = before.Status.ToString().ToLowerInvariant();
+            var aStatus = after.Status.ToString().ToLowerInvariant();
+
+            if (bStatus == aStatus &&
+                bClients.SetEquals(aClients) &&
+                before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
+
+            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+                .ConfigureAwait(false);
+            if (webhookClient == null) return;
+
+            var statusSummary = ActivityUtils.SummarizeStatusChange(bClients, bStatus, aClients, aStatus);
+            var logParts = new List<string>();
+            if (statusSummary != null) logParts.Add(statusSummary);
+
+            _logger.LogInformation("[UPDATE] Presence @{User} from {GuildName} {Summary}", user.Username,
+                guildUser.Guild.Name,
+                statusSummary ?? "No direct status/client change.");
+
+            var bActivities = ActivityUtils.GetAllUserActivities(before.Activities, false, true, true);
+            var aActivities = ActivityUtils.GetAllUserActivities(after.Activities, false, true, true);
+            var allActivityKeys = bActivities.Keys.Union(aActivities.Keys).ToHashSet();
+
+            var activityChanged = false;
+            foreach (var key in allActivityKeys.Where(key => key != "Spotify"))
             {
-                switch (string.IsNullOrEmpty(bValue))
+                bActivities.TryGetValue(key, out var bValue);
+                aActivities.TryGetValue(key, out var aValue);
+
+                if (bValue == aValue) continue;
+                activityChanged = true;
+
+                var changeDescription = "";
+                if (key == "Custom Status")
                 {
-                    case false when !string.IsNullOrEmpty(aValue):
-                        changeDescription = $"Custom Status: `{bValue}` → `{aValue}`";
-                        break;
-                    case false:
-                        changeDescription = $"Removed Custom Status: `{bValue}`";
-                        break;
-                    default:
+                    switch (string.IsNullOrEmpty(bValue))
                     {
-                        if (!string.IsNullOrEmpty(aValue)) changeDescription = $"Set Custom Status: `{aValue}`";
-                        break;
+                        case false when !string.IsNullOrEmpty(aValue):
+                            changeDescription = $"Custom Status: `{bValue}` → `{aValue}`";
+                            break;
+                        case false:
+                            changeDescription = $"Removed Custom Status: `{bValue}`";
+                            break;
+                        default:
+                        {
+                            if (!string.IsNullOrEmpty(aValue)) changeDescription = $"Set Custom Status: `{aValue}`";
+                            break;
+                        }
                     }
                 }
+                else
+                {
+                    if (string.IsNullOrEmpty(bValue)) changeDescription = $"Started {key}: {aValue}";
+                    else if (string.IsNullOrEmpty(aValue)) changeDescription = $"Stopped {key}: {bValue}";
+                    else changeDescription = $"{key}: `{bValue}` → `{aValue}`";
+                }
+
+                if (!string.IsNullOrEmpty(changeDescription)) logParts.Add(changeDescription);
             }
-            else
+
+            if (statusSummary == null && !activityChanged) return;
+
+            var messageContent = string.Join("\n", logParts).Trim();
+            if (string.IsNullOrEmpty(messageContent)) return;
+
+            try
             {
-                if (string.IsNullOrEmpty(bValue)) changeDescription = $"Started {key}: {aValue}";
-                else if (string.IsNullOrEmpty(aValue)) changeDescription = $"Stopped {key}: {bValue}";
-                else changeDescription = $"{key}: `{bValue}` → `{aValue}`";
+                var msgId = await webhookClient.SendMessageAsync(
+                    messageContent.Truncate(DiscordConfig.MaxMessageSize),
+                    username: guildUser.DisplayName,
+                    avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
+                    allowedMentions: AllowedMentions.None,
+                    flags: MessageFlags.SuppressEmbeds
+                ).ConfigureAwait(false);
+
+                if (logConfig.DeleteDelayMs > 0)
+                    _ = Task.Delay(logConfig.DeleteDelayMs)
+                        .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
             }
-
-            if (!string.IsNullOrEmpty(changeDescription)) logParts.Add(changeDescription);
-        }
-
-        if (statusSummary == null && !activityChanged) return;
-
-        var messageContent = string.Join("\n", logParts).Trim();
-        if (string.IsNullOrEmpty(messageContent)) return;
-
-        try
-        {
-            var msgId = await webhookClient.SendMessageAsync(
-                messageContent.Truncate(DiscordConfig.MaxMessageSize),
-                username: guildUser.DisplayName,
-                avatarUrl: user.GetDisplayAvatarUrl() ?? user.GetDefaultAvatarUrl(),
-                allowedMentions: AllowedMentions.None,
-                flags: MessageFlags.SuppressEmbeds
-            ).ConfigureAwait(false);
-
-            if (logConfig.DeleteDelayMs > 0)
-                _ = Task.Delay(logConfig.DeleteDelayMs)
-                    .ContinueWith(_ => webhookClient.DeleteMessageAsync(msgId).ConfigureAwait(false));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send presence update log via webhook for User {UserId}.", user.Id);
-        }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send presence update log via webhook for User {UserId}.", user.Id);
+            }
+        });
     }
 
     private class ActivityComparer : IEqualityComparer<IActivity>

@@ -43,100 +43,110 @@ public class DmRelayService
     }
     // --- Event Handlers ---
 
-    private async Task HandleMessageReceivedAsync(SocketMessage message)
+    private Task HandleMessageReceivedAsync(SocketMessage message)
     {
-        switch (message.Channel)
+        return Task.Run(async () =>
         {
-            // 1. Handle Incoming DMs
-            case IDMChannel when !message.Author.IsBot:
-                await ProcessIncomingDmAsync(message).ConfigureAwait(false);
-                return;
-            // 2. Handle Owner Messages in Relay Channels
-            case SocketTextChannel textChannel when
-                textChannel.CategoryId == _options.DmRecipientsCategory &&
-                message.Author.Id == _options.OwnerId &&
-                !message.Author.IsBot:
-                await ProcessOwnerRelayMessageAsync(message, textChannel).ConfigureAwait(false);
-                break;
-        }
+            switch (message.Channel)
+            {
+                // 1. Handle Incoming DMs
+                case IDMChannel when !message.Author.IsBot:
+                    await ProcessIncomingDmAsync(message).ConfigureAwait(false);
+                    return;
+                // 2. Handle Owner Messages in Relay Channels
+                case SocketTextChannel textChannel when
+                    textChannel.CategoryId == _options.DmRecipientsCategory &&
+                    message.Author.Id == _options.OwnerId &&
+                    !message.Author.IsBot:
+                    await ProcessOwnerRelayMessageAsync(message, textChannel).ConfigureAwait(false);
+                    break;
+            }
+        });
     }
 
-    private async Task HandleMessageUpdatedAsync(Cacheable<IMessage, ulong> beforeCache, SocketMessage after,
+    private Task HandleMessageUpdatedAsync(Cacheable<IMessage, ulong> beforeCache, SocketMessage after,
         ISocketMessageChannel channel)
     {
-        if (channel is not IDMChannel || after.Author.IsBot) return;
-
-        _logger.LogInformation("[EDITED DM] from {User} ({UserId}): {Content}", after.Author, after.Author.Id,
-            after.Content);
-
-        var webhookClient = await GetOrCreateUserRelayWebhookAsync(after.Author).ConfigureAwait(false);
-        if (webhookClient == null) return;
-
-        var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
-
-        if (before?.Content == after.Content && before.Attachments.Count == after.Attachments.Count)
+        return Task.Run(async () =>
         {
-            _logger.LogDebug("Edited DM {MessageId} from {User} had no content or attachment changes. Skipping relay.",
-                after.Id, after.Author);
-            return;
-        }
+            if (channel is not IDMChannel || after.Author.IsBot) return;
 
-        var messageContent = BuildEditedMessageContent(before, after);
-        var files = await AttachmentUtils.DownloadAttachmentsAsync(after.Attachments, _httpClientFactory, _logger)
-            .ConfigureAwait(false);
+            _logger.LogInformation("[EDITED DM] from {User} ({UserId}): {Content}", after.Author, after.Author.Id,
+                after.Content);
 
-        try
-        {
-            await webhookClient.SendFilesAsync(files, messageContent,
-                    username: after.Author.Username,
-                    avatarUrl: after.Author.GetDisplayAvatarUrl() ?? after.Author.GetDefaultAvatarUrl())
+            var webhookClient = await GetOrCreateUserRelayWebhookAsync(after.Author).ConfigureAwait(false);
+            if (webhookClient == null) return;
+
+            var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
+
+            if (before?.Content == after.Content && before.Attachments.Count == after.Attachments.Count)
+            {
+                _logger.LogDebug(
+                    "Edited DM {MessageId} from {User} had no content or attachment changes. Skipping relay.",
+                    after.Id, after.Author);
+                return;
+            }
+
+            var messageContent = BuildEditedMessageContent(before, after);
+            var files = await AttachmentUtils.DownloadAttachmentsAsync(after.Attachments, _httpClientFactory, _logger)
                 .ConfigureAwait(false);
-            await after.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send edited DM relay via webhook for User {UserId}, Msg {MessageId}",
-                after.Author.Id, after.Id);
-        }
-        finally
-        {
-            AttachmentUtils.DisposeFileAttachments(files);
-        }
+
+            try
+            {
+                await webhookClient.SendFilesAsync(files, messageContent,
+                        username: after.Author.Username,
+                        avatarUrl: after.Author.GetDisplayAvatarUrl() ?? after.Author.GetDefaultAvatarUrl())
+                    .ConfigureAwait(false);
+                await after.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send edited DM relay via webhook for User {UserId}, Msg {MessageId}",
+                    after.Author.Id, after.Id);
+            }
+            finally
+            {
+                AttachmentUtils.DisposeFileAttachments(files);
+            }
+        });
     }
 
-    private async Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> messageCache,
+    private Task HandleMessageDeletedAsync(Cacheable<IMessage, ulong> messageCache,
         Cacheable<IMessageChannel, ulong> channelCache)
     {
-        // Ensure the channel is a DM channel before proceeding
-        var channel = channelCache.HasValue
-            ? channelCache.Value
-            : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
-        if (channel is not IDMChannel) return;
-
-        var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
-        // Don't relay deletion notices for bot messages or if message data is unavailable
-        if (message == null || message.Author.IsBot) return;
-
-        _logger.LogInformation("[DELETED DM] from {User} ({UserId}): {Content}", message.Author, message.Author.Id,
-            message.Content);
-
-        var webhookClient = await GetOrCreateUserRelayWebhookAsync(message.Author).ConfigureAwait(false);
-        if (webhookClient == null) return;
-
-        var messageContent = BuildDeletedMessageContent(message);
-
-        try
+        return Task.Run(async () =>
         {
-            await webhookClient.SendMessageAsync(messageContent,
-                    username: message.Author.Username,
-                    avatarUrl: message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl())
-                .ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to send deleted DM relay via webhook for User {UserId}, Msg {MessageId}",
-                message.Author.Id, message.Id);
-        }
+            // Ensure the channel is a DM channel before proceeding
+            var channel = channelCache.HasValue
+                ? channelCache.Value
+                : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
+            if (channel is not IDMChannel) return;
+
+            var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
+            // Don't relay deletion notices for bot messages or if message data is unavailable
+            if (message == null || message.Author.IsBot) return;
+
+            _logger.LogInformation("[DELETED DM] from {User} ({UserId}): {Content}", message.Author, message.Author.Id,
+                message.Content);
+
+            var webhookClient = await GetOrCreateUserRelayWebhookAsync(message.Author).ConfigureAwait(false);
+            if (webhookClient == null) return;
+
+            var messageContent = BuildDeletedMessageContent(message);
+
+            try
+            {
+                await webhookClient.SendMessageAsync(messageContent,
+                        username: message.Author.Username,
+                        avatarUrl: message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl())
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send deleted DM relay via webhook for User {UserId}, Msg {MessageId}",
+                    message.Author.Id, message.Id);
+            }
+        });
     }
 
     // --- Processing Logic ---
