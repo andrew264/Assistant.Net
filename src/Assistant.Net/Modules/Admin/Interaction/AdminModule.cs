@@ -1,12 +1,10 @@
 using System.Net;
 using Assistant.Net.Modules.Shared.Attributes;
-using Assistant.Net.Options;
 using Discord;
 using Discord.Interactions;
 using Discord.Net;
 using Discord.WebSocket;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Assistant.Net.Modules.Admin.Interaction;
 
@@ -16,8 +14,7 @@ namespace Assistant.Net.Modules.Admin.Interaction;
 public class AdminModule(
     DiscordSocketClient client,
     ILogger<AdminModule> logger,
-    IHttpClientFactory httpClientFactory,
-    IOptions<DiscordOptions> options)
+    IHttpClientFactory httpClientFactory)
     : InteractionModuleBase<SocketInteractionContext>
 {
     private Task LogRateLimitInfo(IRateLimitInfo info)
@@ -130,20 +127,11 @@ public class AdminModule(
     {
         await DeferAsync(true).ConfigureAwait(false);
 
-        var finalStatus = status ?? (Enum.TryParse<UserStatus>(options.Value.Status, true, out var cfgStatus)
-            ? cfgStatus
-            : UserStatus.Online);
+        var finalStatus = status ?? UserStatus.Online;
 
-        var finalActivityType = activityType ??
-                                (Enum.TryParse<ActivityType>(options.Value.ActivityType, true, out var cfgActivityType)
-                                    ? cfgActivityType
-                                    : ActivityType.Playing);
+        var finalActivityType = activityType ?? ActivityType.Playing;
 
-        var finalActivityText = !string.IsNullOrWhiteSpace(activityText)
-            ? activityText
-            : !string.IsNullOrWhiteSpace(options.Value.ActivityText)
-                ? options.Value.ActivityText
-                : null;
+        var finalActivityText = !string.IsNullOrWhiteSpace(activityText) ? activityText : null;
 
         logger.LogInformation(
             "Attempting to update bot presence initiated by {User}: Status={Status}, Activity={ActivityType} {ActivityText}",
