@@ -23,7 +23,7 @@ public class MathModule : ModuleBase<SocketCommandContext>
 
         try
         {
-            var result = MathUtils.Evaluate(expression);
+            var result = await Task.Run(() => MathUtils.Evaluate(expression));
 
             var formattedResult = result % 1 == 0
                 ? result.ToString("F0")

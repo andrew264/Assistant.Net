@@ -56,11 +56,9 @@ public static class MathUtils
         { "atan2", new FunctionInfo(2, args => Math.Atan2(args[0], args[1])) }
     };
 
-    private static double ValidatePos(double val, string funcName)
-    {
-        if (val < 0) throw new ArgumentException($"Argument for '{funcName}' must be non-negative.");
-        return val;
-    }
+    private static double ValidatePos(double val, string funcName) => val < 0
+        ? throw new ArgumentException($"Argument for '{funcName}' must be non-negative.")
+        : val;
 
     public static double Evaluate(string expression)
     {
@@ -128,6 +126,10 @@ public static class MathUtils
                 else
                     throw new ArgumentException($"Unknown identifier: '{identifier}'");
             }
+            else if (c == '!')
+            {
+                tokens.Add(new Token("!", TokenType.PostfixOperator));
+            }
             else
             {
                 var s = c.ToString();
@@ -173,8 +175,8 @@ public static class MathUtils
             {
                 var prev = tokens[i - 1];
 
-                var isPrevOperand = prev.Type == TokenType.Number || prev.Type == TokenType.Constant ||
-                                    prev is { Type: TokenType.Separator, Value: ")" };
+                var isPrevOperand = prev.Type is TokenType.Number or TokenType.Constant or TokenType.PostfixOperator
+                                    || prev is { Type: TokenType.Separator, Value: ")" };
                 var isCurrOperand = token.Type == TokenType.Number || token.Type == TokenType.Constant ||
                                     token.Type == TokenType.Function ||
                                     token is { Type: TokenType.Separator, Value: "(" };
@@ -204,49 +206,55 @@ public static class MathUtils
                 case TokenType.Function:
                     operatorStack.Push(token);
                     break;
-
+                case TokenType.PostfixOperator:
+                    outputQueue.Enqueue(token);
+                    break;
                 case TokenType.Separator:
-                    if (token.Value == ",")
+                    switch (token.Value)
                     {
-                        var foundParen = false;
-                        while (operatorStack.Count > 0)
+                        case ",":
                         {
-                            if (operatorStack.Peek().Value == "(")
+                            var foundParen = false;
+                            while (operatorStack.Count > 0)
                             {
-                                foundParen = true;
-                                break;
+                                if (operatorStack.Peek().Value == "(")
+                                {
+                                    foundParen = true;
+                                    break;
+                                }
+
+                                outputQueue.Enqueue(operatorStack.Pop());
                             }
 
-                            outputQueue.Enqueue(operatorStack.Pop());
+                            if (!foundParen) throw new ArgumentException("Misplaced comma or mismatched parentheses.");
+                            break;
                         }
-
-                        if (!foundParen) throw new ArgumentException("Misplaced comma or mismatched parentheses.");
-                    }
-                    else if (token.Value == "(")
-                    {
-                        operatorStack.Push(token);
-                    }
-                    else if (token.Value == ")")
-                    {
-                        var foundOpen = false;
-                        while (operatorStack.Count > 0)
+                        case "(":
+                            operatorStack.Push(token);
+                            break;
+                        case ")":
                         {
-                            if (operatorStack.Peek().Value == "(")
+                            var foundOpen = false;
+                            while (operatorStack.Count > 0)
                             {
-                                foundOpen = true;
-                                break;
+                                if (operatorStack.Peek().Value == "(")
+                                {
+                                    foundOpen = true;
+                                    break;
+                                }
+
+                                outputQueue.Enqueue(operatorStack.Pop());
                             }
 
-                            outputQueue.Enqueue(operatorStack.Pop());
+                            if (!foundOpen)
+                                throw new ArgumentException("Mismatched parentheses: too many closing parentheses.");
+
+                            operatorStack.Pop();
+
+                            if (operatorStack.Count > 0 && operatorStack.Peek().Type == TokenType.Function)
+                                outputQueue.Enqueue(operatorStack.Pop());
+                            break;
                         }
-
-                        if (!foundOpen)
-                            throw new ArgumentException("Mismatched parentheses: too many closing parentheses.");
-
-                        operatorStack.Pop();
-
-                        if (operatorStack.Count > 0 && operatorStack.Peek().Type == TokenType.Function)
-                            outputQueue.Enqueue(operatorStack.Pop());
                     }
 
                     break;
@@ -340,6 +348,15 @@ public static class MathUtils
                     stack.Push(funcInfo.Evaluator(args));
                     break;
                 }
+                case TokenType.PostfixOperator when token.Value == "!":
+                {
+                    if (stack.Count < 1) throw new ArgumentException("Missing operand for '!'.");
+                    var operand = stack.Pop();
+                    if (operand < 0)
+                        throw new ArgumentException("Factorial undefined for negative numbers.");
+                    stack.Push(SpecialFunctions.Gamma(operand + 1));
+                    break;
+                }
             }
         }
 
@@ -353,20 +370,14 @@ public static class MathUtils
         Operator,
         Function,
         Separator,
-        Constant
+        Constant,
+        PostfixOperator
     }
 
-    private readonly struct Token
+    private readonly struct Token(string value, TokenType type)
     {
-        public string Value { get; }
-        public TokenType Type { get; }
-
-        public Token(string value, TokenType type)
-        {
-            Value = value;
-            Type = type;
-        }
-
+        public string Value { get; } = value;
+        public TokenType Type { get; } = type;
         public override string ToString() => Value;
     }
 
