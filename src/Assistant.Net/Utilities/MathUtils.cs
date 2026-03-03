@@ -56,6 +56,16 @@ public static class MathUtils
         { "max", new FunctionInfo(2, args => Math.Max(args[0], args[1])) },
         { "pow", new FunctionInfo(2, args => Math.Pow(args[0], args[1])) },
         { "atan2", new FunctionInfo(2, args => Math.Atan2(args[0], args[1])) },
+        { "root", new FunctionInfo(2, args => Math.Pow(args[0], 1.0 / args[1])) },
+        { "hypot", new FunctionInfo(2, args => Math.Sqrt(args[0] * args[0] + args[1] * args[1])) },
+
+        // Random
+        { "rand", new FunctionInfo(0, _ => Random.Shared.NextDouble()) },
+        {
+            "randint",
+            new FunctionInfo(2,
+                args => Random.Shared.Next((int)Math.Min(args[0], args[1]), (int)Math.Max(args[0], args[1]) + 1))
+        },
 
         // Number Theory
         { "gcd", new FunctionInfo(2, args => SpecialFunctions.Gcd(args[0], args[1])) },
