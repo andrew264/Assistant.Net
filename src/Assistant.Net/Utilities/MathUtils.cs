@@ -53,7 +53,86 @@ public static class MathUtils
         { "min", new FunctionInfo(2, args => Math.Min(args[0], args[1])) },
         { "max", new FunctionInfo(2, args => Math.Max(args[0], args[1])) },
         { "pow", new FunctionInfo(2, args => Math.Pow(args[0], args[1])) },
-        { "atan2", new FunctionInfo(2, args => Math.Atan2(args[0], args[1])) }
+        { "atan2", new FunctionInfo(2, args => Math.Atan2(args[0], args[1])) },
+
+        // Combinatorics
+        {
+            "ncr", new FunctionInfo(2, args =>
+            {
+                var n = args[0];
+                var k = args[1];
+
+                if (!IsNonNegativeInteger(n) || !IsNonNegativeInteger(k))
+                    return Math.Exp(
+                        SpecialFunctions.GammaLn(n + 1)
+                        - SpecialFunctions.GammaLn(k + 1)
+                        - SpecialFunctions.GammaLn(n - k + 1));
+
+                if (k < 0 || k > n) return 0;
+                if (k == 0 || Math.Abs(k - n) < 1e-10) return 1;
+                if (k > n / 2) k = n - k;
+                double result = 1;
+                for (var i = 1; i <= k; i++) result = result * (n - i + 1) / i;
+                return Math.Round(result);
+            })
+        },
+        {
+            "npr", new FunctionInfo(2, args =>
+            {
+                var n = args[0];
+                var k = args[1];
+
+                if (!IsNonNegativeInteger(n) || !IsNonNegativeInteger(k))
+                    return Math.Exp(
+                        SpecialFunctions.GammaLn(n + 1)
+                        - SpecialFunctions.GammaLn(n - k + 1));
+
+                if (k < 0 || k > n) return 0;
+                double result = 1;
+                for (var i = 0; i < k; i++) result *= n - i;
+                return result;
+            })
+        },
+        {
+            "catalan", new FunctionInfo(1, args =>
+            {
+                var n = args[0];
+                var result = Math.Exp(
+                    SpecialFunctions.GammaLn(2 * n + 1)
+                    - SpecialFunctions.GammaLn(n + 2)
+                    - SpecialFunctions.GammaLn(n + 1));
+                return IsNonNegativeInteger(n) ? Math.Round(result) : result;
+            })
+        },
+        {
+            "stirling", new FunctionInfo(2, args =>
+            {
+                var n = args[0];
+                var k = args[1];
+
+                if (!IsNonNegativeInteger(n) || !IsNonNegativeInteger(k))
+                    throw new ArgumentException("Stirling numbers require non-negative integer arguments.");
+
+                if (k == 0) return n == 0 ? 1 : 0;
+                if (k > n) return 0;
+                if (Math.Abs(k - n) < 1e-10) return 1;
+
+                double sum = 0;
+                for (var j = 1; j <= k; j++)
+                {
+                    var sign = (k - j) % 2 == 0 ? 1.0 : -1.0;
+
+                    var logBinom = SpecialFunctions.GammaLn(k + 1)
+                                   - SpecialFunctions.GammaLn(j + 1)
+                                   - SpecialFunctions.GammaLn(k - j + 1);
+
+                    var term = Math.Exp(logBinom) * Math.Pow(j, n);
+                    sum += sign * term;
+                }
+
+                return Math.Round(sum / SpecialFunctions.Gamma(k + 1));
+            })
+        }
     };
 
     private static double ValidatePos(double val, string funcName) => val < 0
@@ -363,6 +442,9 @@ public static class MathUtils
         if (stack.Count != 1) throw new ArgumentException("Invalid expression format.");
         return stack.Pop();
     }
+
+    private static bool IsNonNegativeInteger(double value) =>
+        value is >= 0 and < int.MaxValue && Math.Abs(value - Math.Round(value)) < 1e-10;
 
     private enum TokenType
     {

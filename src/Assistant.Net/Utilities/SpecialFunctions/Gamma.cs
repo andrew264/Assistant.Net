@@ -2,7 +2,6 @@ namespace Assistant.Net.Utilities;
 
 public static class SpecialFunctions
 {
-    private const double TwoSqrtEOverPi = 1.8603827342052657173362492472666631120594218414085755;
     private const int GammaN = 10;
     private const double GammaR = 10.900511;
 
@@ -30,7 +29,7 @@ public static class SpecialFunctions
 
             return Math.PI / (Math.Sin(Math.PI * z)
                               * s
-                              * TwoSqrtEOverPi
+                              * MathConstants.TwoSqrtEOverPi
                               * Math.Pow((0.5 - z + GammaR) / Math.E, 0.5 - z));
         }
         else
@@ -38,7 +37,31 @@ public static class SpecialFunctions
             var s = GammaDk[0];
             for (var i = 1; i <= GammaN; i++) s += GammaDk[i] / (z + i - 1.0);
 
-            return s * TwoSqrtEOverPi * Math.Pow((z - 0.5 + GammaR) / Math.E, z - 0.5);
+            return s * MathConstants.TwoSqrtEOverPi * Math.Pow((z - 0.5 + GammaR) / Math.E, z - 0.5);
+        }
+    }
+
+    public static double GammaLn(double z)
+    {
+        if (z < 0.5)
+        {
+            var s = GammaDk[0];
+            for (var i = 1; i <= GammaN; i++) s += GammaDk[i] / (i - z);
+
+            return MathConstants.LnPi
+                   - Math.Log(Math.Sin(Math.PI * z))
+                   - Math.Log(s)
+                   - MathConstants.LogTwoSqrtEOverPi
+                   - (0.5 - z) * Math.Log((0.5 - z + GammaR) / Math.E);
+        }
+        else
+        {
+            var s = GammaDk[0];
+            for (var i = 1; i <= GammaN; i++) s += GammaDk[i] / (z + i - 1.0);
+
+            return Math.Log(s)
+                   + MathConstants.LogTwoSqrtEOverPi
+                   + (z - 0.5) * Math.Log((z - 0.5 + GammaR) / Math.E);
         }
     }
 }
