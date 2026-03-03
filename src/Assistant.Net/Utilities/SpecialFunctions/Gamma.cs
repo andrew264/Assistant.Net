@@ -1,6 +1,6 @@
 namespace Assistant.Net.Utilities;
 
-public static class SpecialFunctions
+public static partial class SpecialFunctions
 {
     private const int GammaN = 10;
     private const double GammaR = 10.900511;

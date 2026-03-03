@@ -55,6 +55,12 @@ public static class MathUtils
         { "pow", new FunctionInfo(2, args => Math.Pow(args[0], args[1])) },
         { "atan2", new FunctionInfo(2, args => Math.Atan2(args[0], args[1])) },
 
+        // Number Theory
+        { "gcd", new FunctionInfo(2, args => SpecialFunctions.Gcd(args[0], args[1])) },
+        { "lcm", new FunctionInfo(2, args => SpecialFunctions.Lcm(args[0], args[1])) },
+        { "phi", new FunctionInfo(1, args => SpecialFunctions.Phi(args[0])) },
+        { "isprime", new FunctionInfo(1, args => SpecialFunctions.IsPrime(args[0])) },
+
         // Combinatorics
         {
             "ncr", new FunctionInfo(2, args =>
