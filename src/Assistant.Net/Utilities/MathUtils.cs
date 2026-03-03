@@ -17,8 +17,10 @@ public static class MathUtils
 
     private static readonly Dictionary<string, double> Constants = new()
     {
-        { "pi", Math.PI },
-        { "e", Math.E }
+        { "pi", MathConstants.Pi },
+        { "e", MathConstants.E },
+        { "gold", MathConstants.GoldenRatio },
+        { "tau", MathConstants.Pi2 }
     };
 
     private static readonly Dictionary<string, FunctionInfo> Functions = new(StringComparer.OrdinalIgnoreCase)
@@ -45,9 +47,9 @@ public static class MathUtils
         { "atan", new FunctionInfo(1, args => Math.Atan(args[0])) },
 
         // Trig (Degrees)
-        { "sind", new FunctionInfo(1, args => Math.Sin(args[0] * (Math.PI / 180.0))) },
-        { "cosd", new FunctionInfo(1, args => Math.Cos(args[0] * (Math.PI / 180.0))) },
-        { "tand", new FunctionInfo(1, args => Math.Tan(args[0] * (Math.PI / 180.0))) },
+        { "sind", new FunctionInfo(1, args => Math.Sin(args[0] * (MathConstants.Pi / 180.0))) },
+        { "cosd", new FunctionInfo(1, args => Math.Cos(args[0] * (MathConstants.Pi / 180.0))) },
+        { "tand", new FunctionInfo(1, args => Math.Tan(args[0] * (MathConstants.Pi / 180.0))) },
 
         // Binary
         { "min", new FunctionInfo(2, args => Math.Min(args[0], args[1])) },
