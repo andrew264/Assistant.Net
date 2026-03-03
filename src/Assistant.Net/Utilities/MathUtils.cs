@@ -170,6 +170,7 @@ public static class MathUtils
             {
                 sb.Clear();
                 var dotCount = 0;
+                var hasExponent = false;
 
                 if (c == '.') dotCount++;
                 sb.Append(c);
@@ -184,11 +185,40 @@ public static class MathUtils
                     }
                     else if (next == '.')
                     {
+                        if (hasExponent) break;
+
                         dotCount++;
                         if (dotCount > 1)
                             throw new ArgumentException($"Invalid number format: multiple dots in '{sb}.'");
                         sb.Append(next);
                         i++;
+                    }
+                    else if (!hasExponent && next is 'e' or 'E')
+                    {
+                        var isScientific = false;
+                        if (i + 2 < expression.Length)
+                        {
+                            var afterNext = expression[i + 2];
+                            if (char.IsDigit(afterNext) || afterNext == '+' || afterNext == '-') isScientific = true;
+                        }
+
+                        if (isScientific)
+                        {
+                            hasExponent = true;
+                            sb.Append(next);
+                            i++;
+
+                            var signChar = expression[i + 1];
+                            if (signChar is '+' or '-')
+                            {
+                                sb.Append(signChar);
+                                i++;
+                            }
+                        }
+                        else
+                        {
+                            break;
+                        }
                     }
                     else
                     {
