@@ -7,12 +7,17 @@ public static class MathUtils
 {
     private static readonly Dictionary<string, OperatorInfo> Operators = new()
     {
-        { "+", new OperatorInfo(2, false) },
-        { "-", new OperatorInfo(2, false) },
-        { "*", new OperatorInfo(3, false) },
-        { "/", new OperatorInfo(3, false) },
-        { "%", new OperatorInfo(3, false) },
-        { "^", new OperatorInfo(4, true) }
+        // Precedence: | (1) < & (2) < Shifts (3) < + (4) < * (5) < ^ (6)
+        { "|", new OperatorInfo(1, false) },
+        { "&", new OperatorInfo(2, false) },
+        { "<<", new OperatorInfo(3, false) },
+        { ">>", new OperatorInfo(3, false) },
+        { "+", new OperatorInfo(4, false) },
+        { "-", new OperatorInfo(4, false) },
+        { "*", new OperatorInfo(5, false) },
+        { "/", new OperatorInfo(5, false) },
+        { "%", new OperatorInfo(5, false) },
+        { "^", new OperatorInfo(6, true) }
     };
 
     private static readonly Dictionary<string, double> Constants = new()
@@ -58,6 +63,10 @@ public static class MathUtils
         { "atan2", new FunctionInfo(2, args => Math.Atan2(args[0], args[1])) },
         { "root", new FunctionInfo(2, args => Math.Pow(args[0], 1.0 / args[1])) },
         { "hypot", new FunctionInfo(2, args => Math.Sqrt(args[0] * args[0] + args[1] * args[1])) },
+
+        // Bitwise
+        { "xor", new FunctionInfo(2, args => (long)args[0] ^ (long)args[1]) },
+        { "not", new FunctionInfo(1, args => ~(long)args[0]) },
 
         // Random
         { "rand", new FunctionInfo(0, _ => Random.Shared.NextDouble()) },
@@ -259,6 +268,17 @@ public static class MathUtils
             }
             else
             {
+                if (i + 1 < expression.Length)
+                {
+                    var doubleChar = expression.Substring(i, 2);
+                    if (Operators.ContainsKey(doubleChar))
+                    {
+                        tokens.Add(new Token(doubleChar, TokenType.Operator));
+                        i++;
+                        continue;
+                    }
+                }
+
                 var s = c.ToString();
                 if (Operators.ContainsKey(s))
                 {
@@ -455,6 +475,10 @@ public static class MathUtils
                             break;
                         case "%": result = left % right; break;
                         case "^": result = Math.Pow(left, right); break;
+                        case "&": result = (long)left & (long)right; break;
+                        case "|": result = (long)left | (long)right; break;
+                        case "<<": result = (long)left << (int)right; break;
+                        case ">>": result = (long)left >> (int)right; break;
                     }
 
                     stack.Push(result);
