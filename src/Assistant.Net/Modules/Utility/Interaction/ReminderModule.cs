@@ -6,21 +6,110 @@ using Discord.Interactions;
 
 namespace Assistant.Net.Modules.Utility.Interaction;
 
-[Group("remind", "Set, view, and manage reminders.")]
-[RequireContext(ContextType.Guild)]
 public class ReminderModule(ReminderService reminderService)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private async Task CreateReminderInteractionAsync(
-        string timeString,
-        string message,
-        bool isDm = true,
-        IUser? targetUser = null,
-        string? recurrence = null,
-        string? title = null)
+    [SlashCommand("remind", "Set a reminder for yourself, another user, or a channel.")]
+    public async Task RemindAsync(
+        [Summary("target", "Who or what to remind (User or Channel). Leave empty for yourself.")]
+        IMentionable? target = null)
+    {
+        var targetId = Context.User.Id;
+        var isDm = true;
+        var contextLabel = "Yourself";
+
+        if (target != null)
+        {
+            switch (target)
+            {
+                case IUser { IsBot: true }:
+                    await RespondAsync("You cannot set reminders for bots.", ephemeral: true).ConfigureAwait(false);
+                    return;
+                case IUser user:
+                {
+                    if (user.Id != Context.User.Id)
+                    {
+                        var permissions = (Context.User as IGuildUser)?.GuildPermissions;
+                        if (permissions is not { ManageMessages: true })
+                        {
+                            await RespondAsync("You need 'Manage Messages' permission to set reminders for other users.",
+                                ephemeral: true).ConfigureAwait(false);
+                            return;
+                        }
+
+                        targetId = user.Id;
+                        contextLabel = $"@{user.Username}";
+                    }
+
+                    break;
+                }
+                case ITextChannel channel:
+                    targetId = channel.Id;
+                    isDm = false;
+                    contextLabel = $"#{channel.Name}";
+                    break;
+                default:
+                    await RespondAsync("Invalid target. Please select a User or a Text Channel.", ephemeral: true)
+                        .ConfigureAwait(false);
+                    return;
+            }
+        }
+
+        var typeStr = isDm ? "dm" : "channel";
+        var customId = $"remind:create:modal:{targetId}:{typeStr}";
+
+        var modal = new ModalBuilder()
+            .WithTitle($"Set Reminder: {contextLabel}")
+            .WithCustomId(customId)
+            .AddTextInput("Title (Optional)", "title", maxLength: 200, required: false,
+                placeholder: "e.g., Weekly Meeting")
+            .AddTextInput("Message", "message", TextInputStyle.Paragraph, maxLength: 1000, required: true,
+                placeholder: "What do you need to be reminded about?")
+            .AddTextInput("When?", "time", placeholder: "e.g., in 5 mins, tomorrow 9am", required: true)
+            .AddTextInput("Repeat (Optional)", "repeat", placeholder: "e.g., daily, weekly, none", required: false,
+                maxLength: 50)
+            .Build();
+
+        await RespondWithModalAsync(modal).ConfigureAwait(false);
+    }
+
+    [ModalInteraction("remind:create:modal:*:*", true)]
+    public async Task HandleCreateModalAsync(string targetIdStr, string typeStr, ReminderCreateModal modal)
     {
         await DeferAsync().ConfigureAwait(false);
 
+        if (!ulong.TryParse(targetIdStr, out var targetId))
+        {
+            await FollowupAsync("Invalid target ID.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        var isDm = typeStr == "dm";
+        var channelId = Context.Channel.Id;
+        var targetUserId = isDm ? targetId : Context.User.Id;
+
+        if (!isDm) channelId = targetId;
+
+        await CreateReminderLogicAsync(
+            modal.Time,
+            modal.Message,
+            isDm,
+            targetUserId,
+            channelId,
+            modal.Repeat,
+            modal.ReminderTitle
+        ).ConfigureAwait(false);
+    }
+
+    private async Task CreateReminderLogicAsync(
+        string timeString,
+        string message,
+        bool isDm,
+        ulong targetUserId,
+        ulong channelId,
+        string? recurrence = null,
+        string? title = null)
+    {
         var parsedTime = ReminderService.ParseTime(timeString);
 
         if (parsedTime == null)
@@ -37,14 +126,7 @@ public class ReminderModule(ReminderService reminderService)
             return;
         }
 
-        if (message.Length > 1000)
-        {
-            await FollowupAsync("Reminder message is too long (max 1000 characters).", ephemeral: true)
-                .ConfigureAwait(false);
-            return;
-        }
-
-        if (recurrence != null && !IsValidRecurrence(recurrence))
+        if (!string.IsNullOrWhiteSpace(recurrence) && !IsValidRecurrence(recurrence))
         {
             await FollowupAsync(
                 "Invalid recurrence interval. Use 'daily', 'weekly', 'monthly', 'yearly', 'hourly', 'minutely', 'every X unit', or 'none'.",
@@ -52,33 +134,37 @@ public class ReminderModule(ReminderService reminderService)
             return;
         }
 
-        var actualTargetUser = targetUser ?? Context.User;
+        var dTargetId = targetUserId == Context.User.Id && isDm ? null : (ulong?)targetUserId;
 
         var reminder = await reminderService.CreateReminderAsync(
             Context.User.Id,
             Context.Guild.Id,
-            Context.Channel.Id,
+            channelId,
             message,
             parsedTime.Value,
             isDm,
-            actualTargetUser.Id,
+            dTargetId,
             recurrence,
             title).ConfigureAwait(false);
 
         if (reminder != null)
         {
-            var targetString =
-                isDm ? actualTargetUser.Id == Context.User.Id ? "you" : actualTargetUser.Mention : "this channel";
+            var targetDisplay = isDm
+                ? targetUserId == Context.User.Id ? "you" : $"<@{targetUserId}>"
+                : $"<#{channelId}>";
 
             var container = new ContainerBuilder()
                 .WithTextDisplay(new TextDisplayBuilder("# ✅ Reminder Set!"))
                 .WithTextDisplay(new TextDisplayBuilder(
-                    $"I will remind {targetString} {reminder.TriggerTime.GetRelativeTime()}."))
+                    $"I will remind {targetDisplay} {reminder.TriggerTime.GetRelativeTime()}."))
                 .WithSeparator()
                 .WithTextDisplay(new TextDisplayBuilder($"**Message:** \"{reminder.Message.Truncate(500)}\""))
                 .WithTextDisplay(new TextDisplayBuilder($"**ID:** `{reminder.Id}`"))
                 .WithTextDisplay(
                     new TextDisplayBuilder($"**Time:** {reminder.TriggerTime.GetLongDateTime()}"));
+
+            if (!string.IsNullOrWhiteSpace(reminder.Title))
+                container.WithTextDisplay(new TextDisplayBuilder($"**Title:** {reminder.Title}"));
 
             if (reminder.Recurrence != null)
                 container.WithTextDisplay(new TextDisplayBuilder($"**Repeats:** {reminder.Recurrence}"));
@@ -95,79 +181,7 @@ public class ReminderModule(ReminderService reminderService)
         }
     }
 
-    private static bool IsValidRecurrence(string recurrence)
-    {
-        recurrence = recurrence.ToLowerInvariant();
-        if (recurrence == "none") return true;
-        string[] validUnits = ["daily", "weekly", "monthly", "yearly", "hourly", "minutely"];
-        if (validUnits.Contains(recurrence)) return true;
-        if (!recurrence.StartsWith("every")) return false;
-        var parts = recurrence.Split([' '], StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length != 3 || !int.TryParse(parts[1], out var count) || count <= 0) return false;
-        string[] validEveryUnits =
-        [
-            "day", "days", "week", "weeks", "month", "months", "year", "years", "hour", "hours", "minute",
-            "minutes"
-        ];
-        return validEveryUnits.Contains(parts[2]);
-    }
-
-    [SlashCommand("me", "Sets a reminder for yourself (DM).")]
-    public async Task RemindMeAsync(
-        [Summary(description: "When to remind (e.g., 'in 5 minutes', 'tomorrow at 9am')")]
-        string time,
-        [Summary(description: "What to remind you about")]
-        string message,
-        [Summary(description: "Optional title for the reminder")]
-        string? title = null,
-        [Summary(description: "How often to repeat (e.g., 'daily', 'weekly', 'every 2 days', 'none')")]
-        [Autocomplete(typeof(RecurrenceAutocompleteProvider))]
-        string? repeat = null
-    )
-    {
-        await CreateReminderInteractionAsync(time, message, true, Context.User, repeat, title).ConfigureAwait(false);
-    }
-
-    [SlashCommand("channel", "Sets a reminder in this channel.")]
-    public async Task RemindChannelAsync(
-        [Summary(description: "When to remind (e.g., 'in 5 minutes', 'tomorrow at 9am')")]
-        string time,
-        [Summary(description: "What to remind about")]
-        string message,
-        [Summary(description: "Optional title for the reminder")]
-        string? title = null,
-        [Summary(description: "How often to repeat (e.g., 'daily', 'weekly', 'every 2 days', 'none')")]
-        [Autocomplete(typeof(RecurrenceAutocompleteProvider))]
-        string? repeat = null)
-    {
-        await CreateReminderInteractionAsync(time, message, false, Context.User, repeat, title).ConfigureAwait(false);
-    }
-
-    [SlashCommand("other", "Sets a reminder for another user (DM).")]
-    [RequireUserPermission(GuildPermission.ManageMessages)]
-    public async Task RemindOtherAsync(
-        [Summary(description: "The user to remind")]
-        IUser user,
-        [Summary(description: "When to remind (e.g., 'in 5 minutes', 'tomorrow at 9am')")]
-        string time,
-        [Summary(description: "What to remind them about")]
-        string message,
-        [Summary(description: "Optional title for the reminder")]
-        string? title = null,
-        [Summary(description: "How often to repeat (e.g., 'daily', 'weekly', 'every 2 days', 'none')")]
-        [Autocomplete(typeof(RecurrenceAutocompleteProvider))]
-        string? repeat = null)
-    {
-        if (user.IsBot)
-        {
-            await RespondAsync("You cannot set reminders for bots.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        await CreateReminderInteractionAsync(time, message, true, user, repeat, title).ConfigureAwait(false);
-    }
-
-    [SlashCommand("list", "Manage your reminders.")]
+    [SlashCommand("reminders", "Manage your reminders.")]
     public async Task ListRemindersAsync()
     {
         await DeferAsync(true).ConfigureAwait(false);
@@ -177,7 +191,6 @@ public class ReminderModule(ReminderService reminderService)
         await FollowupAsync(components: components, ephemeral: true, flags: MessageFlags.ComponentsV2)
             .ConfigureAwait(false);
     }
-
 
     [ComponentInteraction(ReminderUiBuilder.IdPage + ":*", true)]
     private async Task HandlePaginationAsync(int page)
@@ -390,7 +403,7 @@ public class ReminderModule(ReminderService reminderService)
             modal.Message,
             newParsedTime,
             modal.Repeat,
-            modal.Title
+            modal.TitleInput
         ).ConfigureAwait(false);
 
         if (!found)
@@ -413,61 +426,39 @@ public class ReminderModule(ReminderService reminderService)
             msg.Flags = MessageFlags.ComponentsV2;
         }).ConfigureAwait(false);
     }
-}
 
-public class RecurrenceAutocompleteProvider : AutocompleteHandler
-{
-    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
-        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services)
+    private static bool IsValidRecurrence(string recurrence)
     {
-        string[] suggestions =
+        recurrence = recurrence.ToLowerInvariant();
+        if (recurrence == "none") return true;
+        string[] validUnits = ["daily", "weekly", "monthly", "yearly", "hourly", "minutely"];
+        if (validUnits.Contains(recurrence)) return true;
+        if (!recurrence.StartsWith("every")) return false;
+        var parts = recurrence.Split([' '], StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 3 || !int.TryParse(parts[1], out var count) || count <= 0) return false;
+        string[] validEveryUnits =
         [
-            "none", "daily", "weekly", "monthly", "yearly", "hourly", "minutely",
-            "every 2 days", "every 3 weeks", "every 6 months"
+            "day", "days", "week", "weeks", "month", "months", "year", "years", "hour", "hours", "minute",
+            "minutes"
         ];
-
-        var currentValue = autocompleteInteraction.Data.Current.Value as string ?? "";
-
-        var results = suggestions
-            .Where(s => s.StartsWith(currentValue, StringComparison.OrdinalIgnoreCase))
-            .Select(s => new AutocompleteResult(s.CapitalizeFirstLetter(), s))
-            .Take(25);
-
-        return Task.FromResult(AutocompletionResult.FromSuccess(results));
+        return validEveryUnits.Contains(parts[2]);
     }
 }
 
-public class ReminderTimeAutocompleteProvider : AutocompleteHandler
+public class ReminderCreateModal : IModal
 {
-    public override Task<AutocompletionResult> GenerateSuggestionsAsync(IInteractionContext context,
-        IAutocompleteInteraction autocompleteInteraction, IParameterInfo parameter, IServiceProvider services)
-    {
-        string[] suggestions =
-        [
-            "in 5 minutes", "in 15 minutes", "in 30 minutes", "in 1 hour", "in 2 hours",
-            "tomorrow at 9am", "tomorrow noon", "next monday 10am", "in 1 week"
-        ];
-
-        var currentValue = autocompleteInteraction.Data.Current.Value as string ?? "";
-
-        var results = suggestions
-            .Where(s => s.StartsWith(currentValue, StringComparison.OrdinalIgnoreCase))
-            .Select(s => new AutocompleteResult(s, s))
-            .Take(25);
-
-        return Task.FromResult(AutocompletionResult.FromSuccess(results));
-    }
+    [ModalTextInput("title")] public string? ReminderTitle { get; set; }
+    [ModalTextInput("message")] public string Message { get; set; } = string.Empty;
+    [ModalTextInput("time")] public string Time { get; set; } = string.Empty;
+    [ModalTextInput("repeat")] public string? Repeat { get; set; }
+    public string Title => "Set Reminder";
 }
 
 public class ReminderEditModal : IModal
 {
     [ModalTextInput("title")] public string? TitleInput { get; set; }
-
     [ModalTextInput("message")] public string Message { get; set; } = string.Empty;
-
     [ModalTextInput("time")] public string? Time { get; set; }
-
     [ModalTextInput("repeat")] public string? Repeat { get; set; }
-
     public string Title => "Edit Reminder";
 }
