@@ -3,6 +3,7 @@ using Assistant.Net.Utilities;
 using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.Interactions;
+using Discord.WebSocket;
 
 namespace Assistant.Net.Modules.Utility.Interaction;
 
@@ -19,7 +20,6 @@ public class ReminderModule(ReminderService reminderService)
         var contextLabel = "Yourself";
 
         if (target != null)
-        {
             switch (target)
             {
                 case IUser { IsBot: true }:
@@ -32,7 +32,8 @@ public class ReminderModule(ReminderService reminderService)
                         var permissions = (Context.User as IGuildUser)?.GuildPermissions;
                         if (permissions is not { ManageMessages: true })
                         {
-                            await RespondAsync("You need 'Manage Messages' permission to set reminders for other users.",
+                            await RespondAsync(
+                                "You need 'Manage Messages' permission to set reminders for other users.",
                                 ephemeral: true).ConfigureAwait(false);
                             return;
                         }
@@ -53,7 +54,6 @@ public class ReminderModule(ReminderService reminderService)
                         .ConfigureAwait(false);
                     return;
             }
-        }
 
         var typeStr = isDm ? "dm" : "channel";
         var customId = $"remind:create:modal:{targetId}:{typeStr}";
@@ -61,7 +61,7 @@ public class ReminderModule(ReminderService reminderService)
         var modal = new ModalBuilder()
             .WithTitle($"Set Reminder: {contextLabel}")
             .WithCustomId(customId)
-            .AddTextInput("Title (Optional)", "title", maxLength: 200, required: false,
+            .AddTextInput("Title (Optional)", "reminder_title", maxLength: 200, required: false,
                 placeholder: "e.g., Weekly Meeting")
             .AddTextInput("Message", "message", TextInputStyle.Paragraph, maxLength: 1000, required: true,
                 placeholder: "What do you need to be reminded about?")
@@ -247,7 +247,6 @@ public class ReminderModule(ReminderService reminderService)
             return;
         }
 
-        // Return to list after deletion
         var reminders = await reminderService.ListUserRemindersAsync(Context.User.Id).ConfigureAwait(false);
         var components = ReminderUiBuilder.BuildReminderList(reminders, Context.User, 1);
 
@@ -287,61 +286,6 @@ public class ReminderModule(ReminderService reminderService)
         }).ConfigureAwait(false);
     }
 
-    [ComponentInteraction(ReminderUiBuilder.IdTargetUser + ":*", true)]
-    public async Task HandleTargetUserSelectAsync(int reminderId, string[] selectedUsers)
-    {
-        await DeferAsync(true).ConfigureAwait(false);
-
-        if (selectedUsers.Length == 0 || !ulong.TryParse(selectedUsers[0], out var targetUserId)) return;
-
-        var user = await Context.Client.GetUserAsync(targetUserId);
-        if (user is { IsBot: true })
-        {
-            await FollowupAsync("You cannot set a reminder for a bot.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        var (success, _, updatedReminder) = await reminderService.EditReminderAsync(
-            Context.User.Id, reminderId, newTargetUserId: targetUserId).ConfigureAwait(false);
-
-        if (!success || updatedReminder == null)
-        {
-            await FollowupAsync("Failed to update target user.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        var components = ReminderUiBuilder.BuildManageReminder(updatedReminder);
-        await ModifyOriginalResponseAsync(msg =>
-        {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
-    }
-
-    [ComponentInteraction(ReminderUiBuilder.IdTargetChannel + ":*", true)]
-    public async Task HandleTargetChannelSelectAsync(int reminderId, string[] selectedChannels)
-    {
-        await DeferAsync(true).ConfigureAwait(false);
-
-        if (selectedChannels.Length == 0 || !ulong.TryParse(selectedChannels[0], out var channelId)) return;
-
-        var (success, _, updatedReminder) = await reminderService.EditReminderAsync(
-            Context.User.Id, reminderId, newChannelId: channelId).ConfigureAwait(false);
-
-        if (!success || updatedReminder == null)
-        {
-            await FollowupAsync("Failed to update target channel.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        var components = ReminderUiBuilder.BuildManageReminder(updatedReminder);
-        await ModifyOriginalResponseAsync(msg =>
-        {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
-    }
-
     [ComponentInteraction(ReminderUiBuilder.IdEditModal + ":*", true)]
     public async Task HandleEditModalPromptAsync(int reminderId)
     {
@@ -352,18 +296,42 @@ public class ReminderModule(ReminderService reminderService)
             return;
         }
 
-        var modal = new ModalBuilder()
+        var modalBuilder = new ModalBuilder()
             .WithTitle($"Edit Reminder #{reminder.Id}")
             .WithCustomId($"remind:modal:edit:{reminder.Id}")
-            .AddTextInput("Title (Optional)", "title", value: reminder.Title, required: false, maxLength: 200)
+            .AddTextInput("Title (Optional)", "reminder_title", value: reminder.Title, required: false, maxLength: 200)
             .AddTextInput("Message", "message", TextInputStyle.Paragraph, value: reminder.Message, maxLength: 1000)
             .AddTextInput("Time (e.g., 'in 1 hour', 'tomorrow')", "time", placeholder: "Leave empty to keep current",
                 required: false)
             .AddTextInput("Repeat (e.g., 'daily', 'none')", "repeat", value: reminder.Recurrence ?? "none",
-                required: false, maxLength: 50)
-            .Build();
+                required: false, maxLength: 50);
+        if (reminder.IsDm)
+        {
+            var menu = new SelectMenuBuilder()
+                .WithCustomId("remind:edit:user")
+                .WithType(ComponentType.UserSelect)
+                .WithMinValues(1)
+                .WithMaxValues(1);
 
-        await RespondWithModalAsync(modal).ConfigureAwait(false);
+            var currentTargetId = reminder.TargetUserId ?? reminder.CreatorId;
+            menu.AddDefaultValue((ulong)currentTargetId, SelectDefaultValueType.User);
+            modalBuilder.AddSelectMenu("Target User", menu);
+        }
+        else
+        {
+            var menu = new SelectMenuBuilder()
+                .WithCustomId("remind:edit:chan")
+                .WithType(ComponentType.ChannelSelect)
+                .WithChannelTypes(ChannelType.Text)
+                .WithMinValues(1)
+                .WithMaxValues(1);
+
+            if (reminder.ChannelId != 0)
+                menu.AddDefaultValue((ulong)reminder.ChannelId, SelectDefaultValueType.Channel);
+            modalBuilder.AddSelectMenu("Target Channel", menu);
+        }
+
+        await RespondWithModalAsync(modalBuilder.Build()).ConfigureAwait(false);
     }
 
     [ModalInteraction("remind:modal:edit:*", true)]
@@ -397,13 +365,42 @@ public class ReminderModule(ReminderService reminderService)
             return;
         }
 
+        ulong? newChannelId = null;
+        ulong? newTargetUserId = null;
+
+        if (Context.Interaction is SocketModal socketModal)
+        {
+            var userSelect = socketModal.Data.Components
+                .FirstOrDefault(c => c.CustomId == "remind:edit:user");
+            var chanSelect = socketModal.Data.Components
+                .FirstOrDefault(c => c.CustomId == "remind:edit:chan");
+
+            if (userSelect is { Values.Count: > 0 } && ulong.TryParse(userSelect.Values.First(), out var uid))
+            {
+                var user = await Context.Client.GetUserAsync(uid);
+                if (user is { IsBot: true })
+                {
+                    await FollowupAsync("You cannot set a reminder for a bot.", ephemeral: true).ConfigureAwait(false);
+                    return;
+                }
+
+                newTargetUserId = uid;
+            }
+            else if (chanSelect is { Values.Count: > 0 } && ulong.TryParse(chanSelect.Values.First(), out var cid))
+            {
+                newChannelId = cid;
+            }
+        }
+
         var (success, found, updatedReminder) = await reminderService.EditReminderAsync(
             Context.User.Id,
             reminderId,
             modal.Message,
             newParsedTime,
             modal.Repeat,
-            modal.TitleInput
+            modal.ReminderTitle,
+            newChannelId,
+            newTargetUserId
         ).ConfigureAwait(false);
 
         if (!found)
@@ -447,7 +444,7 @@ public class ReminderModule(ReminderService reminderService)
 
 public class ReminderCreateModal : IModal
 {
-    [ModalTextInput("title")] public string? ReminderTitle { get; set; }
+    [ModalTextInput("reminder_title")] public string? ReminderTitle { get; set; }
     [ModalTextInput("message")] public string Message { get; set; } = string.Empty;
     [ModalTextInput("time")] public string Time { get; set; } = string.Empty;
     [ModalTextInput("repeat")] public string? Repeat { get; set; }
@@ -456,7 +453,7 @@ public class ReminderCreateModal : IModal
 
 public class ReminderEditModal : IModal
 {
-    [ModalTextInput("title")] public string? TitleInput { get; set; }
+    [ModalTextInput("reminder_title")] public string? ReminderTitle { get; set; }
     [ModalTextInput("message")] public string Message { get; set; } = string.Empty;
     [ModalTextInput("time")] public string? Time { get; set; }
     [ModalTextInput("repeat")] public string? Repeat { get; set; }

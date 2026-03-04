@@ -13,8 +13,6 @@ public static class ReminderUiBuilder
     public const string IdEditModal = "remind:edit_modal";
     public const string IdToggle = "remind:toggle";
     public const string IdDelete = "remind:delete";
-    public const string IdTargetUser = "remind:target_user";
-    public const string IdTargetChannel = "remind:target_chan";
 
     public static MessageComponent BuildReminderList(List<ReminderEntity> reminders, IUser user, int currentPage)
     {
@@ -107,24 +105,6 @@ public static class ReminderUiBuilder
                 new Emoji(reminder.IsActive ? "⏸️" : "▶️"))
             .WithButton("Delete", $"{IdDelete}:{reminder.Id}", ButtonStyle.Danger, new Emoji("🗑️"))
         );
-
-        if (reminder.IsDm) // TODO: move SelectMenuBuilder into ReminderEditModal after dnet 3.19
-            container.WithActionRow(new ActionRowBuilder()
-                .WithSelectMenu(new SelectMenuBuilder()
-                    .WithType(ComponentType.UserSelect)
-                    .WithCustomId($"{IdTargetUser}:{reminder.Id}")
-                    .WithPlaceholder("Change Target User...")
-                )
-            );
-        else
-            container.WithActionRow(new ActionRowBuilder()
-                .WithSelectMenu(new SelectMenuBuilder()
-                    .WithType(ComponentType.ChannelSelect)
-                    .WithChannelTypes(ChannelType.Text)
-                    .WithCustomId($"{IdTargetChannel}:{reminder.Id}")
-                    .WithPlaceholder("Change Target Channel...")
-                )
-            );
 
         container.WithActionRow(new ActionRowBuilder()
             .WithButton("Back to List", $"{IdList}:1", ButtonStyle.Secondary, new Emoji("◀️"))
