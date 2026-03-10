@@ -17,10 +17,10 @@
         <PackageReference Include="Discord.Net" Version="3.19.0" />
         <PackageReference Include="GTranslate" Version="2.3.1"/>
         <PackageReference Include="HtmlAgilityPack" Version="1.12.4"/>
-        <PackageReference Include="Lavalink4Net" Version="4.2.0"/>
-        <PackageReference Include="Lavalink4NET.Cluster" Version="4.2.0"/>
-        <PackageReference Include="Lavalink4Net.Discord.Net" Version="4.2.0"/>
-        <PackageReference Include="Lavalink4NET.InactivityTracking" Version="4.2.0"/>
+        <PackageReference Include="Lavalink4Net" Version="4.2.1" />
+        <PackageReference Include="Lavalink4NET.Cluster" Version="4.2.1" />
+        <PackageReference Include="Lavalink4Net.Discord.Net" Version="4.2.1" />
+        <PackageReference Include="Lavalink4NET.InactivityTracking" Version="4.2.1" />
         <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.3"/>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.3"/>
         <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.3"/>
