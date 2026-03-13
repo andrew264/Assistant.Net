@@ -8,18 +8,17 @@ namespace Assistant.Net.Utilities;
 
 public static class UserUtils
 {
-    // Get the top role color of a user
     public static Color? GetTopRoleColor(SocketUser? user)
     {
         if (user is not SocketGuildUser guildUser)
             return null;
 
         var topRole = guildUser.Roles
-            .Where(role => !role.IsEveryone && role.Color != Color.Default)
+            .Where(role => !role.IsEveryone && role.Colors.PrimaryColor != Color.Default)
             .OrderByDescending(role => role.Position)
             .FirstOrDefault();
 
-        return topRole?.Color;
+        return topRole?.Colors.PrimaryColor;
     }
 
     public static async Task<(MessageComponent? Components, FileAttachment? Attachment, string? ErrorMessage)>
@@ -65,17 +64,14 @@ public static class UserUtils
         var attachments = new List<FileAttachment>();
         var container = new ContainerBuilder();
 
-        // -- Header --
         container.WithTextDisplay(new TextDisplayBuilder($"{after.Mention}'s Profile Updated"));
 
         container.WithSeparator();
 
-        // -- Username Change --
         if (before.Username != after.Username)
             container.WithTextDisplay(
                 new TextDisplayBuilder($"**Username:** `{before.Username}` → `{after.Username}`"));
 
-        // -- Avatar Change --
         var beforeAvatarUrl = before.GetDisplayAvatarUrl(size: 1024);
         var afterAvatarUrl = after.GetDisplayAvatarUrl(size: 1024);
 
@@ -101,7 +97,6 @@ public static class UserUtils
             }
         }
 
-        // -- Footer --
         container
             .WithSeparator()
             .WithTextDisplay(
@@ -128,12 +123,10 @@ public static class UserUtils
 
         var userModel = await userService.GetUserAsync(targetUser.Id).ConfigureAwait(false);
 
-        // -- Data Preparation --
         var displayName = guildUser?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
         var avatarUrl = targetUser.GetDisplayAvatarUrl(size: 2048) ?? targetUser.GetDefaultAvatarUrl();
         var accentColor = GetTopRoleColor(guildUser);
 
-        // Timestamps
         var timestampsContent = new StringBuilder();
         timestampsContent.AppendLine($"**Account Created:** {targetUser.CreatedAt.GetRelativeTime()}");
         if (guildUser?.JoinedAt is { } joinedAt)
@@ -144,20 +137,16 @@ public static class UserUtils
             timestampsContent.AppendLine($"**{statusFieldName}** {lastSeen.GetRelativeTime()}");
         }
 
-        // Roles
         string? roleString = null;
         var roles = guildUser?.Roles.Where(r => !r.IsEveryone).OrderByDescending(r => r.Position).ToList();
         if (roles is { Count: > 0 })
             roleString = string.Join(" ", roles.Select(r => r.Mention)).Truncate(4000);
 
-        // Activities
         var activities = (guildUser?.Activities ?? targetUser.Activities).ToList();
 
-        // -- Container Construction --
         var container = new ContainerBuilder()
             .WithAccentColor(accentColor);
 
-        // Header
         var headerSection = new SectionBuilder()
             .AddComponent(new TextDisplayBuilder($"# {displayName}"))
             .AddComponent(new TextDisplayBuilder($"@{targetUser.Username} | {targetUser.Mention}"));
@@ -172,30 +161,22 @@ public static class UserUtils
 
         container.WithSection(headerSection);
 
-        // Timestamps
         container.WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder(timestampsContent.ToString()));
 
-        // Roles
         if (roleString != null)
             container.WithSeparator()
                 .WithTextDisplay(new TextDisplayBuilder($"## Roles ({roles!.Count})"))
                 .WithTextDisplay(new TextDisplayBuilder(roleString));
 
-        // Activities
         if (activities.Count > 0)
         {
             container.WithSeparator()
                 .WithTextDisplay(new TextDisplayBuilder("## Activities"));
 
-            foreach (var activity in activities)
-            {
-                var section = CreateActivitySection(activity);
-                if (section != null) container.WithSection(section);
-            }
+            foreach (var activity in activities) AddActivityToContainer(container, activity);
         }
 
-        // Footer Links
         if (!string.IsNullOrEmpty(avatarUrl))
             container.WithSeparator()
                 .WithActionRow(new ActionRowBuilder()
@@ -204,18 +185,21 @@ public static class UserUtils
         return new ComponentBuilderV2(container).Build();
     }
 
-    private static SectionBuilder? CreateActivitySection(IActivity activity)
+    private static void AddActivityToContainer(ContainerBuilder container, IActivity activity)
     {
-        var section = new SectionBuilder();
-
         switch (activity)
         {
             case SpotifyGame spotify:
-                section.AddComponent(new TextDisplayBuilder(
-                    $"**Listening to Spotify**\n{spotify.TrackTitle.AsMarkdownLink(spotify.TrackUrl)}\nby {string.Join(", ", spotify.Artists)}"));
-                section.WithAccessory(new ThumbnailBuilder
-                    { Media = new UnfurledMediaItemProperties { Url = spotify.AlbumArtUrl } });
-                return section;
+                var spotifyText =
+                    $"**Listening to Spotify**\n{spotify.TrackTitle.AsMarkdownLink(spotify.TrackUrl)}\nby {string.Join(", ", spotify.Artists)}";
+                if (!string.IsNullOrWhiteSpace(spotify.AlbumArtUrl))
+                    container.WithSection(new SectionBuilder()
+                        .AddComponent(new TextDisplayBuilder(spotifyText))
+                        .WithAccessory(new ThumbnailBuilder
+                            { Media = new UnfurledMediaItemProperties { Url = spotify.AlbumArtUrl } }));
+                else
+                    container.WithTextDisplay(new TextDisplayBuilder(spotifyText));
+                break;
 
             case RichGame richGame:
                 var richGameText = new StringBuilder($"**Playing {richGame.Name}**");
@@ -224,20 +208,22 @@ public static class UserUtils
                 if (richGame.Timestamps?.Start is { } startTime)
                     richGameText.AppendLine($"\nElapsed: {startTime.GetRelativeTime()}");
 
-                section.AddComponent(new TextDisplayBuilder(richGameText.ToString()));
-
                 var largeAssetUrl = richGame.LargeAsset?.GetImageUrl();
                 if (!string.IsNullOrWhiteSpace(largeAssetUrl))
-                    section.WithAccessory(new ThumbnailBuilder
-                        { Media = new UnfurledMediaItemProperties { Url = largeAssetUrl } });
-                return section;
+                    container.WithSection(new SectionBuilder()
+                        .AddComponent(new TextDisplayBuilder(richGameText.ToString()))
+                        .WithAccessory(new ThumbnailBuilder
+                            { Media = new UnfurledMediaItemProperties { Url = largeAssetUrl } }));
+                else
+                    container.WithTextDisplay(new TextDisplayBuilder(richGameText.ToString()));
+                break;
 
             case StreamingGame streamingGame:
-                section.AddComponent(
-                    new TextDisplayBuilder($"**Streaming on {streamingGame.Details}**\n{streamingGame.Name}"));
-                section.WithAccessory(new ButtonBuilder("Watch Stream", style: ButtonStyle.Link,
-                    url: streamingGame.Url));
-                return section;
+                container.WithSection(new SectionBuilder()
+                    .AddComponent(
+                        new TextDisplayBuilder($"**Streaming on {streamingGame.Details}**\n{streamingGame.Name}"))
+                    .WithAccessory(new ButtonBuilder("Watch Stream", style: ButtonStyle.Link, url: streamingGame.Url)));
+                break;
 
             case CustomStatusGame custom:
                 var customStatusContent = new StringBuilder();
@@ -245,15 +231,12 @@ public static class UserUtils
                 if (!string.IsNullOrWhiteSpace(custom.State)) customStatusContent.Append(custom.State);
 
                 if (customStatusContent.Length > 0)
-                    section.AddComponent(new TextDisplayBuilder($"**Custom Status:** {customStatusContent}"));
-                return section;
+                    container.WithTextDisplay(new TextDisplayBuilder($"**Custom Status:** {customStatusContent}"));
+                break;
 
             case Game game:
-                section.AddComponent(new TextDisplayBuilder($"{game.Type} {game.Name}"));
-                return section;
-
-            default:
-                return null;
+                container.WithTextDisplay(new TextDisplayBuilder($"{game.Type} {game.Name}"));
+                break;
         }
     }
 }
