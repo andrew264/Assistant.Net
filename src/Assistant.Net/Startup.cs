@@ -28,6 +28,8 @@ using Serilog;
 
 var builder = new HostApplicationBuilder(args);
 
+builder.Services.AddSystemd();
+
 // --- Configuration Setup ---
 builder.Configuration
     .SetBasePath(Directory.GetCurrentDirectory())

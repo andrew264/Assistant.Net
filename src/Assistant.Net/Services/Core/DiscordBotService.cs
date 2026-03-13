@@ -42,8 +42,16 @@ public class DiscordBotService(
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation("Stopping Discord Bot...");
-        await client.LogoutAsync().ConfigureAwait(false);
-        await client.StopAsync().ConfigureAwait(false);
+        try
+        {
+            await client.LogoutAsync().ConfigureAwait(false);
+            await client.StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error during Discord logout.");
+        }
+
         await base.StopAsync(cancellationToken);
     }
 
