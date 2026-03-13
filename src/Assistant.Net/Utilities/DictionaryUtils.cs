@@ -24,13 +24,13 @@ public static class DictionaryUtils
             })
             .WithSeparator();
 
-        container.WithTextDisplay(new TextDisplayBuilder(entry.FormattedDefinition.Truncate(1024)));
+        container.WithTextDisplay(new TextDisplayBuilder(entry.Definition.Truncate(1024)));
 
-        if (!string.IsNullOrWhiteSpace(entry.FormattedExample))
+        if (!string.IsNullOrWhiteSpace(entry.Example))
             container
                 .WithSeparator()
                 .WithTextDisplay(new TextDisplayBuilder(
-                    $"*Example:*\n{entry.FormattedExample.Truncate(1024)}"));
+                    $"*Example:*\n{entry.Example.Truncate(1024)}"));
 
         container.WithSeparator();
 

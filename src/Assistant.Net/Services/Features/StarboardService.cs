@@ -410,10 +410,9 @@ public class StarboardService
                 await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
                 var dbEntry = await context.StarredMessages.FindAsync(currentEntry.Id);
 
-                if (dbEntry == null) throw new HttpException(HttpStatusCode.NotFound, null);
-
-                dbEntry.IsPosted = false;
-                dbEntry.StarboardMessageId = null;
+                dbEntry?.IsPosted = false;
+                dbEntry?.StarboardMessageId = null;
+                dbEntry?.LastUpdated = DateTime.UtcNow;
                 await context.SaveChangesAsync().ConfigureAwait(false);
                 throw new HttpException(HttpStatusCode.NotFound, null);
             }

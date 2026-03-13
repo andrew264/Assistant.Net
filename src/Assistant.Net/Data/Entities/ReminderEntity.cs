@@ -30,9 +30,21 @@ public class ReminderEntity
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    [MaxLength(50)] public string? Recurrence { get; set; }
+    [MaxLength(50)]
+    public string? Recurrence
+    {
+        get;
+        set => field = value?.Equals("none", StringComparison.OrdinalIgnoreCase) ?? true
+            ? null
+            : value.ToLowerInvariant();
+    }
 
-    [MaxLength(200)] public string? Title { get; set; }
+    [MaxLength(200)]
+    public string? Title
+    {
+        get;
+        set => field = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
 
     public DateTime? LastTriggered { get; set; }
 

@@ -262,94 +262,42 @@ public class ReminderService(
         bool? isActive = null)
     {
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalUserId = (decimal)userId;
+        var dUserId = (decimal)userId;
+
+        var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
+
+        if (reminder == null) return (false, false, null);
+        if (reminder.CreatorId != dUserId && reminder.TargetUserId != dUserId) return (false, true, null);
+
+        reminder.Message = newMessage ?? reminder.Message;
+        reminder.Title = newTitle ?? reminder.Title;
+        reminder.Recurrence = newRecurrence ?? reminder.Recurrence;
+        reminder.IsActive = isActive ?? reminder.IsActive;
+
+        if (newTriggerTime.HasValue && newTriggerTime.Value.ToUniversalTime() > DateTime.UtcNow)
+        {
+            reminder.TriggerTime = newTriggerTime.Value.ToUniversalTime();
+            reminder.LastTriggered = null;
+        }
+
+        if (newChannelId.HasValue) reminder.ChannelId = newChannelId.Value;
+
+        if (newTargetUserId.HasValue)
+        {
+            await userService.EnsureUserExistsAsync(context, newTargetUserId.Value).ConfigureAwait(false);
+            reminder.TargetUserId = newTargetUserId.Value;
+        }
 
         try
         {
-            var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
-
-            if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId))
-                return (false, false, null);
-
-            var hasChanges = false;
-            var reSchedule = false;
-
-            if (newMessage != null && reminder.Message != newMessage)
-            {
-                reminder.Message = newMessage;
-                hasChanges = true;
-            }
-
-            if (newTitle != null)
-            {
-                var titleToSet = string.IsNullOrWhiteSpace(newTitle) ? null : newTitle;
-                if (reminder.Title != titleToSet)
-                {
-                    reminder.Title = titleToSet;
-                    hasChanges = true;
-                }
-            }
-
-            if (newRecurrence != null)
-            {
-                var rec = newRecurrence.Equals("none", StringComparison.OrdinalIgnoreCase)
-                    ? null
-                    : newRecurrence.ToLowerInvariant();
-                if (reminder.Recurrence != rec)
-                {
-                    reminder.Recurrence = rec;
-                    reminder.LastTriggered = null;
-                    hasChanges = true;
-                }
-            }
-
-            if (newTriggerTime.HasValue)
-            {
-                var utcTime = newTriggerTime.Value.ToUniversalTime();
-                if (utcTime > DateTime.UtcNow && reminder.TriggerTime != utcTime)
-                {
-                    reminder.TriggerTime = utcTime;
-                    reminder.LastTriggered = null;
-                    hasChanges = true;
-                    reSchedule = true;
-                }
-            }
-
-            if (newChannelId.HasValue && reminder.ChannelId != newChannelId.Value)
-            {
-                reminder.ChannelId = newChannelId.Value;
-                hasChanges = true;
-            }
-
-            if (newTargetUserId.HasValue && reminder.TargetUserId != newTargetUserId.Value)
-            {
-                await userService.EnsureUserExistsAsync(context, newTargetUserId.Value).ConfigureAwait(false);
-                reminder.TargetUserId = newTargetUserId.Value;
-                hasChanges = true;
-            }
-
-            if (isActive.HasValue && reminder.IsActive != isActive.Value)
-            {
-                reminder.IsActive = isActive.Value;
-                hasChanges = true;
-                if (isActive.Value && reminder.TriggerTime > DateTime.UtcNow) reSchedule = true;
-            }
-
-            if (!hasChanges) return (true, true, reminder);
-
             await context.SaveChangesAsync().ConfigureAwait(false);
-
-            if (reSchedule)
+            if (!newTriggerTime.HasValue && isActive != true) return (true, true, reminder);
+            lock (_lock)
             {
-                lock (_lock)
-                {
-                    _queue.Enqueue(reminder.Id, reminder.TriggerTime);
-                }
-
-                InterruptWait();
+                _queue.Enqueue(reminder.Id, reminder.TriggerTime);
             }
 
-            logger.LogInformation("Successfully edited reminder (ID: {Id}).", reminderId);
+            InterruptWait();
             return (true, true, reminder);
         }
         catch (Exception ex)

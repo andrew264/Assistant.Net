@@ -8,13 +8,19 @@ public partial class UrbanDictionaryEntry
 {
     private const string UdBaseUrl = "https://www.urbandictionary.com/define.php?term={0}";
 
-    [JsonInclude]
     [JsonPropertyName("definition")]
-    public string Definition { get; private set; } = "No definition found.";
+    public string Definition
+    {
+        get;
+        set => field = FormatUdLinks(value);
+    } = "No definition found.";
 
-    [JsonInclude]
     [JsonPropertyName("example")]
-    public string Example { get; private set; } = string.Empty;
+    public string Example
+    {
+        get;
+        set => field = FormatUdLinks(NormalizeNewlineRegex().Replace(value, "\n"));
+    } = string.Empty;
 
     [JsonPropertyName("word")] public string Word { get; set; } = string.Empty;
 
@@ -22,14 +28,9 @@ public partial class UrbanDictionaryEntry
 
     [JsonPropertyName("permalink")] public string Permalink { get; set; } = string.Empty;
 
-    [JsonIgnore] public string FormattedDefinition => FormatLinks(Definition);
-
-    [JsonIgnore]
-    public string FormattedExample =>
-        FormatLinks(NormalizeNewlineRegex().Replace(Example, "\n"));
-
-    private static string FormatLinks(string text)
+    private static string FormatUdLinks(string text)
     {
+        if (string.IsNullOrWhiteSpace(text)) return text;
         return RegexPatterns.Link().Replace(text, match =>
         {
             var term = match.Groups[1].Value;

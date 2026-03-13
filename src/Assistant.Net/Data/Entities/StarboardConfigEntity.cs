@@ -16,9 +16,18 @@ public class StarboardConfigEntity
 
     public decimal? StarboardChannelId { get; set; }
 
-    [MaxLength(100)] public string StarEmoji { get; set; } = "⭐";
+    [MaxLength(100)]
+    public string StarEmoji
+    {
+        get;
+        set => field = value.Trim();
+    } = "⭐";
 
-    public int Threshold { get; set; } = 3;
+    public int Threshold
+    {
+        get;
+        set => field = Math.Max(1, value);
+    } = 3;
 
     public bool AllowSelfStar { get; set; }
 

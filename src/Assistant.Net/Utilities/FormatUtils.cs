@@ -1,27 +1,38 @@
 namespace Assistant.Net.Utilities;
 
-public static class FormatUtils
+public static class FormatExtensions
 {
     private static readonly string[] ByteSuffixes = ["bytes", "KB", "MB", "GB", "TB", "PB"];
 
-    public static string FormatBytes(long bytesValue)
+    private static string FormatInternal(long val)
     {
-        switch (bytesValue)
+        switch (val)
         {
             case < 0:
-                return "-" + FormatBytes(-bytesValue);
+                return "-" + FormatInternal(-val);
             case 0:
-                return "0.00 bytes";
+                return "0 bytes";
         }
 
-        double num = bytesValue;
+        double num = val;
+        var index = 0;
 
-        foreach (var suffix in ByteSuffixes)
+        while (num >= 1024.0 && index < ByteSuffixes.Length - 1)
         {
-            if (num < 1024.0) return suffix == "bytes" ? $"{num:0} {suffix}" : $"{num:0.00} {suffix}";
             num /= 1024.0;
+            index++;
         }
 
-        return "a lot";
+        return index == 0 ? $"{num:0} {ByteSuffixes[index]}" : $"{num:0.00} {ByteSuffixes[index]}";
+    }
+
+    extension(long bytesValue)
+    {
+        public string ToHumanSize() => FormatInternal(bytesValue);
+    }
+
+    extension(int bytesValue)
+    {
+        public string ToHumanSize() => FormatInternal(bytesValue);
     }
 }

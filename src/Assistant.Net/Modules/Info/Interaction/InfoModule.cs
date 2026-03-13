@@ -75,7 +75,7 @@ public class InfoModule(
                 $"**Gateway Ping:** {client.Latency}ms\n" +
                 $"**Voice Connections:** {audioService.Players.Players.Count()}\n" +
                 $"**Uptime:** {ProcessStartTimeOffset.GetRelativeTime()}\n" +
-                $"**Memory Usage:** {FormatUtils.FormatBytes(Process.GetCurrentProcess().WorkingSet64)}\n" +
+                $"**Memory Usage:** {Process.GetCurrentProcess().WorkingSet64.ToHumanSize()}\n" +
                 $"**Threads:** {Process.GetCurrentProcess().Threads.Count}"))
             .WithSeparator()
             .WithTextDisplay(new TextDisplayBuilder("### 📦 Application Info"))
@@ -138,24 +138,12 @@ public class InfoModule(
     public async Task ViewAvatarUserCommand(IUser user)
     {
         var targetSocketUser = user as SocketUser ?? client.GetUser(user.Id);
-        var avatarUrl = targetSocketUser.GetDisplayAvatarUrl(ImageFormat.Auto, 2048) ??
-                        targetSocketUser.GetDefaultAvatarUrl();
-
-        if (string.IsNullOrEmpty(avatarUrl))
-        {
-            await RespondAsync("This user does not seem to have an avatar set or it's inaccessible.", ephemeral: true)
-                .ConfigureAwait(false);
-            return;
-        }
-
-        var displayUserName = (targetSocketUser as IGuildUser)?.DisplayName ??
-                              targetSocketUser.GlobalName ?? targetSocketUser.Username;
-
         var container = new ContainerBuilder()
-            .WithAccentColor(UserUtils.GetTopRoleColor(targetSocketUser))
-            .WithTextDisplay(new TextDisplayBuilder($"## {displayUserName}'s Avatar"))
-            .WithMediaGallery([avatarUrl])
-            .WithActionRow(row => row.WithButton("Open Original", style: ButtonStyle.Link, url: avatarUrl));
+            .WithAccentColor((targetSocketUser as IGuildUser)?.TopRoleColor)
+            .WithTextDisplay(new TextDisplayBuilder($"## {targetSocketUser.BestDisplayName}'s Avatar"))
+            .WithMediaGallery([targetSocketUser.EffectiveAvatarUrl])
+            .WithActionRow(row =>
+                row.WithButton("Open Original", style: ButtonStyle.Link, url: targetSocketUser.EffectiveAvatarUrl));
 
         var components = new ComponentBuilderV2().WithContainer(container).Build();
 

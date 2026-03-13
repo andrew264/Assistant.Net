@@ -124,7 +124,7 @@ public class GameStatsModule(
                 return;
             }
 
-            var userColor = UserUtils.GetTopRoleColor(targetUser as SocketUser ?? Context.Guild.GetUser(targetUser.Id));
+            var userColor = (targetUser as IGuildUser)?.TopRoleColor;
             var container = new ContainerBuilder()
                 .WithAccentColor(userColor)
                 .WithSection(section =>

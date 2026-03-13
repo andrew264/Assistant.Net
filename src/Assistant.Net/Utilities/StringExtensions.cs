@@ -2,29 +2,31 @@ namespace Assistant.Net.Utilities;
 
 public static class StringExtensions
 {
-    public static string CapitalizeFirstLetter(this string input)
+    extension(string input)
     {
-        if (string.IsNullOrEmpty(input))
-            return input;
-        if (input.Length == 1)
-            return input.ToUpper();
-        return char.ToUpper(input[0]) + input[1..];
+        public string CapitalizeFirstLetter()
+        {
+            if (string.IsNullOrEmpty(input))
+                return input;
+            if (input.Length == 1)
+                return input.ToUpper();
+            return char.ToUpper(input[0]) + input[1..];
+        }
+
+        public string AsMarkdownLink(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return input;
+            var sanitizedText = input.Replace("[", "\\[").Replace("]", "\\]");
+            return $"[{sanitizedText}](<{url}>)";
+        }
+
+        public string Truncate(int maxLength, string truncationSuffix = "...")
+        {
+            if (string.IsNullOrEmpty(input) || input.Length <= maxLength) return input;
+            return string.Concat(input.AsSpan(0, maxLength - truncationSuffix.Length), truncationSuffix);
+        }
+
+        public List<string> SmartChunkSplitList() => StringSplitter.SplitString(input);
+        public string RemoveStuffInBrackets() => RegexPatterns.Bracket().Replace(input, "");
     }
-
-    public static string AsMarkdownLink(this string text, string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return text;
-        var sanitizedText = text.Replace("[", "\\[").Replace("]", "\\]");
-        return $"[{sanitizedText}](<{url}>)";
-    }
-
-    public static string Truncate(this string value, int maxLength, string truncationSuffix = "...")
-    {
-        if (string.IsNullOrEmpty(value) || value.Length <= maxLength) return value;
-        return string.Concat(value.AsSpan(0, maxLength - truncationSuffix.Length), truncationSuffix);
-    }
-
-    public static List<string> SmartChunkSplitList(this string input) => StringSplitter.SplitString(input);
-
-    public static string RemoveStuffInBrackets(this string input) => RegexPatterns.Bracket().Replace(input, "");
 }

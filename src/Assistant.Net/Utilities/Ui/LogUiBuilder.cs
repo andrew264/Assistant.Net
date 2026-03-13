@@ -40,7 +40,7 @@ public static class LogUiBuilder
         if (message.Attachments.Count > 0)
         {
             var attachmentsText = string.Join("\n",
-                message.Attachments.Select(a => $"📄 [{a.Filename}]({a.Url}) ({FormatUtils.FormatBytes(a.Size)})"));
+                message.Attachments.Select(a => $"📄 [{a.Filename}]({a.Url}) ({a.Size.ToHumanSize()})"));
             container.WithTextDisplay(new TextDisplayBuilder($"**Attachments:**\n{attachmentsText}"));
         }
 

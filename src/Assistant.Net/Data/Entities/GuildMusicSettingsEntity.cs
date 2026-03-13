@@ -12,5 +12,9 @@ public class GuildMusicSettingsEntity
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 
-    public float Volume { get; set; } = 1.0f;
+    public float Volume
+    {
+        get;
+        set => field = Math.Clamp(value, 0.0f, 2.0f);
+    } = 1.0f;
 }

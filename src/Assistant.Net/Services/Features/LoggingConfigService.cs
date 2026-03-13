@@ -72,18 +72,12 @@ public class LoggingConfigService(
 
         config.UpdatedAt = DateTime.UtcNow;
 
-        if (existing == null)
-        {
-            context.LogSettings.Add(config);
-        }
-        else
-        {
-            existing.IsEnabled = config.IsEnabled;
-            existing.ChannelId = config.ChannelId;
-            existing.DeleteDelayMs = config.DeleteDelayMs;
-            existing.UpdatedAt = config.UpdatedAt;
-            context.Entry(existing).State = EntityState.Modified;
-        }
+        existing?.IsEnabled = config.IsEnabled;
+        existing?.ChannelId = config.ChannelId;
+        existing?.DeleteDelayMs = config.DeleteDelayMs;
+        existing?.UpdatedAt = DateTime.UtcNow;
+
+        if (existing == null) context.LogSettings.Add(config);
 
         await context.SaveChangesAsync().ConfigureAwait(false);
 

@@ -8,28 +8,15 @@ namespace Assistant.Net.Utilities;
 
 public static class UserUtils
 {
-    public static Color? GetTopRoleColor(SocketUser? user)
-    {
-        if (user is not SocketGuildUser guildUser)
-            return null;
-
-        var topRole = guildUser.Roles
-            .Where(role => !role.IsEveryone && role.Colors.PrimaryColor != Color.Default)
-            .OrderByDescending(role => role.Position)
-            .FirstOrDefault();
-
-        return topRole?.Colors.PrimaryColor;
-    }
-
     public static async Task<(MessageComponent? Components, FileAttachment? Attachment, string? ErrorMessage)>
         GenerateAvatarComponentsAsync(IUser targetUser, IHttpClientFactory httpClientFactory, ILogger logger)
     {
-        var avatarUrl = targetUser.GetDisplayAvatarUrl(size: 2048) ?? targetUser.GetDefaultAvatarUrl();
+        var avatarUrl = targetUser.EffectiveAvatarUrl;
 
         if (string.IsNullOrEmpty(avatarUrl))
             return (null, null, "Could not retrieve avatar URL for this user.");
 
-        var displayUserName = (targetUser as IGuildUser)?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
+        var displayUserName = targetUser.BestDisplayName;
 
         var fileName = Path.GetFileName(new Uri(avatarUrl).AbsolutePath);
         var fileAttachment = await AttachmentUtils
@@ -38,7 +25,7 @@ public static class UserUtils
         if (fileAttachment == null)
             return (null, null, $"Could not download avatar for {displayUserName}.");
 
-        var userColor = GetTopRoleColor(targetUser as SocketUser);
+        var userColor = (targetUser as IGuildUser)?.TopRoleColor;
 
         var components = new ComponentBuilderV2(
             new ContainerBuilder()
@@ -125,7 +112,7 @@ public static class UserUtils
 
         var displayName = guildUser?.DisplayName ?? targetUser.GlobalName ?? targetUser.Username;
         var avatarUrl = targetUser.GetDisplayAvatarUrl(size: 2048) ?? targetUser.GetDefaultAvatarUrl();
-        var accentColor = GetTopRoleColor(guildUser);
+        var accentColor = guildUser?.TopRoleColor;
 
         var timestampsContent = new StringBuilder();
         timestampsContent.AppendLine($"**Account Created:** {targetUser.CreatedAt.GetRelativeTime()}");

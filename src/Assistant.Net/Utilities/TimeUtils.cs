@@ -7,12 +7,6 @@ public static class TimeUtils
     public static string GetRelativeTime(this DateTimeOffset time) =>
         TimestampTag.FormatFromDateTimeOffset(time, TimestampTagStyles.Relative);
 
-    public static string GetLongDateTime(this DateTime time) =>
-        TimestampTag.FormatFromDateTime(time, TimestampTagStyles.LongDateTime);
-
-    public static string GetRelativeTime(this DateTime time) =>
-        TimestampTag.FormatFromDateTime(time, TimestampTagStyles.Relative);
-
     public static TimeSpan ParseTimestamp(string timestamp)
     {
         if (string.IsNullOrWhiteSpace(timestamp))
@@ -49,4 +43,13 @@ public static class TimeUtils
     public static string FormatPlayerTime(this TimeSpan duration) => duration.TotalHours >= 1
         ? $"{(int)duration.TotalHours}:{duration.Minutes:D2}:{duration.Seconds:D2}"
         : $"{duration.Minutes:D2}:{duration.Seconds:D2}";
+
+    extension(DateTime time)
+    {
+        public string GetLongDateTime() =>
+            TimestampTag.FormatFromDateTime(time, TimestampTagStyles.LongDateTime);
+
+        public string GetRelativeTime() =>
+            TimestampTag.FormatFromDateTime(time, TimestampTagStyles.Relative);
+    }
 }
