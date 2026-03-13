@@ -35,7 +35,6 @@ public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogge
             }
 
             user.About = introduction;
-            user.LastSeen = DateTime.UtcNow;
 
             await context.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation("Successfully updated introduction and LastSeen for User {UserId}.", userId);
