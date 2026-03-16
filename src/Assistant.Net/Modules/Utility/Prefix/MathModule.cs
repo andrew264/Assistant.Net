@@ -27,7 +27,7 @@ public class MathModule : ModuleBase<SocketCommandContext>
 
             var formattedResult = result % 1 == 0
                 ? result.ToString("F0")
-                : result.ToString("G15");
+                : result.ToString("G20");
             await ReplyAsync($"```\n{formattedResult}\n```");
         }
         catch (DivideByZeroException)
