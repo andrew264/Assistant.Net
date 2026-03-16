@@ -97,6 +97,8 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
             entity.Property(e => e.TargetUserId).HasColumnType("numeric(20,0)");
             entity.Property(e => e.GuildId).HasColumnType("numeric(20,0)");
             entity.Property(e => e.ChannelId).HasColumnType("numeric(20,0)");
+            
+            entity.HasQueryFilter("ActiveOnly", r => r.IsActive);
 
             entity.HasOne(e => e.Creator)
                 .WithMany()

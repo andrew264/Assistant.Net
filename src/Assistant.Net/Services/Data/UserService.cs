@@ -50,20 +50,22 @@ public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogge
     {
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var decimalUserId = (decimal)userId;
+        var now = DateTime.UtcNow;
 
         try
         {
-            var user = await context.Users.FindAsync(decimalUserId).ConfigureAwait(false);
-            if (user == null)
+            var affected = await context.Users
+                .Where(u => u.Id == decimalUserId)
+                .ExecuteUpdateAsync(s => s.SetProperty(u => u.LastSeen, now))
+                .ConfigureAwait(false);
+
+            if (affected == 0)
             {
-                user = new UserEntity { Id = decimalUserId };
-                context.Users.Add(user);
+                context.Users.Add(new UserEntity { Id = decimalUserId, LastSeen = now });
+                await context.SaveChangesAsync().ConfigureAwait(false);
                 logger.LogDebug("Creating new user entity for {UserId} while updating LastSeen.", userId);
             }
 
-            user.LastSeen = DateTime.UtcNow;
-
-            await context.SaveChangesAsync().ConfigureAwait(false);
             logger.LogDebug("Updated LastSeen for User {UserId}.", userId);
         }
         catch (Exception ex)

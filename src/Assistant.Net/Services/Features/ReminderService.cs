@@ -33,7 +33,7 @@ public class ReminderService(
 
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var reminders = await context.Reminders
-            .Where(r => r.IsActive && r.TriggerTime > DateTime.UtcNow)
+            .Where(r => r.TriggerTime > DateTime.UtcNow)
             .Select(r => new { r.Id, r.TriggerTime })
             .ToListAsync()
             .ConfigureAwait(false);
@@ -264,34 +264,40 @@ public class ReminderService(
         await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
         var dUserId = (decimal)userId;
 
-        var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
+        var exists = await context.Reminders.IgnoreQueryFilters(["ActiveOnly"])
+            .AnyAsync(r => r.Id == reminderId).ConfigureAwait(false);
+        if (!exists) return (false, false, null);
 
-        if (reminder == null) return (false, false, null);
-        if (reminder.CreatorId != dUserId && reminder.TargetUserId != dUserId) return (false, true, null);
+        var rowsAffected = await context.Reminders
+            .IgnoreQueryFilters(["ActiveOnly"])
+            .Where(r => r.Id == reminderId && (r.CreatorId == dUserId || r.TargetUserId == dUserId))
+            .ExecuteUpdateAsync(s =>
+            {
+                if (newMessage != null) s.SetProperty(r => r.Message, newMessage);
+                if (newTitle != null) s.SetProperty(r => r.Title, newTitle);
+                if (newRecurrence != null) s.SetProperty(r => r.Recurrence, newRecurrence);
+                if (isActive.HasValue) s.SetProperty(r => r.IsActive, isActive.Value);
 
-        reminder.Message = newMessage ?? reminder.Message;
-        reminder.Title = newTitle ?? reminder.Title;
-        reminder.Recurrence = newRecurrence ?? reminder.Recurrence;
-        reminder.IsActive = isActive ?? reminder.IsActive;
+                if (newTriggerTime.HasValue && newTriggerTime.Value.ToUniversalTime() > DateTime.UtcNow)
+                {
+                    s.SetProperty(r => r.TriggerTime, newTriggerTime.Value.ToUniversalTime());
+                    s.SetProperty(r => r.LastTriggered, (DateTime?)null);
+                }
 
-        if (newTriggerTime.HasValue && newTriggerTime.Value.ToUniversalTime() > DateTime.UtcNow)
-        {
-            reminder.TriggerTime = newTriggerTime.Value.ToUniversalTime();
-            reminder.LastTriggered = null;
-        }
+                if (newChannelId.HasValue) s.SetProperty(r => r.ChannelId, newChannelId.Value);
+                if (newTargetUserId.HasValue) s.SetProperty(r => r.TargetUserId, newTargetUserId.Value);
+            }).ConfigureAwait(false);
 
-        if (newChannelId.HasValue) reminder.ChannelId = newChannelId.Value;
+        if (rowsAffected == 0) return (false, true, null);
 
-        if (newTargetUserId.HasValue)
-        {
-            await userService.EnsureUserExistsAsync(context, newTargetUserId.Value).ConfigureAwait(false);
-            reminder.TargetUserId = newTargetUserId.Value;
-        }
+        var reminder = await context.Reminders
+            .IgnoreQueryFilters(["ActiveOnly"])
+            .FirstOrDefaultAsync(r => r.Id == reminderId).ConfigureAwait(false);
 
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
-            if (!newTriggerTime.HasValue && isActive != true) return (true, true, reminder);
+            if (reminder == null || (!newTriggerTime.HasValue && isActive != true))
+                return (true, true, reminder);
             lock (_lock)
             {
                 _queue.Enqueue(reminder.Id, reminder.TriggerTime);
@@ -349,6 +355,7 @@ public class ReminderService(
         {
             var decimalUserId = (decimal)userId;
             return await context.Reminders
+                .IgnoreQueryFilters(["ActiveOnly"])
                 .Where(r => r.CreatorId == decimalUserId || r.TargetUserId == decimalUserId)
                 .OrderBy(r => r.TriggerTime)
                 .ToListAsync()

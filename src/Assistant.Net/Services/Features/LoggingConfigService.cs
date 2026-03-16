@@ -66,23 +66,23 @@ public class LoggingConfigService(
 
         await guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
 
-        var existing = await context.LogSettings
-            .FirstOrDefaultAsync(l => l.GuildId == config.GuildId && l.LogType == config.LogType)
-            .ConfigureAwait(false);
-
-        config.UpdatedAt = DateTime.UtcNow;
-
-        existing?.IsEnabled = config.IsEnabled;
-        existing?.ChannelId = config.ChannelId;
-        existing?.DeleteDelayMs = config.DeleteDelayMs;
-        existing?.UpdatedAt = DateTime.UtcNow;
-
-        if (existing == null) context.LogSettings.Add(config);
-
-        await context.SaveChangesAsync().ConfigureAwait(false);
+        var affected = await context.LogSettings
+            .Where(l => l.GuildId == config.GuildId && l.LogType == config.LogType)
+            .ExecuteUpdateAsync(s =>
+            {
+                s.SetProperty(l => l.IsEnabled, config.IsEnabled);
+                s.SetProperty(l => l.ChannelId, config.ChannelId);
+                s.SetProperty(l => l.DeleteDelayMs, config.DeleteDelayMs);
+                s.SetProperty(l => l.UpdatedAt, config.UpdatedAt);
+            }).ConfigureAwait(false);
+        if (affected == 0)
+        {
+            context.LogSettings.Add(config);
+            await context.SaveChangesAsync().ConfigureAwait(false);
+        }
 
         var cacheKey = $"{CachePrefix}{guildId}:{config.LogType}";
-        memoryCache.Set(cacheKey, existing ?? config, CacheDuration);
+        memoryCache.Set(cacheKey, config, CacheDuration);
 
         logger.LogInformation("Updated log config for Guild {GuildId}, Type {LogType}", guildId, config.LogType);
     }
