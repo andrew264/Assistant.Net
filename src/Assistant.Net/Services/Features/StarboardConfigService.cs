@@ -1,57 +1,38 @@
 using System.Collections.Concurrent;
-using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
-using Assistant.Net.Services.Data;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Assistant.Net.Utilities;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Features;
 
-public class StarboardConfigService
+public class StarboardConfigService(
+    IUnitOfWorkFactory uowFactory,
+    IMemoryCache memoryCache,
+    ILogger<StarboardConfigService> logger)
 {
     private const string CachePrefix = "starboardConfig:";
     private const int CacheSize = 1000;
     private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
     private readonly ConcurrentQueue<ulong> _cacheKeysQueue = new();
 
-    private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
-    private readonly GuildService _guildService;
-    private readonly ILogger<StarboardConfigService> _logger;
-    private readonly IMemoryCache _memoryCache;
-
-    public StarboardConfigService(IDbContextFactory<AssistantDbContext> dbFactory, IMemoryCache memoryCache,
-        ILogger<StarboardConfigService> logger, GuildService guildService)
-    {
-        _dbFactory = dbFactory;
-        _memoryCache = memoryCache;
-        _logger = logger;
-        _guildService = guildService;
-
-        _logger.LogInformation("StarboardConfigService initialized.");
-    }
-
     public async Task<StarboardConfigEntity> GetGuildConfigAsync(ulong guildId)
     {
         var cacheKey = $"{CachePrefix}{guildId}";
 
-        if (_memoryCache.TryGetValue(cacheKey, out StarboardConfigEntity? cachedConfig) && cachedConfig != null)
+        if (memoryCache.TryGetValue(cacheKey, out StarboardConfigEntity? cachedConfig) && cachedConfig != null)
         {
-            _logger.LogTrace("Starboard config cache hit for Guild {GuildId}", guildId);
+            logger.LogTrace("Starboard config cache hit for Guild {GuildId}", guildId);
             return cachedConfig;
         }
 
-        _logger.LogTrace("Starboard config cache miss for Guild {GuildId}", guildId);
+        logger.LogTrace("Starboard config cache miss for Guild {GuildId}", guildId);
 
-        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var config = await context.StarboardConfigs
-            .FindAsync(decimalGuildId)
-            .ConfigureAwait(false);
-
-        config ??= new StarboardConfigEntity { GuildId = decimalGuildId };
+        var config = await uow.Starboard.GetConfigAsync(guildId).ConfigureAwait(false);
+        config ??= new StarboardConfigEntity { GuildId = guildId };
 
         AddToCache(cacheKey, config);
 
@@ -62,25 +43,35 @@ public class StarboardConfigService
     {
         config.UpdatedAt = DateTime.UtcNow;
 
-        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        await _guildService.EnsureGuildExistsAsync(context, (ulong)config.GuildId).ConfigureAwait(false);
-        var existing = await context.StarboardConfigs.FindAsync(config.GuildId).ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        await uow.Guilds.EnsureExistsAsync((ulong)config.GuildId).ConfigureAwait(false);
+
+        var existing = await uow.Starboard.GetConfigAsync((ulong)config.GuildId).ConfigureAwait(false);
         if (existing == null)
         {
             config.CreatedAt = DateTime.UtcNow;
-            context.StarboardConfigs.Add(config);
+            uow.Starboard.AddConfig(config);
         }
         else
         {
-            context.Entry(existing).CurrentValues.SetValues(config);
+            existing.IsEnabled = config.IsEnabled;
+            existing.StarboardChannelId = config.StarboardChannelId;
+            existing.StarEmoji = config.StarEmoji;
+            existing.Threshold = config.Threshold;
+            existing.AllowSelfStar = config.AllowSelfStar;
+            existing.AllowBotMessages = config.AllowBotMessages;
+            existing.IgnoreNsfwChannels = config.IgnoreNsfwChannels;
+            existing.DeleteIfUnStarred = config.DeleteIfUnStarred;
+            existing.LogChannelId = config.LogChannelId;
+            existing.UpdatedAt = config.UpdatedAt;
         }
 
-        await context.SaveChangesAsync().ConfigureAwait(false);
+        await uow.SaveChangesAsync().ConfigureAwait(false);
 
         var cacheKey = $"{CachePrefix}{config.GuildId}";
         AddToCache(cacheKey, config);
 
-        _logger.LogInformation("Updated starboard config for Guild {GuildId}", config.GuildId);
+        logger.LogInformation("Updated starboard config for Guild {GuildId}", config.GuildId);
     }
 
     private void AddToCache(string key, StarboardConfigEntity config)
@@ -89,19 +80,17 @@ public class StarboardConfigService
             .SetAbsoluteExpiration(CacheDuration)
             .SetSize(1);
 
-        _memoryCache.Set(key, config, cacheEntryOptions);
+        memoryCache.Set(key, config, cacheEntryOptions);
         _cacheKeysQueue.Enqueue((ulong)config.GuildId);
 
         while (_cacheKeysQueue.Count > CacheSize && _cacheKeysQueue.TryDequeue(out var oldestGuildId))
-            _memoryCache.Remove($"{CachePrefix}{oldestGuildId}");
+            memoryCache.Remove($"{CachePrefix}{oldestGuildId}");
     }
 
     public static bool IsValidEmoji(string emoji)
     {
         if (string.IsNullOrWhiteSpace(emoji)) return false;
-
         if (char.IsSurrogatePair(emoji, 0) || emoji.Length == 1) return true;
-
         return RegexPatterns.DiscordEmoji().IsMatch(emoji);
     }
 }

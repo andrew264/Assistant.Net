@@ -1,17 +1,13 @@
-using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
-using Microsoft.EntityFrameworkCore;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Data;
 
 public class GameStatsService(
-    IDbContextFactory<AssistantDbContext> dbFactory,
-    ILogger<GameStatsService> logger,
-    UserService userService,
-    GuildService guildService)
+    IUnitOfWorkFactory uowFactory,
+    ILogger<GameStatsService> logger)
 {
-    private const double DefaultElo = 1000.0;
     private const double KFactor = 32.0;
 
     public const string TicTacToeGameName = "tictactoe";
@@ -43,14 +39,8 @@ public class GameStatsService(
 
     public async Task<List<GameStatEntity>> GetUserGuildStatsAsync(ulong userId, ulong guildId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalUserId = (decimal)userId;
-        var decimalGuildId = (decimal)guildId;
-
-        return await context.GameStats
-            .Where(g => g.UserId == decimalUserId && g.GuildId == decimalGuildId)
-            .ToListAsync()
-            .ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        return await uow.GameStats.GetUserGuildStatsAsync(userId, guildId).ConfigureAwait(false);
     }
 
     public async Task<List<GameStatEntity>> GetLeaderboardAsync(ulong guildId, string gameName, int limit)
@@ -58,42 +48,8 @@ public class GameStatsService(
         var gameType = GetGameType(gameName);
         if (gameType == -1) return [];
 
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalGuildId = (decimal)guildId;
-
-        return await context.GameStats
-            .Where(g => g.GuildId == decimalGuildId && g.GameType == gameType)
-            .OrderByDescending(g => g.Elo)
-            .Take(limit)
-            .ToListAsync()
-            .ConfigureAwait(false);
-    }
-
-    private async Task<GameStatEntity> EnsureGameStatAsync(AssistantDbContext context, decimal userId, decimal guildId,
-        int gameType)
-    {
-        var stat = await context.GameStats
-            .FirstOrDefaultAsync(g => g.UserId == userId && g.GuildId == guildId && g.GameType == gameType)
-            .ConfigureAwait(false);
-
-        if (stat != null) return stat;
-
-        await userService.EnsureUserExistsAsync(context, (ulong)userId).ConfigureAwait(false);
-        await guildService.EnsureGuildExistsAsync(context, (ulong)guildId).ConfigureAwait(false);
-
-        stat = new GameStatEntity
-        {
-            UserId = userId,
-            GuildId = guildId,
-            GameType = gameType,
-            Elo = DefaultElo,
-            Wins = 0,
-            Losses = 0,
-            Ties = 0
-        };
-        context.GameStats.Add(stat);
-
-        return stat;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        return await uow.GameStats.GetLeaderboardAsync(guildId, gameType, limit).ConfigureAwait(false);
     }
 
     private static double CalculateExpectedScore(double ratingA, double ratingB) =>
@@ -117,16 +73,16 @@ public class GameStatsService(
             return;
         }
 
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dWinnerId = (decimal)winnerId;
-        var dLoserId = (decimal)loserId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
         try
         {
-            var winnerStats =
-                await EnsureGameStatAsync(context, dWinnerId, dGuildId, gameType).ConfigureAwait(false);
-            var loserStats = await EnsureGameStatAsync(context, dLoserId, dGuildId, gameType).ConfigureAwait(false);
+            await uow.Users.EnsureExistsAsync(winnerId).ConfigureAwait(false);
+            await uow.Users.EnsureExistsAsync(loserId).ConfigureAwait(false);
+            await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
+
+            var winnerStats = await uow.GameStats.EnsureExistsAsync(winnerId, guildId, gameType).ConfigureAwait(false);
+            var loserStats = await uow.GameStats.EnsureExistsAsync(loserId, guildId, gameType).ConfigureAwait(false);
 
             var player1Score = isTie ? 0.5 : 1.0;
             var player2Score = 1.0 - player1Score;
@@ -148,7 +104,7 @@ public class GameStatsService(
                 loserStats.Losses++;
             }
 
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation(
                 "Recorded {Result} for {GameName} in {GuildId}. P1: {P1}, P2: {P2}",
                 isTie ? "Tie" : "Win", gameName, guildId, winnerId, loserId);

@@ -1,18 +1,15 @@
-using Assistant.Net.Data;
-using Assistant.Net.Data.Entities;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Data;
 
-public class GuildService(ILogger<GuildService> logger)
+public class GuildService(IUnitOfWorkFactory uowFactory, ILogger<GuildService> logger)
 {
-    public async Task EnsureGuildExistsAsync(AssistantDbContext context, ulong guildId)
+    public async Task EnsureGuildExistsAsync(ulong guildId)
     {
-        var decimalId = (decimal)guildId;
-        if (await context.Guilds.FindAsync(decimalId).ConfigureAwait(false) == null)
-        {
-            context.Guilds.Add(new GuildEntity { Id = decimalId });
-            logger.LogDebug("Added Guild {GuildId} to tracking context.", guildId);
-        }
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
+        await uow.SaveChangesAsync().ConfigureAwait(false);
+        logger.LogDebug("Checked existence/Added Guild {GuildId} to tracking context.", guildId);
     }
 }

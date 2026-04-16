@@ -1,7 +1,6 @@
-using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Lavalink4NET.Tracks;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Data;
@@ -10,16 +9,11 @@ public record PlaylistOperationResult(bool Success, string Message, PlaylistEnti
 
 public record PlaylistCreationResult(
     bool Success,
-    string Message,
-    PlaylistEntity? Playlist = null,
-    bool LimitReached = false,
-    bool NameExists = false);
+    string Message);
 
 public class PlaylistService(
-    IDbContextFactory<AssistantDbContext> dbFactory,
-    ILogger<PlaylistService> logger,
-    UserService userService,
-    GuildService guildService)
+    IUnitOfWorkFactory uowFactory,
+    ILogger<PlaylistService> logger)
 {
     private const int MaxPlaylistsPerUser = 10;
     private const int MaxSongsPerPlaylist = 200;
@@ -27,47 +21,39 @@ public class PlaylistService(
     public async Task<PlaylistCreationResult> CreatePlaylistAsync(ulong userId, ulong guildId, string name)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 100)
-            return new PlaylistCreationResult(false, "Playlist name must be between 1 and 100 characters.",
-                NameExists: true);
+            return new PlaylistCreationResult(false, "Playlist name must be between 1 and 100 characters.");
 
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        await userService.EnsureUserExistsAsync(context, userId).ConfigureAwait(false);
-        await guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
+        await uow.Users.EnsureExistsAsync(userId).ConfigureAwait(false);
+        await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
 
-        var userPlaylistCount = await context.Playlists
-            .CountAsync(p => p.UserId == dUserId && p.GuildId == dGuildId).ConfigureAwait(false);
+        var userPlaylistCount = await uow.Playlists.GetCountAsync(userId, guildId).ConfigureAwait(false);
 
         if (userPlaylistCount >= MaxPlaylistsPerUser)
             return new PlaylistCreationResult(false,
-                $"You have reached the maximum limit of {MaxPlaylistsPerUser} playlists.", LimitReached: true);
+                $"You have reached the maximum limit of {MaxPlaylistsPerUser} playlists.");
 
-        var existingByName = await context.Playlists
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == name)
-            .ConfigureAwait(false);
-
-        if (existingByName != null)
-            return new PlaylistCreationResult(false, "You already have a playlist with that name.", NameExists: true);
+        if (await uow.Playlists.ExistsAsync(userId, guildId, name).ConfigureAwait(false))
+            return new PlaylistCreationResult(false, "You already have a playlist with that name.");
 
         var newPlaylist = new PlaylistEntity
         {
-            UserId = dUserId,
-            GuildId = dGuildId,
+            UserId = userId,
+            GuildId = guildId,
             Name = name,
             CreatedAt = DateTime.UtcNow
         };
 
         try
         {
-            context.Playlists.Add(newPlaylist);
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            uow.Playlists.Add(newPlaylist);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation("Created playlist '{PlaylistName}' for User {UserId} in Guild {GuildId}", name,
                 userId, guildId);
-            return new PlaylistCreationResult(true, $"Playlist '{name}' created successfully!", newPlaylist);
+            return new PlaylistCreationResult(true, $"Playlist '{name}' created successfully!");
         }
-        catch (DbUpdateException ex)
+        catch (Exception ex)
         {
             logger.LogError(ex, "Error creating playlist '{PlaylistName}' for User {UserId}, Guild {GuildId}", name,
                 userId, guildId);
@@ -77,39 +63,21 @@ public class PlaylistService(
 
     public async Task<PlaylistEntity?> GetPlaylistAsync(ulong userId, ulong guildId, string name)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
-
-        return await context.Playlists
-            .Include(p => p.Items)
-            .ThenInclude(i => i.Track)
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == name)
-            .ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        return await uow.Playlists.GetAsync(userId, guildId, name).ConfigureAwait(false);
     }
 
     public async Task<PlaylistEntity?> GetPlaylistAsync(ulong userId, ulong guildId, long playlistId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
-
-        return await context.Playlists
-            .Include(p => p.Items)
-            .ThenInclude(i => i.Track)
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Id == playlistId)
-            .ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        return await uow.Playlists.GetByIdAsync(userId, guildId, playlistId).ConfigureAwait(false);
     }
 
     public async Task<bool> DeletePlaylistAsync(ulong userId, ulong guildId, string name)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var playlist = await context.Playlists
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == name)
-            .ConfigureAwait(false);
+        var playlist = await uow.Playlists.GetAsync(userId, guildId, name).ConfigureAwait(false);
 
         if (playlist == null)
         {
@@ -119,8 +87,8 @@ public class PlaylistService(
             return false;
         }
 
-        context.Playlists.Remove(playlist);
-        await context.SaveChangesAsync().ConfigureAwait(false);
+        uow.Playlists.Remove(playlist);
+        await uow.SaveChangesAsync().ConfigureAwait(false);
         logger.LogInformation("Deleted playlist '{PlaylistName}' for User {UserId} in Guild {GuildId}", name, userId,
             guildId);
         return true;
@@ -129,14 +97,9 @@ public class PlaylistService(
     public async Task<PlaylistOperationResult> AddTracksToPlaylistAsync(ulong userId, ulong guildId,
         string playlistName, IReadOnlyCollection<LavalinkTrack> tracksToAdd)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var playlist = await context.Playlists
-            .Include(p => p.Items)
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == playlistName)
-            .ConfigureAwait(false);
+        var playlist = await uow.Playlists.GetAsync(userId, guildId, playlistName).ConfigureAwait(false);
 
         if (playlist == null) return new PlaylistOperationResult(false, "Playlist not found.");
 
@@ -158,7 +121,7 @@ public class PlaylistService(
             if (trackModel.Uri is null) continue;
             var trackUri = trackModel.Uri.ToString();
 
-            var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == trackUri).ConfigureAwait(false);
+            var track = await uow.Playlists.GetTrackByUriAsync(trackUri).ConfigureAwait(false);
             if (track == null)
             {
                 track = new TrackEntity
@@ -170,23 +133,22 @@ public class PlaylistService(
                     Duration = trackModel.Duration.TotalSeconds,
                     Source = trackModel.SourceName ?? "other"
                 };
-                context.Tracks.Add(track);
-                await context.SaveChangesAsync().ConfigureAwait(false);
+                uow.Playlists.AddTrack(track);
             }
 
             var item = new PlaylistItemEntity
             {
                 PlaylistId = playlist.Id,
-                TrackId = track.Id,
+                Track = track,
                 Position = ++currentPosition
             };
-            context.PlaylistItems.Add(item);
+            uow.Playlists.AddPlaylistItem(item);
             addedCount++;
         }
 
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             var message = $"Added {addedCount} song(s) to '{playlistName}'.";
             if (tracksToAdd.Count > addedCount)
                 message += $" Could not add {tracksToAdd.Count - addedCount} song(s) due to playlist capacity.";
@@ -211,15 +173,9 @@ public class PlaylistService(
     {
         if (oneBasedIndex <= 0) return (false, "Invalid song index. Position must be 1 or greater.", null);
 
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var playlist = await context.Playlists
-            .Include(p => p.Items)
-            .ThenInclude(i => i.Track)
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == playlistName)
-            .ConfigureAwait(false);
+        var playlist = await uow.Playlists.GetAsync(userId, guildId, playlistName).ConfigureAwait(false);
 
         if (playlist == null) return (false, "Playlist not found.", null);
 
@@ -229,17 +185,17 @@ public class PlaylistService(
         var itemToRemove = sortedItems[oneBasedIndex - 1];
         var removedTrack = itemToRemove.Track;
 
-        context.PlaylistItems.Remove(itemToRemove);
+        uow.Playlists.RemovePlaylistItem(itemToRemove);
 
         for (var i = oneBasedIndex; i < sortedItems.Count; i++) sortedItems[i].Position--;
 
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation(
                 "Removed song '{SongTitle}' from playlist '{PlaylistName}' for User {UserId}, Guild {GuildId}",
-                itemToRemove.Track.Title, playlistName, userId, guildId);
-            return (true, $"Removed '{itemToRemove.Track.Title}' from playlist '{playlistName}'.", removedTrack);
+                removedTrack.Title, playlistName, userId, guildId);
+            return (true, $"Removed '{removedTrack.Title}' from playlist '{playlistName}'.", removedTrack);
         }
         catch (Exception ex)
         {
@@ -252,16 +208,8 @@ public class PlaylistService(
 
     public async Task<List<PlaylistEntity>> GetUserPlaylistsAsync(ulong userId, ulong guildId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
-
-        return await context.Playlists
-            .Where(p => p.UserId == dUserId && p.GuildId == dGuildId)
-            .OrderBy(p => p.Name)
-            .Include(p => p.Items)
-            .ToListAsync()
-            .ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        return await uow.Playlists.GetAllAsync(userId, guildId).ConfigureAwait(false);
     }
 
     public async Task<PlaylistOperationResult> RenamePlaylistAsync(ulong userId, ulong guildId, string oldName,
@@ -273,20 +221,12 @@ public class PlaylistService(
         if (oldName.Equals(newName, StringComparison.OrdinalIgnoreCase))
             return new PlaylistOperationResult(false, "The new name is the same as the old name.");
 
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var existingWithNewName = await context.Playlists
-            .AnyAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == newName)
-            .ConfigureAwait(false);
-
-        if (existingWithNewName)
+        if (await uow.Playlists.ExistsAsync(userId, guildId, newName).ConfigureAwait(false))
             return new PlaylistOperationResult(false, $"You already have a playlist named '{newName}'.");
 
-        var playlist = await context.Playlists
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == oldName)
-            .ConfigureAwait(false);
+        var playlist = await uow.Playlists.GetAsync(userId, guildId, oldName).ConfigureAwait(false);
 
         if (playlist == null)
             return new PlaylistOperationResult(false, $"Could not find a playlist named '{oldName}'.");
@@ -295,7 +235,7 @@ public class PlaylistService(
 
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation(
                 "Renamed playlist '{OldName}' to '{NewName}' for User {UserId}, Guild {GuildId}", oldName, newName,
                 userId, guildId);
@@ -311,15 +251,9 @@ public class PlaylistService(
 
     public async Task<PlaylistOperationResult> ShufflePlaylistAsync(ulong userId, ulong guildId, string playlistName)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var playlist = await context.Playlists
-            .Include(p => p.Items)
-            .ThenInclude(i => i.Track)
-            .FirstOrDefaultAsync(p => p.UserId == dUserId && p.GuildId == dGuildId && p.Name == playlistName)
-            .ConfigureAwait(false);
+        var playlist = await uow.Playlists.GetAsync(userId, guildId, playlistName).ConfigureAwait(false);
 
         if (playlist == null) return new PlaylistOperationResult(false, "Playlist not found.");
         if (playlist.Items.Count == 0)
@@ -333,7 +267,7 @@ public class PlaylistService(
 
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation("Shuffled playlist '{PlaylistName}' for User {UserId}, Guild {GuildId}",
                 playlistName, userId, guildId);
             return new PlaylistOperationResult(true, $"Shuffled playlist '{playlistName}'.", playlist);
@@ -349,47 +283,36 @@ public class PlaylistService(
     public async Task<PlaylistOperationResult> SharePlaylistAsync(ulong senderId, ulong guildId, string playlistName,
         ulong recipientId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dSenderId = (decimal)senderId;
-        var dRecipientId = (decimal)recipientId;
-        var dGuildId = (decimal)guildId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var originalPlaylist = await context.Playlists
-            .Include(p => p.Items)
-            .FirstOrDefaultAsync(p => p.UserId == dSenderId && p.GuildId == dGuildId && p.Name == playlistName)
-            .ConfigureAwait(false);
+        var originalPlaylist = await uow.Playlists.GetAsync(senderId, guildId, playlistName).ConfigureAwait(false);
 
         if (originalPlaylist == null) return new PlaylistOperationResult(false, "Original playlist not found.");
 
-        await userService.EnsureUserExistsAsync(context, recipientId).ConfigureAwait(false);
+        await uow.Users.EnsureExistsAsync(recipientId).ConfigureAwait(false);
 
-        var recipientPlaylistCount = await context.Playlists
-            .CountAsync(p => p.UserId == dRecipientId && p.GuildId == dGuildId).ConfigureAwait(false);
+        var recipientPlaylistCount = await uow.Playlists.GetCountAsync(recipientId, guildId).ConfigureAwait(false);
 
         if (recipientPlaylistCount >= MaxPlaylistsPerUser)
             return new PlaylistOperationResult(false,
                 $"Recipient has reached the maximum limit of {MaxPlaylistsPerUser} playlists.");
 
-        var exists = await context.Playlists
-            .AnyAsync(p => p.UserId == dRecipientId && p.GuildId == dGuildId && p.Name == playlistName)
-            .ConfigureAwait(false);
-
-        if (exists)
+        if (await uow.Playlists.ExistsAsync(recipientId, guildId, playlistName).ConfigureAwait(false))
             return new PlaylistOperationResult(false, $"Recipient already has a playlist named '{playlistName}'.");
 
         var sharedPlaylist = new PlaylistEntity
         {
-            UserId = dRecipientId,
-            GuildId = dGuildId,
+            UserId = recipientId,
+            GuildId = guildId,
             Name = originalPlaylist.Name,
             CreatedAt = DateTime.UtcNow
         };
 
-        context.Playlists.Add(sharedPlaylist);
-        await context.SaveChangesAsync().ConfigureAwait(false);
+        uow.Playlists.Add(sharedPlaylist);
+        await uow.SaveChangesAsync().ConfigureAwait(false); // Get Shared ID
 
         foreach (var item in originalPlaylist.Items)
-            context.PlaylistItems.Add(new PlaylistItemEntity
+            uow.Playlists.AddPlaylistItem(new PlaylistItemEntity
             {
                 PlaylistId = sharedPlaylist.Id,
                 TrackId = item.TrackId,
@@ -398,7 +321,7 @@ public class PlaylistService(
 
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation(
                 "Shared playlist '{PlaylistName}' from User {SenderId} to User {RecipientId} in Guild {GuildId}",
                 playlistName, senderId, recipientId, guildId);

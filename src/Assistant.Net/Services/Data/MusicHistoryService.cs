@@ -1,10 +1,9 @@
 using System.Collections.Concurrent;
-using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Options;
 using Lavalink4NET.Players;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -15,26 +14,22 @@ public class MusicHistoryService
 {
     private const string SettingsCachePrefix = "music:settings:";
     private static readonly TimeSpan SettingsCacheDuration = TimeSpan.FromHours(2);
-
-    private readonly IDbContextFactory<AssistantDbContext> _dbFactory;
-    private readonly GuildService _guildService;
     private readonly ILogger<MusicHistoryService> _logger;
     private readonly IMemoryCache _memoryCache;
     private readonly MusicOptions _musicOptions;
     private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _settingsLocks = new();
-    private readonly UserService _userService;
+
+    private readonly IUnitOfWorkFactory _uowFactory;
 
     public MusicHistoryService(
-        IDbContextFactory<AssistantDbContext> dbFactory,
+        IUnitOfWorkFactory uowFactory,
         ILogger<MusicHistoryService> logger,
         IOptions<MusicOptions> musicOptions,
-        UserService userService, GuildService guildService, IMemoryCache memoryCache)
+        IMemoryCache memoryCache)
     {
-        _dbFactory = dbFactory;
+        _uowFactory = uowFactory;
         _logger = logger;
         _musicOptions = musicOptions.Value;
-        _userService = userService;
-        _guildService = guildService;
         _memoryCache = memoryCache;
 
         _logger.LogInformation("MusicHistoryService initialized.");
@@ -55,21 +50,20 @@ public class MusicHistoryService
             if (_memoryCache.TryGetValue(cacheKey, out cachedSettings) && cachedSettings != null) return cachedSettings;
 
             _logger.LogTrace("Music settings cache miss for Guild {GuildId}. Fetching from DB.", guildId);
-            await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-            var decimalGuildId = (decimal)guildId;
+            await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
 
-            var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
+            var settings = await uow.Music.GetGuildSettingsAsync(guildId).ConfigureAwait(false);
 
             if (settings == null)
             {
-                await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
+                await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
                 settings = new GuildMusicSettingsEntity
                 {
-                    GuildId = decimalGuildId,
+                    GuildId = guildId,
                     Volume = _musicOptions.DefaultVolume
                 };
-                context.GuildMusicSettings.Add(settings);
-                await context.SaveChangesAsync().ConfigureAwait(false);
+                uow.Music.AddGuildSettings(settings);
+                await uow.SaveChangesAsync().ConfigureAwait(false);
                 _logger.LogInformation("Created default music settings for Guild {GuildId}", guildId);
             }
 
@@ -106,16 +100,15 @@ public class MusicHistoryService
                 "Could not determine requester for track '{TrackTitle}' in guild {GuildId}. The queue item was not a CustomTrackQueueItem.",
                 queueItem.Track.Title, guildId);
 
-        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalGuildId = (decimal)guildId;
-        var decimalRequesterId = (decimal)requesterId;
+        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
 
         try
         {
-            await _userService.EnsureUserExistsAsync(context, requesterId).ConfigureAwait(false);
+            await uow.Users.EnsureExistsAsync(requesterId).ConfigureAwait(false);
+            await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
 
             var trackUri = queueItem.Track.Uri.ToString();
-            var track = await context.Tracks.FirstOrDefaultAsync(t => t.Uri == trackUri).ConfigureAwait(false);
+            var track = await uow.Music.GetTrackByUriAsync(trackUri).ConfigureAwait(false);
             if (track == null)
             {
                 track = new TrackEntity
@@ -127,19 +120,19 @@ public class MusicHistoryService
                     Duration = queueItem.Track.Duration.TotalSeconds,
                     Source = queueItem.Track.SourceName ?? "unknown"
                 };
-                context.Tracks.Add(track);
+                uow.Music.AddTrack(track);
             }
 
             var playHistory = new PlayHistoryEntity
             {
-                GuildId = decimalGuildId,
+                GuildId = guildId,
                 Track = track,
-                RequestedBy = decimalRequesterId,
+                RequestedBy = requesterId,
                 PlayedAt = DateTime.UtcNow
             };
-            context.PlayHistories.Add(playHistory);
+            uow.Music.AddPlayHistory(playHistory);
 
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             _logger.LogDebug("Added song '{SongTitle}' to history for Guild {GuildId}.", queueItem.Track.Title,
                 guildId);
         }
@@ -151,65 +144,17 @@ public class MusicHistoryService
 
     public async Task<List<TrackPlayCount>> GetTopPlaysAsync(ulong guildId, ulong? requesterId = null, int limit = 10)
     {
-        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalGuildId = (decimal)guildId;
-
-        var query = context.PlayHistories
-            .Include(ph => ph.Track)
-            .Where(ph => ph.GuildId == decimalGuildId);
-
-        if (requesterId.HasValue)
-        {
-            var decimalRequesterId = (decimal)requesterId.Value;
-            query = query.Where(ph => ph.RequestedBy == decimalRequesterId);
-        }
-
-        var result = await query
-            .GroupBy(ph => ph.Track)
-            .Select(g => new { Track = g.Key, Count = g.Count() })
-            .OrderByDescending(x => x.Count)
-            .Take(limit)
-            .ToListAsync()
-            .ConfigureAwait(false);
-
+        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
+        var result = await uow.Music.GetTopPlaysAsync(guildId, requesterId, limit).ConfigureAwait(false);
         return result.Select(x => new TrackPlayCount(x.Track, x.Count)).ToList();
     }
 
     public async Task<IEnumerable<TrackEntity>> SearchSongHistoryAsync(string searchTerm)
     {
         if (string.IsNullOrWhiteSpace(searchTerm)) return [];
-
-        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-
-        if (searchTerm.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
-            searchTerm.StartsWith("www", StringComparison.OrdinalIgnoreCase))
-            return await context.Tracks
-                .Where(t => EF.Functions.ILike(t.Uri, $"%{searchTerm}%"))
-                .OrderBy(t => t.Title)
-                .Take(24)
-                .Select(t => new TrackEntity
-                {
-                    Title = t.Title,
-                    Uri = t.Uri
-                })
-                .ToListAsync()
-                .ConfigureAwait(false);
-
-        var cutoff = _musicOptions.TitleSimilarityCutoff;
-
-        var tracks = await context.Tracks
-            .Where(t => EF.Functions.TrigramsSimilarity(t.Title, searchTerm) > cutoff ||
-                        EF.Functions.ILike(t.Title, $"%{searchTerm}%"))
-            .OrderByDescending(t => t.Title)
-            .Take(24)
-            .Select(t => new TrackEntity
-            {
-                Title = t.Title,
-                Uri = t.Uri
-            })
-            .ToListAsync();
-
-        return tracks;
+        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
+        return await uow.Music.SearchTracksAsync(searchTerm, _musicOptions.TitleSimilarityCutoff, 24)
+            .ConfigureAwait(false);
     }
 
     public async Task<float> GetGuildVolumeAsync(ulong guildId)
@@ -223,15 +168,14 @@ public class MusicHistoryService
         var clampedVolume = (float)Math.Clamp(volume, 0.0, 2.0);
         var cacheKey = $"{SettingsCachePrefix}{guildId}";
 
-        await using var context = await _dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalGuildId = (decimal)guildId;
+        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var settings = await context.GuildMusicSettings.FindAsync(decimalGuildId).ConfigureAwait(false);
+        var settings = await uow.Music.GetGuildSettingsAsync(guildId).ConfigureAwait(false);
         if (settings == null)
         {
-            await _guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
-            settings = new GuildMusicSettingsEntity { GuildId = decimalGuildId, Volume = clampedVolume };
-            context.GuildMusicSettings.Add(settings);
+            await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
+            settings = new GuildMusicSettingsEntity { GuildId = guildId, Volume = clampedVolume };
+            uow.Music.AddGuildSettings(settings);
         }
         else
         {
@@ -240,7 +184,7 @@ public class MusicHistoryService
 
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             _logger.LogInformation("Set volume for Guild {GuildId} to {Volume}%.", guildId, clampedVolume * 100);
 
             var cacheEntryOptions = new MemoryCacheEntryOptions()

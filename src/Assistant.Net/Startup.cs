@@ -1,4 +1,6 @@
 using Assistant.Net.Data;
+using Assistant.Net.Data.Repositories.Impl;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Assistant.Net.Options;
 using Assistant.Net.Services.Core;
 using Assistant.Net.Services.Data;
@@ -30,14 +32,12 @@ var builder = new HostApplicationBuilder(args);
 
 builder.Services.AddSystemd();
 
-// --- Configuration Setup ---
 builder.Configuration
     .SetBasePath(Directory.GetCurrentDirectory())
     .AddJsonFile("appsettings.json", false, true)
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", true, true)
     .AddEnvironmentVariables();
 
-// --- Serilog Setup ---
 builder.Logging.ClearProviders();
 var loggerConfiguration = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
@@ -48,7 +48,6 @@ var loggerConfiguration = new LoggerConfiguration()
 Log.Logger = loggerConfiguration.CreateLogger();
 builder.Logging.AddSerilog();
 
-// --- Options Binding ---
 builder.Services.Configure<DiscordOptions>(builder.Configuration.GetSection(DiscordOptions.SectionName));
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
 builder.Services.Configure<LavalinkOptions>(builder.Configuration.GetSection(LavalinkOptions.SectionName));
@@ -56,7 +55,6 @@ builder.Services.Configure<RedditOptions>(builder.Configuration.GetSection(Reddi
 builder.Services.Configure<MusicOptions>(builder.Configuration.GetSection(MusicOptions.SectionName));
 builder.Services.Configure<ExternalApiOptions>(builder.Configuration.GetSection(ExternalApiOptions.SectionName));
 
-// --- Discord Core Services ---
 builder.Services.AddSingleton(new DiscordSocketConfig
 {
     GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildBans |
@@ -84,20 +82,18 @@ builder.Services.AddSingleton(provider =>
             UseCompiledLambda = true
         }));
 
-// --- Database ---
 builder.Services.AddDbContextFactory<AssistantDbContext>((provider, options) =>
 {
     var dbOptions = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
     options.UseNpgsql(dbOptions.ConnectionString);
 });
 
-// --- HTTP Client ---
+builder.Services.AddSingleton<IUnitOfWorkFactory, UnitOfWorkFactory>();
+
 builder.Services.AddHttpClient().ConfigureHttpClientDefaults(defaults => defaults.RemoveAllLoggers());
 
-// --- Memory Cache ---
 builder.Services.AddMemoryCache();
 
-// --- Lavalink ---
 var lavalinkSettings = builder.Configuration.GetSection(LavalinkOptions.SectionName).Get<LavalinkOptions>();
 
 if (lavalinkSettings is { Nodes.Count: 1 })
@@ -132,26 +128,17 @@ else
                 { BaseAddress = new Uri(node.Uri), Passphrase = node.Password, Label = node.Name }));
 
             clusterOptions.Nodes = [.. nodesList];
-
             clusterOptions.ReadyTimeout = TimeSpan.FromSeconds(30);
         });
 }
 
-
-// --- Application Services ---
-
-// Data
 builder.Services.AddSingleton<GameStatsService>();
 builder.Services.AddSingleton<MusicHistoryService>();
 builder.Services.AddSingleton<PlaylistService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<GuildService>();
 builder.Services.AddSingleton<UserActivityTrackingService>();
-
-// Games
 builder.Services.AddSingleton<GameSessionService>();
-
-// Features
 builder.Services.AddSingleton<PollService>();
 builder.Services.AddSingleton<StarboardConfigService>();
 builder.Services.AddSingleton<StarboardService>();
@@ -159,47 +146,35 @@ builder.Services.AddSingleton<LoggingConfigService>();
 builder.Services.AddSingleton<DmRelayService>();
 builder.Services.AddSingleton<ReminderService>();
 builder.Services.AddSingleton<WebhookService>();
-
-// External APIs
 builder.Services.AddSingleton<UrbanDictionaryService>();
 builder.Services.AddSingleton<RedditService>();
 builder.Services.AddSingleton<GeniusLyricsService>();
-
-// Logging Features
 builder.Services.AddSingleton<MessageLogger>();
 builder.Services.AddSingleton<UserLogger>();
 builder.Services.AddSingleton<VoiceLogger>();
 builder.Services.AddSingleton<PresenceLogger>();
-
-// Music
 builder.Services.AddSingleton<MusicService>();
 builder.Services.AddSingleton<NowPlayingService>();
 
-// --- Hosted Services ---
 builder.Services.AddHostedService<DiscordBotService>();
 builder.Services.AddHostedService<InteractionHandler>();
 builder.Services.AddHostedService<ReminderWorker>();
 
-// --- Build and Run ---
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var provider = scope.ServiceProvider;
 
-    // Core Logic
     provider.GetRequiredService<UserActivityTrackingService>();
     provider.GetRequiredService<StarboardService>();
     provider.GetRequiredService<DmRelayService>();
     provider.GetRequiredService<NowPlayingService>();
-
-    // Loggers
     provider.GetRequiredService<MessageLogger>();
     provider.GetRequiredService<UserLogger>();
     provider.GetRequiredService<VoiceLogger>();
     provider.GetRequiredService<PresenceLogger>();
 
-    // Database Migration
     var dbContext = provider.GetRequiredService<AssistantDbContext>();
     try
     {

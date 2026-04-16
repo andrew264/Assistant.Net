@@ -1,12 +1,10 @@
 using System.Globalization;
-using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
-using Assistant.Net.Services.Data;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Recognizers.Text;
 using Microsoft.Recognizers.Text.DateTime;
@@ -14,11 +12,9 @@ using Microsoft.Recognizers.Text.DateTime;
 namespace Assistant.Net.Services.Features;
 
 public class ReminderService(
-    IDbContextFactory<AssistantDbContext> dbFactory,
+    IUnitOfWorkFactory uowFactory,
     DiscordSocketClient client,
-    ILogger<ReminderService> logger,
-    UserService userService,
-    GuildService guildService)
+    ILogger<ReminderService> logger)
 {
     private readonly Lock _lock = new();
     private readonly PriorityQueue<int, DateTime> _queue = new();
@@ -31,16 +27,13 @@ public class ReminderService(
 
         logger.LogInformation("Initializing ReminderService: Loading active reminders...");
 
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var reminders = await context.Reminders
-            .Where(r => r.TriggerTime > DateTime.UtcNow)
-            .Select(r => new { r.Id, r.TriggerTime })
-            .ToListAsync()
-            .ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        var reminders = await uow.Reminders.GetActiveRemindersBeforeAsync(DateTime.MaxValue).ConfigureAwait(false);
 
         lock (_lock)
         {
-            foreach (var r in reminders) _queue.Enqueue(r.Id, r.TriggerTime);
+            foreach (var r in reminders.Where(r => r.TriggerTime > DateTime.UtcNow))
+                _queue.Enqueue(r.Id, r.TriggerTime);
             _isInitialized = true;
         }
 
@@ -92,7 +85,6 @@ public class ReminderService(
         catch (OperationCanceledException)
         {
             if (stoppingToken.IsCancellationRequested) return;
-
             lock (_lock)
             {
                 _queue.Enqueue(reminderId.Value, triggerTime);
@@ -115,16 +107,15 @@ public class ReminderService(
 
     private async Task ProcessReminderAsync(int reminderId, DateTime expectedTriggerTime)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        var reminder = await uow.Reminders.GetByIdAsync(reminderId).ConfigureAwait(false);
 
         if (reminder is not { IsActive: true }) return;
-
         if (reminder.TriggerTime > expectedTriggerTime.AddSeconds(5)) return;
 
         try
         {
-            await DispatchReminderAsync(context, reminder, DateTime.UtcNow).ConfigureAwait(false);
+            await DispatchReminderAsync(uow, reminder, DateTime.UtcNow).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -132,7 +123,7 @@ public class ReminderService(
         }
     }
 
-    private async Task DispatchReminderAsync(AssistantDbContext context, ReminderEntity reminder, DateTime now)
+    private async Task DispatchReminderAsync(IUnitOfWork uow, ReminderEntity reminder, DateTime now)
     {
         try
         {
@@ -150,18 +141,17 @@ public class ReminderService(
         }
         finally
         {
-            await HandleReminderCompletionAsync(context, reminder, now).ConfigureAwait(false);
+            await HandleReminderCompletionAsync(uow, reminder, now).ConfigureAwait(false);
         }
     }
 
-    private async Task HandleReminderCompletionAsync(AssistantDbContext context, ReminderEntity reminder,
-        DateTime triggerTime)
+    private async Task HandleReminderCompletionAsync(IUnitOfWork uow, ReminderEntity reminder, DateTime triggerTime)
     {
         if (string.IsNullOrEmpty(reminder.Recurrence) ||
             reminder.Recurrence.Equals("none", StringComparison.OrdinalIgnoreCase))
         {
-            context.Reminders.Remove(reminder);
-            await SaveChangesSafelyAsync(context, $"Deleted one-time reminder (ID: {reminder.Id}).");
+            uow.Reminders.Remove(reminder);
+            await SaveChangesSafelyAsync(uow, $"Deleted one-time reminder (ID: {reminder.Id}).");
         }
         else
         {
@@ -170,7 +160,7 @@ public class ReminderService(
             {
                 reminder.LastTriggered = triggerTime;
                 reminder.TriggerTime = nextTrigger.Value;
-                await SaveChangesSafelyAsync(context,
+                await SaveChangesSafelyAsync(uow,
                     $"Updated recurring reminder (ID: {reminder.Id}). Next trigger: {nextTrigger.Value}");
 
                 lock (_lock)
@@ -185,32 +175,22 @@ public class ReminderService(
                     reminder.Id);
                 reminder.LastTriggered = triggerTime;
                 reminder.IsActive = false;
-                await SaveChangesSafelyAsync(context, $"Deactivated invalid recurring reminder (ID: {reminder.Id}).");
+                await SaveChangesSafelyAsync(uow, $"Deactivated invalid recurring reminder (ID: {reminder.Id}).");
             }
         }
     }
 
-    public async Task<ReminderEntity?> CreateReminderAsync(
-        ulong creatorUserId,
-        ulong guildId,
-        ulong channelId,
-        string message,
-        DateTime triggerTime,
-        bool isDm = true,
-        ulong? targetUserId = null,
-        string? recurrence = null,
+    public async Task<ReminderEntity?> CreateReminderAsync(ulong creatorUserId, ulong guildId, ulong channelId,
+        string message, DateTime triggerTime, bool isDm = true, ulong? targetUserId = null, string? recurrence = null,
         string? title = null)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var dCreatorId = (decimal)creatorUserId;
         var dTargetId = targetUserId ?? dCreatorId;
 
-        await userService.EnsureUserExistsAsync(context, creatorUserId).ConfigureAwait(false);
-        await guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
-        if (dTargetId != dCreatorId)
-            await userService.EnsureUserExistsAsync(context, (ulong)dTargetId).ConfigureAwait(false);
-
-        await context.SaveChangesAsync().ConfigureAwait(false);
+        await uow.Users.EnsureExistsAsync(creatorUserId).ConfigureAwait(false);
+        await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
+        if (dTargetId != dCreatorId) await uow.Users.EnsureExistsAsync((ulong)dTargetId).ConfigureAwait(false);
 
         try
         {
@@ -230,8 +210,8 @@ public class ReminderService(
                 LastTriggered = null
             };
 
-            context.Reminders.Add(reminder);
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            uow.Reminders.Add(reminder);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
 
             lock (_lock)
             {
@@ -250,54 +230,24 @@ public class ReminderService(
         }
     }
 
-    public async Task<(bool success, bool found, ReminderEntity? updatedReminder)> EditReminderAsync(
-        ulong userId,
-        int reminderId,
-        string? newMessage = null,
-        DateTime? newTriggerTime = null,
-        string? newRecurrence = null,
-        string? newTitle = null,
-        ulong? newChannelId = null,
-        ulong? newTargetUserId = null,
-        bool? isActive = null)
+    public async Task<(bool success, bool found, ReminderEntity? updatedReminder)> EditReminderAsync(ulong userId,
+        int reminderId, string? newMessage = null, DateTime? newTriggerTime = null, string? newRecurrence = null,
+        string? newTitle = null, ulong? newChannelId = null, ulong? newTargetUserId = null, bool? isActive = null)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var dUserId = (decimal)userId;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-        var exists = await context.Reminders.IgnoreQueryFilters(["ActiveOnly"])
-            .AnyAsync(r => r.Id == reminderId).ConfigureAwait(false);
-        if (!exists) return (false, false, null);
+        if (!await uow.Reminders.ExistsAsync(reminderId).ConfigureAwait(false)) return (false, false, null);
 
-        var rowsAffected = await context.Reminders
-            .IgnoreQueryFilters(["ActiveOnly"])
-            .Where(r => r.Id == reminderId && (r.CreatorId == dUserId || r.TargetUserId == dUserId))
-            .ExecuteUpdateAsync(s =>
-            {
-                if (newMessage != null) s.SetProperty(r => r.Message, newMessage);
-                if (newTitle != null) s.SetProperty(r => r.Title, newTitle);
-                if (newRecurrence != null) s.SetProperty(r => r.Recurrence, newRecurrence);
-                if (isActive.HasValue) s.SetProperty(r => r.IsActive, isActive.Value);
-
-                if (newTriggerTime.HasValue && newTriggerTime.Value.ToUniversalTime() > DateTime.UtcNow)
-                {
-                    s.SetProperty(r => r.TriggerTime, newTriggerTime.Value.ToUniversalTime());
-                    s.SetProperty(r => r.LastTriggered, (DateTime?)null);
-                }
-
-                if (newChannelId.HasValue) s.SetProperty(r => r.ChannelId, newChannelId.Value);
-                if (newTargetUserId.HasValue) s.SetProperty(r => r.TargetUserId, newTargetUserId.Value);
-            }).ConfigureAwait(false);
+        var rowsAffected = await uow.Reminders.ExecuteUpdateAsync(userId, reminderId, newMessage, newTriggerTime,
+            newRecurrence, newTitle, newChannelId, newTargetUserId, isActive).ConfigureAwait(false);
 
         if (rowsAffected == 0) return (false, true, null);
 
-        var reminder = await context.Reminders
-            .IgnoreQueryFilters(["ActiveOnly"])
-            .FirstOrDefaultAsync(r => r.Id == reminderId).ConfigureAwait(false);
+        var reminder = await uow.Reminders.GetByIdAsync(reminderId).ConfigureAwait(false);
 
         try
         {
-            if (reminder == null || (!newTriggerTime.HasValue && isActive != true))
-                return (true, true, reminder);
+            if (reminder == null || (!newTriggerTime.HasValue && isActive != true)) return (true, true, reminder);
             lock (_lock)
             {
                 _queue.Enqueue(reminder.Id, reminder.TriggerTime);
@@ -315,18 +265,14 @@ public class ReminderService(
 
     public async Task<(bool success, bool found)> DeleteReminderAsync(ulong userId, int reminderId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalUserId = (decimal)userId;
-
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         try
         {
-            var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
-            if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId))
-                return (false, false);
+            var reminder = await uow.Reminders.GetAsync(userId, reminderId).ConfigureAwait(false);
+            if (reminder == null) return (false, false);
 
-            context.Reminders.Remove(reminder);
-            await context.SaveChangesAsync().ConfigureAwait(false);
-
+            uow.Reminders.Remove(reminder);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             return (true, true);
         }
         catch (Exception ex)
@@ -338,28 +284,16 @@ public class ReminderService(
 
     public async Task<ReminderEntity?> GetReminderAsync(ulong userId, int reminderId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalUserId = (decimal)userId;
-
-        var reminder = await context.Reminders.FindAsync(reminderId).ConfigureAwait(false);
-        if (reminder == null || (reminder.CreatorId != decimalUserId && reminder.TargetUserId != decimalUserId))
-            return null;
-
-        return reminder;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        return await uow.Reminders.GetAsync(userId, reminderId).ConfigureAwait(false);
     }
 
     public async Task<List<ReminderEntity>> ListUserRemindersAsync(ulong userId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         try
         {
-            var decimalUserId = (decimal)userId;
-            return await context.Reminders
-                .IgnoreQueryFilters(["ActiveOnly"])
-                .Where(r => r.CreatorId == decimalUserId || r.TargetUserId == decimalUserId)
-                .OrderBy(r => r.TriggerTime)
-                .ToListAsync()
-                .ConfigureAwait(false);
+            return await uow.Reminders.GetUserRemindersAsync(userId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -368,11 +302,11 @@ public class ReminderService(
         }
     }
 
-    private async Task SaveChangesSafelyAsync(AssistantDbContext context, string successLog)
+    private async Task SaveChangesSafelyAsync(IUnitOfWork uow, string successLog)
     {
         try
         {
-            await context.SaveChangesAsync().ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogInformation("{Message}", successLog);
         }
         catch (Exception ex)
@@ -437,7 +371,6 @@ public class ReminderService(
     private static MessageComponent BuildReminderComponent(ReminderEntity reminder, IUser? creator)
     {
         var titleText = string.IsNullOrWhiteSpace(reminder.Title) ? "⏰ Reminder" : $"⏰ Reminder: {reminder.Title}";
-
         var container = new ContainerBuilder()
             .WithTextDisplay(new TextDisplayBuilder($"# {titleText}"))
             .WithTextDisplay(new TextDisplayBuilder(reminder.Message))
@@ -489,7 +422,6 @@ public class ReminderService(
         {
             logger.LogError("Error calculating next trigger time for '{Recurrence}': {ExMessage}", recurrence,
                 ex.Message);
-            return null;
         }
 
         return null;
@@ -533,7 +465,7 @@ public class ReminderService(
             selectedDateTime = selectedDateTime.Value.AddDays(1);
             return selectedDateTime.Value <= referenceTime ? null : selectedDateTime;
         }
-        catch (Exception)
+        catch
         {
             return null;
         }

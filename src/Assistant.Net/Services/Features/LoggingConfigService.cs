@@ -1,18 +1,15 @@
 using System.Collections.Concurrent;
-using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Data.Enums;
-using Assistant.Net.Services.Data;
-using Microsoft.EntityFrameworkCore;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Features;
 
 public class LoggingConfigService(
-    IDbContextFactory<AssistantDbContext> dbFactory,
+    IUnitOfWorkFactory uowFactory,
     IMemoryCache memoryCache,
-    GuildService guildService,
     ILogger<LoggingConfigService> logger)
 {
     private const string CachePrefix = "log_config:";
@@ -33,23 +30,17 @@ public class LoggingConfigService(
         {
             if (memoryCache.TryGetValue(cacheKey, out cachedConfig) && cachedConfig != null) return cachedConfig;
 
-            await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-            var dGuildId = (decimal)guildId;
+            await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
 
-            var config = await context.LogSettings
-                .FirstOrDefaultAsync(l => l.GuildId == dGuildId && l.LogType == logType)
-                .ConfigureAwait(false) ?? new LogSettingsEntity
+            var config = await uow.Logging.GetAsync(guildId, logType).ConfigureAwait(false) ?? new LogSettingsEntity
             {
-                GuildId = dGuildId,
+                GuildId = guildId,
                 LogType = logType,
                 IsEnabled = false,
                 DeleteDelayMs = 86400000 // 24 hours
             };
 
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(CacheDuration);
-
-            memoryCache.Set(cacheKey, config, cacheEntryOptions);
+            memoryCache.Set(cacheKey, config, CacheDuration);
             return config;
         }
         finally
@@ -61,25 +52,22 @@ public class LoggingConfigService(
 
     public async Task UpdateLogConfigAsync(LogSettingsEntity config)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var guildId = (ulong)config.GuildId;
 
-        await guildService.EnsureGuildExistsAsync(context, guildId).ConfigureAwait(false);
+        await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
 
-        var affected = await context.LogSettings
-            .Where(l => l.GuildId == config.GuildId && l.LogType == config.LogType)
-            .ExecuteUpdateAsync(s =>
-            {
-                s.SetProperty(l => l.IsEnabled, config.IsEnabled);
-                s.SetProperty(l => l.ChannelId, config.ChannelId);
-                s.SetProperty(l => l.DeleteDelayMs, config.DeleteDelayMs);
-                s.SetProperty(l => l.UpdatedAt, config.UpdatedAt);
-            }).ConfigureAwait(false);
-        if (affected == 0)
-        {
-            context.LogSettings.Add(config);
-            await context.SaveChangesAsync().ConfigureAwait(false);
-        }
+        var affected = await uow.Logging.ExecuteUpdateAsync(
+            guildId,
+            config.LogType,
+            config.IsEnabled,
+            (ulong?)config.ChannelId,
+            config.DeleteDelayMs,
+            config.UpdatedAt).ConfigureAwait(false);
+
+        if (affected == 0) uow.Logging.Add(config);
+
+        await uow.SaveChangesAsync().ConfigureAwait(false);
 
         var cacheKey = $"{CachePrefix}{guildId}:{config.LogType}";
         memoryCache.Set(cacheKey, config, CacheDuration);

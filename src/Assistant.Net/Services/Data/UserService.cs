@@ -1,43 +1,27 @@
-using Assistant.Net.Data;
 using Assistant.Net.Data.Entities;
-using Microsoft.EntityFrameworkCore;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Data;
 
-public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogger<UserService> logger)
+public class UserService(IUnitOfWorkFactory uowFactory, ILogger<UserService> logger)
 {
-    public async Task EnsureUserExistsAsync(AssistantDbContext context, ulong userId)
-    {
-        var decimalUserId = (decimal)userId;
-        if (await context.Users.FindAsync(decimalUserId).ConfigureAwait(false) == null)
-            context.Users.Add(new UserEntity { Id = decimalUserId });
-    }
-
     public async Task UpdateUserIntroductionAsync(ulong userId, string introduction)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalUserId = (decimal)userId;
-
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         try
         {
-            var user = await context.Users.FindAsync(decimalUserId).ConfigureAwait(false);
-            if (user == null)
-            {
-                user = new UserEntity { Id = decimalUserId };
-                context.Users.Add(user);
-            }
+            var user = await uow.Users.GetAsync(userId).ConfigureAwait(false);
 
-            if (user.About == introduction)
+            if (user?.About == introduction)
             {
                 logger.LogInformation("Introduction for User {UserId} submitted, but no changes detected.", userId);
                 return;
             }
 
-            user.About = introduction;
-
-            await context.SaveChangesAsync().ConfigureAwait(false);
-            logger.LogInformation("Successfully updated introduction and LastSeen for User {UserId}.", userId);
+            await uow.Users.UpdateIntroductionAsync(userId, introduction).ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
+            logger.LogInformation("Successfully updated introduction for User {UserId}.", userId);
         }
         catch (Exception ex)
         {
@@ -48,24 +32,11 @@ public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogge
 
     public async Task UpdateLastSeenAsync(ulong userId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
-        var decimalUserId = (decimal)userId;
-        var now = DateTime.UtcNow;
-
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         try
         {
-            var affected = await context.Users
-                .Where(u => u.Id == decimalUserId)
-                .ExecuteUpdateAsync(s => s.SetProperty(u => u.LastSeen, now))
-                .ConfigureAwait(false);
-
-            if (affected == 0)
-            {
-                context.Users.Add(new UserEntity { Id = decimalUserId, LastSeen = now });
-                await context.SaveChangesAsync().ConfigureAwait(false);
-                logger.LogDebug("Creating new user entity for {UserId} while updating LastSeen.", userId);
-            }
-
+            await uow.Users.UpdateLastSeenAsync(userId).ConfigureAwait(false);
+            await uow.SaveChangesAsync().ConfigureAwait(false);
             logger.LogDebug("Updated LastSeen for User {UserId}.", userId);
         }
         catch (Exception ex)
@@ -76,10 +47,10 @@ public class UserService(IDbContextFactory<AssistantDbContext> dbFactory, ILogge
 
     public async Task<UserEntity?> GetUserAsync(ulong userId)
     {
-        await using var context = await dbFactory.CreateDbContextAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         try
         {
-            return await context.Users.FindAsync((decimal)userId).ConfigureAwait(false);
+            return await uow.Users.GetAsync(userId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
