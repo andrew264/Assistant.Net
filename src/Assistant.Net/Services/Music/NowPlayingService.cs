@@ -9,43 +9,29 @@ using Discord.WebSocket;
 using Lavalink4NET.Clients;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Assistant.Net.Services.Music;
 
-public class NowPlayingService : IDisposable
+public class NowPlayingService(
+    DiscordSocketClient client,
+    MusicService musicService,
+    IOptions<MusicOptions> musicOptions,
+    ILogger<NowPlayingService> logger)
+    : IHostedService, IDisposable
 {
     public const string NpCustomIdPrefix = "np";
 
     private readonly ConcurrentDictionary<ulong, NowPlayingMessageInfo> _activeNowPlayingMessages = new();
 
-    private readonly DiscordSocketClient _client;
-    private readonly ILogger<NowPlayingService> _logger;
-    private readonly MusicOptions _musicOptions;
-    private readonly MusicService _musicService;
+    private readonly MusicOptions _musicOptions = musicOptions.Value;
     private readonly TimeSpan _updateInterval = TimeSpan.FromSeconds(10);
-
-    public NowPlayingService(
-        DiscordSocketClient client,
-        MusicService musicService,
-        IOptions<MusicOptions> musicOptions,
-        ILogger<NowPlayingService> logger)
-    {
-        _client = client;
-        _musicService = musicService;
-        _musicOptions = musicOptions.Value;
-        _logger = logger;
-
-        _musicService.PlayerStopped += OnPlayerStoppedAsync;
-        _musicService.QueueEmptied += OnQueueEmptiedAsync;
-
-        _logger.LogInformation("NowPlayingService initialized.");
-    }
 
     public void Dispose()
     {
-        _logger.LogInformation("Disposing NowPlayingService and clearing active messages.");
+        logger.LogInformation("Disposing NowPlayingService and clearing active messages.");
 
         foreach (var kvp in _activeNowPlayingMessages)
             try
@@ -56,22 +42,36 @@ public class NowPlayingService : IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error disposing CTS for guild {GuildId}", kvp.Key);
+                logger.LogError(ex, "Error disposing CTS for guild {GuildId}", kvp.Key);
             }
 
         _activeNowPlayingMessages.Clear();
-
-        _musicService.PlayerStopped -= OnPlayerStoppedAsync;
-        _musicService.QueueEmptied -= OnQueueEmptiedAsync;
-
         GC.SuppressFinalize(this);
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        musicService.PlayerStopped += OnPlayerStoppedAsync;
+        musicService.QueueEmptied += OnQueueEmptiedAsync;
+
+        logger.LogInformation("NowPlayingService started and events hooked.");
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        musicService.PlayerStopped -= OnPlayerStoppedAsync;
+        musicService.QueueEmptied -= OnQueueEmptiedAsync;
+
+        logger.LogInformation("NowPlayingService stopped and events unhooked.");
+        return Task.CompletedTask;
     }
 
     private Task OnPlayerStoppedAsync(ulong guildId)
     {
         return Task.Run(async () =>
         {
-            _logger.LogDebug("[NP Service] Player stopped for guild {GuildId}, ensuring NP message is removed.",
+            logger.LogDebug("[NP Service] Player stopped for guild {GuildId}, ensuring NP message is removed.",
                 guildId);
             await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
         });
@@ -84,7 +84,7 @@ public class NowPlayingService : IDisposable
             if (player.State == PlayerState.NotPlaying ||
                 (player.State == PlayerState.Paused && player.CurrentTrack == null))
             {
-                _logger.LogDebug(
+                logger.LogDebug(
                     "[NP Service] Queue emptied and player not actively playing for guild {GuildId}, ensuring NP message is removed.",
                     guildId);
                 await RemoveNowPlayingMessageAsync(guildId).ConfigureAwait(false);
@@ -107,13 +107,13 @@ public class NowPlayingService : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send Now Playing message for Guild {GuildId}", guildId);
+            logger.LogError(ex, "Failed to send Now Playing message for Guild {GuildId}", guildId);
             return null;
         }
 
         if (sentMessage == null)
         {
-            _logger.LogWarning("Sent Now Playing message was null for Guild {GuildId}", guildId);
+            logger.LogWarning("Sent Now Playing message was null for Guild {GuildId}", guildId);
             return null;
         }
 
@@ -128,13 +128,13 @@ public class NowPlayingService : IDisposable
         if (_activeNowPlayingMessages.TryAdd(guildId, npInfo))
         {
             _ = Task.Run(() => GuildNowPlayingUpdateLoopAsync(guildId, cts.Token), cts.Token);
-            _logger.LogInformation(
+            logger.LogInformation(
                 "Created Now Playing message {MessageId} for Guild {GuildId} in Channel {ChannelId}.",
                 message.Id, guildId, message.Channel.Id);
             return message;
         }
 
-        _logger.LogWarning("Failed to add Now Playing info for Guild {GuildId} due to concurrent modification.",
+        logger.LogWarning("Failed to add Now Playing info for Guild {GuildId} due to concurrent modification.",
             guildId);
         _ = cts.CancelAsync();
         cts.Dispose();
@@ -154,42 +154,42 @@ public class NowPlayingService : IDisposable
                     try
                     {
                         await info.MessageInstance.DeleteAsync().ConfigureAwait(false);
-                        _logger.LogInformation("Deleted Now Playing message {MessageId} for Guild {GuildId}.",
+                        logger.LogInformation("Deleted Now Playing message {MessageId} for Guild {GuildId}.",
                             info.MessageId, guildId);
                     }
                     catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
                     {
-                        _logger.LogWarning("Now Playing message {MessageId} for Guild {GuildId} was already deleted.",
+                        logger.LogWarning("Now Playing message {MessageId} for Guild {GuildId} was already deleted.",
                             info.MessageId, guildId);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to delete Now Playing message {MessageId} for Guild {GuildId}.",
+                        logger.LogError(ex, "Failed to delete Now Playing message {MessageId} for Guild {GuildId}.",
                             info.MessageId, guildId);
                     }
 
                     break;
                 case true when info.MessageInstance == null:
                 {
-                    if (_client.GetChannel(info.TextChannelId) is ITextChannel textChannel)
+                    if (client.GetChannel(info.TextChannelId) is ITextChannel textChannel)
                         try
                         {
                             var msg = await textChannel.GetMessageAsync(info.MessageId).ConfigureAwait(false);
                             if (msg != null) await msg.DeleteAsync().ConfigureAwait(false);
-                            _logger.LogInformation(
+                            logger.LogInformation(
                                 "Fetched and deleted Now Playing message {MessageId} for Guild {GuildId}.",
                                 info.MessageId,
                                 guildId);
                         }
                         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
                         {
-                            _logger.LogWarning(
+                            logger.LogWarning(
                                 "Now Playing message {MessageId} (fetched by ID) for Guild {GuildId} was already deleted.",
                                 info.MessageId, guildId);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogError(ex,
+                            logger.LogError(ex,
                                 "Failed to fetch and delete Now Playing message {MessageId} for Guild {GuildId}.",
                                 info.MessageId, guildId);
                         }
@@ -198,7 +198,7 @@ public class NowPlayingService : IDisposable
                 }
             }
 
-            _logger.LogDebug("Removed Now Playing message info for Guild {GuildId}.", guildId);
+            logger.LogDebug("Removed Now Playing message info for Guild {GuildId}.", guildId);
         }
     }
 
@@ -208,9 +208,9 @@ public class NowPlayingService : IDisposable
 
         if (npInfo.MessageInstance == null)
         {
-            _logger.LogDebug("NP Message instance for guild {GuildId} is null, attempting to re-fetch or remove.",
+            logger.LogDebug("NP Message instance for guild {GuildId} is null, attempting to re-fetch or remove.",
                 guildId);
-            if (_client.GetChannel(npInfo.TextChannelId) is ITextChannel textChannel)
+            if (client.GetChannel(npInfo.TextChannelId) is ITextChannel textChannel)
             {
                 try
                 {
@@ -232,7 +232,7 @@ public class NowPlayingService : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error re-fetching NP message for guild {guildId}", guildId);
+                    logger.LogError(ex, "Error re-fetching NP message for guild {guildId}", guildId);
                     return;
                 }
             }
@@ -245,9 +245,9 @@ public class NowPlayingService : IDisposable
 
         var player = playerInstance;
         if (player == null)
-            if (_client.GetGuild(guildId)?.GetTextChannel(npInfo.TextChannelId) is ITextChannel tc)
+            if (client.GetGuild(guildId)?.GetTextChannel(npInfo.TextChannelId) is ITextChannel tc)
             {
-                var (retrievedPlayer, _) = await _musicService.GetPlayerAsync(guildId, null, tc,
+                var (retrievedPlayer, _) = await musicService.GetPlayerAsync(guildId, null, tc,
                     PlayerChannelBehavior.None, MemberVoiceStateBehavior.Ignore).ConfigureAwait(false);
                 player = retrievedPlayer;
             }
@@ -282,20 +282,20 @@ public class NowPlayingService : IDisposable
         }
         catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.NotFound)
         {
-            _logger.LogWarning("Now Playing message {MessageId} for Guild {GuildId} not found during update. Removing.",
+            logger.LogWarning("Now Playing message {MessageId} for Guild {GuildId} not found during update. Removing.",
                 npInfo.MessageId, guildId);
             await RemoveNowPlayingMessageAsync(guildId, false).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating Now Playing message {MessageId} for Guild {GuildId}.",
+            logger.LogError(ex, "Error updating Now Playing message {MessageId} for Guild {GuildId}.",
                 npInfo.MessageId, guildId);
         }
     }
 
     private async Task GuildNowPlayingUpdateLoopAsync(ulong guildId, CancellationToken cancellationToken)
     {
-        _logger.LogDebug("Starting NP update loop for Guild {GuildId}", guildId);
+        logger.LogDebug("Starting NP update loop for Guild {GuildId}", guildId);
         while (!cancellationToken.IsCancellationRequested)
             try
             {
@@ -310,11 +310,11 @@ public class NowPlayingService : IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unhandled exception in GuildNowPlayingUpdateLoopAsync for Guild {GuildId}",
+                logger.LogError(ex, "Unhandled exception in GuildNowPlayingUpdateLoopAsync for Guild {GuildId}",
                     guildId);
             }
 
-        _logger.LogTrace("Exited NP update loop for Guild {GuildId}", guildId);
+        logger.LogTrace("Exited NP update loop for Guild {GuildId}", guildId);
     }
 
     private class NowPlayingMessageInfo(

@@ -1,33 +1,39 @@
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Data;
 
-public class UserActivityTrackingService
+public class UserActivityTrackingService(
+    DiscordSocketClient client,
+    UserService userService,
+    ILogger<UserActivityTrackingService> logger)
+    : IHostedService
 {
-    private readonly DiscordSocketClient _client;
-    private readonly ILogger<UserActivityTrackingService> _logger;
-    private readonly UserService _userService;
-
-    public UserActivityTrackingService(
-        DiscordSocketClient client,
-        UserService userService,
-        ILogger<UserActivityTrackingService> logger)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _client = client;
-        _userService = userService;
-        _logger = logger;
+        client.PresenceUpdated += OnPresenceUpdatedAsync;
+        client.MessageReceived += OnMessageReceivedAsync;
+        client.UserVoiceStateUpdated += OnVoiceStateUpdatedAsync;
+        client.UserJoined += OnUserJoinedAsync;
+        client.UserIsTyping += OnTypingStartedAsync;
 
-        _client.PresenceUpdated += OnPresenceUpdatedAsync;
-        _client.MessageReceived += OnMessageReceivedAsync;
-        _client.UserVoiceStateUpdated += OnVoiceStateUpdatedAsync;
-        _client.UserJoined += OnUserJoinedAsync;
-        _client.UserIsTyping += OnTypingStartedAsync;
-
-        _logger.LogInformation("UserActivityTrackingService initialized and events hooked.");
+        logger.LogInformation("UserActivityTrackingService started and events hooked.");
+        return Task.CompletedTask;
     }
 
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        client.PresenceUpdated -= OnPresenceUpdatedAsync;
+        client.MessageReceived -= OnMessageReceivedAsync;
+        client.UserVoiceStateUpdated -= OnVoiceStateUpdatedAsync;
+        client.UserJoined -= OnUserJoinedAsync;
+        client.UserIsTyping -= OnTypingStartedAsync;
+
+        logger.LogInformation("UserActivityTrackingService stopped and events unhooked.");
+        return Task.CompletedTask;
+    }
 
     private Task OnPresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
     {
@@ -43,7 +49,7 @@ public class UserActivityTrackingService
 
             if (transitioned)
             {
-                _logger.LogTrace("Presence transition detected for {User} ({Before} -> {After}). Updating LastSeen.",
+                logger.LogTrace("Presence transition detected for {User} ({Before} -> {After}). Updating LastSeen.",
                     user.Username, beforeStatus, afterStatus);
                 await UpdateUserLastSeen(user.Id, "PresenceUpdate").ConfigureAwait(false);
             }
@@ -60,7 +66,7 @@ public class UserActivityTrackingService
                 userMessage.Channel is IDMChannel ||
                 userMessage.Author.Status != UserStatus.Offline) return;
 
-            _logger.LogTrace("Message received from {User} in guild channel. Updating LastSeen.",
+            logger.LogTrace("Message received from {User} in guild channel. Updating LastSeen.",
                 userMessage.Author.Username);
             await UpdateUserLastSeen(userMessage.Author.Id, "MessageReceived").ConfigureAwait(false);
         });
@@ -78,7 +84,7 @@ public class UserActivityTrackingService
             var user = userCacheable.Value;
             if (user.Status != UserStatus.Offline) return;
 
-            _logger.LogTrace("Typing started by {User}(offline) in guild channel. Updating LastSeen.", user.Username);
+            logger.LogTrace("Typing started by {User}(offline) in guild channel. Updating LastSeen.", user.Username);
             await UpdateUserLastSeen(user.Id, "TypingStarted").ConfigureAwait(false);
         });
     }
@@ -89,7 +95,7 @@ public class UserActivityTrackingService
         {
             if (user.IsBot || user is not SocketGuildUser || user.Status != UserStatus.Offline) return;
 
-            _logger.LogTrace("Voice state updated for {User}(offline). Updating LastSeen.", user.Username);
+            logger.LogTrace("Voice state updated for {User}(offline). Updating LastSeen.", user.Username);
             await UpdateUserLastSeen(user.Id, "VoiceStateUpdate").ConfigureAwait(false);
         });
     }
@@ -100,7 +106,7 @@ public class UserActivityTrackingService
         {
             if (user.IsBot) return;
 
-            _logger.LogTrace("User {User} joined guild. Updating LastSeen.", user.Username);
+            logger.LogTrace("User {User} joined guild. Updating LastSeen.", user.Username);
             await UpdateUserLastSeen(user.Id, "UserJoined").ConfigureAwait(false);
         });
     }
@@ -109,11 +115,11 @@ public class UserActivityTrackingService
     {
         try
         {
-            await _userService.UpdateLastSeenAsync(userId).ConfigureAwait(false);
+            await userService.UpdateLastSeenAsync(userId).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to update LastSeen for User {UserId} triggered by {EventSource}.", userId,
+            logger.LogError(ex, "Failed to update LastSeen for User {UserId} triggered by {EventSource}.", userId,
                 eventSource);
         }
     }

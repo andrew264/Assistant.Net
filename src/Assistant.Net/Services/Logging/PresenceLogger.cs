@@ -4,29 +4,31 @@ using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities;
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Logging;
 
-public class PresenceLogger
+public class PresenceLogger(
+    DiscordSocketClient client,
+    ILogger<PresenceLogger> logger,
+    WebhookService webhookService,
+    LoggingConfigService loggingConfigService) : IHostedService
 {
-    private readonly ILogger<PresenceLogger> _logger;
-    private readonly LoggingConfigService _loggingConfigService;
-    private readonly WebhookService _webhookService;
-
-    public PresenceLogger(
-        DiscordSocketClient client,
-        ILogger<PresenceLogger> logger,
-        WebhookService webhookService,
-        LoggingConfigService loggingConfigService)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger = logger;
-        _webhookService = webhookService;
-        _loggingConfigService = loggingConfigService;
-
         client.PresenceUpdated += HandlePresenceUpdatedAsync;
 
-        _logger.LogInformation("PresenceLogger initialized.");
+        logger.LogInformation("PresenceLogger started.");
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        client.PresenceUpdated -= HandlePresenceUpdatedAsync;
+
+        logger.LogInformation("PresenceLogger stopped.");
+        return Task.CompletedTask;
     }
 
     private Task HandlePresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after)
@@ -35,7 +37,7 @@ public class PresenceLogger
         {
             if (user.IsBot || user is not SocketGuildUser guildUser) return;
 
-            var logConfig = await _loggingConfigService.GetLogConfigAsync(guildUser.Guild.Id, LogType.Presence)
+            var logConfig = await loggingConfigService.GetLogConfigAsync(guildUser.Guild.Id, LogType.Presence)
                 .ConfigureAwait(false);
 
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
@@ -49,7 +51,7 @@ public class PresenceLogger
                 bClients.SetEquals(aClients) &&
                 before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
 
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -57,7 +59,7 @@ public class PresenceLogger
             var logParts = new List<string>();
             if (statusSummary != null) logParts.Add(statusSummary);
 
-            _logger.LogInformation("[UPDATE] Presence @{User} from {GuildName} {Summary}", user.Username,
+            logger.LogInformation("[UPDATE] Presence @{User} from {GuildName} {Summary}", user.Username,
                 guildUser.Guild.Name,
                 statusSummary ?? "No direct status/client change.");
 
@@ -123,7 +125,7 @@ public class PresenceLogger
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send presence update log via webhook for User {UserId}.", user.Id);
+                logger.LogError(ex, "Failed to send presence update log via webhook for User {UserId}.", user.Id);
             }
         });
     }

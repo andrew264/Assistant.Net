@@ -5,35 +5,40 @@ using Assistant.Net.Utilities;
 using Discord;
 using Discord.Net;
 using Discord.WebSocket;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Features;
 
-public class StarboardService
+public class StarboardService(
+    DiscordSocketClient client,
+    IUnitOfWorkFactory uowFactory,
+    StarboardConfigService configService,
+    ILogger<StarboardService> logger)
+    : IHostedService
 {
-    private readonly DiscordSocketClient _client;
-    private readonly StarboardConfigService _configService;
-    private readonly ILogger<StarboardService> _logger;
-    private readonly IUnitOfWorkFactory _uowFactory;
-
-    public StarboardService(
-        DiscordSocketClient client,
-        IUnitOfWorkFactory uowFactory,
-        StarboardConfigService configService,
-        ILogger<StarboardService> logger)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _client = client;
-        _uowFactory = uowFactory;
-        _configService = configService;
-        _logger = logger;
+        client.ReactionAdded += HandleReactionAddedAsync;
+        client.ReactionRemoved += HandleReactionRemovedAsync;
+        client.ReactionsCleared += HandleReactionsClearedAsync;
+        client.MessageDeleted += HandleMessageDeletedAsync;
+        client.MessagesBulkDeleted += HandleMessagesBulkDeletedAsync;
 
-        _client.ReactionAdded += HandleReactionAddedAsync;
-        _client.ReactionRemoved += HandleReactionRemovedAsync;
-        _client.ReactionsCleared += HandleReactionsClearedAsync;
-        _client.MessageDeleted += HandleMessageDeletedAsync;
-        _client.MessagesBulkDeleted += HandleMessagesBulkDeletedAsync;
+        logger.LogInformation("StarboardService started and events hooked.");
+        return Task.CompletedTask;
+    }
 
-        _logger.LogInformation("StarboardService initialized and events hooked.");
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        client.ReactionAdded -= HandleReactionAddedAsync;
+        client.ReactionRemoved -= HandleReactionRemovedAsync;
+        client.ReactionsCleared -= HandleReactionsClearedAsync;
+        client.MessageDeleted -= HandleMessageDeletedAsync;
+        client.MessagesBulkDeleted -= HandleMessagesBulkDeletedAsync;
+
+        logger.LogInformation("StarboardService stopped and events unhooked.");
+        return Task.CompletedTask;
     }
 
     private Task HandleReactionAddedAsync(Cacheable<IUserMessage, ulong> msg, Cacheable<IMessageChannel, ulong> chan,
@@ -47,7 +52,7 @@ public class StarboardService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing ReactionAdded event.");
+                logger.LogError(ex, "Error processing ReactionAdded event.");
             }
         });
     }
@@ -63,7 +68,7 @@ public class StarboardService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing ReactionRemoved event.");
+                logger.LogError(ex, "Error processing ReactionRemoved event.");
             }
         });
     }
@@ -78,7 +83,7 @@ public class StarboardService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing ReactionsCleared event.");
+                logger.LogError(ex, "Error processing ReactionsCleared event.");
             }
         });
     }
@@ -93,7 +98,7 @@ public class StarboardService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing MessageDeleted event.");
+                logger.LogError(ex, "Error processing MessageDeleted event.");
             }
         });
     }
@@ -109,7 +114,7 @@ public class StarboardService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing MessagesBulkDeleted event.");
+                logger.LogError(ex, "Error processing MessagesBulkDeleted event.");
             }
         });
     }
@@ -123,9 +128,9 @@ public class StarboardService
         if (channel is not SocketGuildChannel guildChannel) return;
         var guildId = guildChannel.Guild.Id;
 
-        if (reaction.UserId == _client.CurrentUser.Id) return;
+        if (reaction.UserId == client.CurrentUser.Id) return;
 
-        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
+        var config = await configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (!config.IsEnabled || config.StarboardChannelId == null || reaction.Emote.ToString() != config.StarEmoji ||
             guildChannel.Id == (ulong)config.StarboardChannelId.Value) return;
 
@@ -151,7 +156,7 @@ public class StarboardService
 
         if (config.IgnoreNsfwChannels && guildChannel is ITextChannel { IsNsfw: true }) return;
 
-        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var entry = await uow.Starboard.GetStarredMessageAsync(guildId, originalMessage.Id).ConfigureAwait(false);
 
         if (entry == null)
@@ -201,11 +206,11 @@ public class StarboardService
         if (channel is not SocketGuildChannel guildChannel) return;
         var guildId = guildChannel.Guild.Id;
 
-        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
+        var config = await configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (config.StarboardChannelId == null || reaction.Emote.ToString() != config.StarEmoji ||
             guildChannel.Id == (ulong)config.StarboardChannelId.Value) return;
 
-        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var entry = await uow.Starboard.GetStarredMessageAsync(guildId, messageCache.Id).ConfigureAwait(false);
         if (entry == null) return;
 
@@ -241,10 +246,10 @@ public class StarboardService
         if (channel is not SocketGuildChannel guildChannel) return;
         var guildId = guildChannel.Guild.Id;
 
-        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
+        var config = await configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (config.StarboardChannelId == null) return;
 
-        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var entry = await uow.Starboard.GetStarredMessageAsync(guildId, messageCache.Id).ConfigureAwait(false);
         if (entry == null) return;
 
@@ -276,9 +281,9 @@ public class StarboardService
         if (channel is not SocketGuildChannel guildChannel) return;
         var guildId = guildChannel.Guild.Id;
 
-        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
+        var config = await configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
 
-        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var entry = await uow.Starboard.GetStarredMessageAsync(guildId, messageCache.Id).ConfigureAwait(false);
 
         if (entry == null) return;
@@ -299,10 +304,10 @@ public class StarboardService
         if (channel is not SocketGuildChannel guildChannel) return;
         var guildId = guildChannel.Guild.Id;
 
-        var config = await _configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
+        var config = await configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         var messageIds = messageCaches.Select(m => m.Id).ToList();
 
-        await using var uow = await _uowFactory.CreateAsync().ConfigureAwait(false);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var entries = await uow.Starboard.GetStarredMessagesByOriginalIdsAsync(guildId, messageIds)
             .ConfigureAwait(false);
 
@@ -354,7 +359,7 @@ public class StarboardService
             var resolvedOriginalMessage = originalMessage;
             if (resolvedOriginalMessage == null)
             {
-                if (_client.GetChannel((ulong)currentEntry.OriginalChannelId) is ITextChannel originalChannel)
+                if (client.GetChannel((ulong)currentEntry.OriginalChannelId) is ITextChannel originalChannel)
                     resolvedOriginalMessage = await originalChannel
                         .GetMessageAsync((ulong)currentEntry.OriginalMessageId).ConfigureAwait(false);
                 else return;
@@ -461,25 +466,25 @@ public class StarboardService
     {
         if (config.StarboardChannelId == null)
         {
-            _logger.LogWarning("[{Context}] Starboard channel ID is null for guild {GuildId}.", logContext,
+            logger.LogWarning("[{Context}] Starboard channel ID is null for guild {GuildId}.", logContext,
                 config.GuildId);
             return (false, null);
         }
 
         var channelId = (ulong)config.StarboardChannelId.Value;
-        var starboardChannel = _client.GetChannel(channelId) as ITextChannel ??
-                               await _client.Rest.GetChannelAsync(channelId).ConfigureAwait(false) as ITextChannel;
+        var starboardChannel = client.GetChannel(channelId) as ITextChannel ??
+                               await client.Rest.GetChannelAsync(channelId).ConfigureAwait(false) as ITextChannel;
 
         if (starboardChannel == null)
         {
-            _logger.LogWarning("[{Context}] Starboard channel {ChannelId} not found.", logContext, channelId);
+            logger.LogWarning("[{Context}] Starboard channel {ChannelId} not found.", logContext, channelId);
             return (false, null);
         }
 
-        var guild = _client.GetGuild((ulong)config.GuildId);
+        var guild = client.GetGuild((ulong)config.GuildId);
         if (guild == null)
         {
-            _logger.LogError("[{Context}] Could not get guild {GuildId} from cache.", logContext, config.GuildId);
+            logger.LogError("[{Context}] Could not get guild {GuildId} from cache.", logContext, config.GuildId);
             return (false, null);
         }
 
@@ -503,7 +508,7 @@ public class StarboardService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[{Context}] Error performing action in starboard channel.", logContext);
+            logger.LogError(ex, "[{Context}] Error performing action in starboard channel.", logContext);
             return (false, null);
         }
     }

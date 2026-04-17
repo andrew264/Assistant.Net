@@ -4,30 +4,34 @@ using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Logging;
 
-public class MessageLogger
+public class MessageLogger(
+    DiscordSocketClient client,
+    ILogger<MessageLogger> logger,
+    WebhookService webhookService,
+    LoggingConfigService loggingConfigService)
+    : IHostedService
 {
-    private readonly ILogger<MessageLogger> _logger;
-    private readonly LoggingConfigService _loggingConfigService;
-    private readonly WebhookService _webhookService;
-
-    public MessageLogger(
-        DiscordSocketClient client,
-        ILogger<MessageLogger> logger,
-        WebhookService webhookService,
-        LoggingConfigService loggingConfigService)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger = logger;
-        _webhookService = webhookService;
-        _loggingConfigService = loggingConfigService;
-
         client.MessageUpdated += HandleMessageUpdatedAsync;
         client.MessageDeleted += HandleMessageDeletedAsync;
 
-        _logger.LogInformation("MessageLogger initialized.");
+        logger.LogInformation("MessageLogger started.");
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        client.MessageUpdated -= HandleMessageUpdatedAsync;
+        client.MessageDeleted -= HandleMessageDeletedAsync;
+
+        logger.LogInformation("MessageLogger stopped.");
+        return Task.CompletedTask;
     }
 
     private Task HandleMessageUpdatedAsync(Cacheable<IMessage, ulong> beforeCache, SocketMessage after,
@@ -38,7 +42,7 @@ public class MessageLogger
             if (after.Author.IsBot) return;
             if (channel is not SocketGuildChannel guildChannel) return;
 
-            var logConfig = await _loggingConfigService.GetLogConfigAsync(guildChannel.Guild.Id, LogType.Message)
+            var logConfig = await loggingConfigService.GetLogConfigAsync(guildChannel.Guild.Id, LogType.Message)
                 .ConfigureAwait(false);
 
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
@@ -46,7 +50,7 @@ public class MessageLogger
             var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
             if (before == null || before.Content == after.Content) return;
 
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -61,7 +65,7 @@ public class MessageLogger
                     avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl(),
                     flags: MessageFlags.ComponentsV2
                 ).ConfigureAwait(false);
-                _logger.LogInformation("[MESSAGE EDIT] @{User} in #{Channel}", author.Username, guildChannel.Name);
+                logger.LogInformation("[MESSAGE EDIT] @{User} in #{Channel}", author.Username, guildChannel.Name);
 
                 if (logConfig.DeleteDelayMs > 0)
                     _ = Task.Delay(logConfig.DeleteDelayMs)
@@ -69,7 +73,7 @@ public class MessageLogger
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex,
+                logger.LogError(ex,
                     "Failed to send message edit log via webhook for User {UserId} in Channel {ChannelId}.", author.Id,
                     guildChannel.Id);
             }
@@ -86,7 +90,7 @@ public class MessageLogger
                 : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
             if (channel is not SocketGuildChannel guildChannel) return;
 
-            var logConfig = await _loggingConfigService.GetLogConfigAsync(guildChannel.Guild.Id, LogType.Message)
+            var logConfig = await loggingConfigService.GetLogConfigAsync(guildChannel.Guild.Id, LogType.Message)
                 .ConfigureAwait(false);
 
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
@@ -94,7 +98,7 @@ public class MessageLogger
             var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
             if (message == null || message.Author.IsBot) return;
 
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -109,7 +113,7 @@ public class MessageLogger
                     avatarUrl: author.GetDisplayAvatarUrl() ?? author.GetDefaultAvatarUrl(),
                     flags: MessageFlags.ComponentsV2
                 ).ConfigureAwait(false);
-                _logger.LogInformation("[MESSAGE DELETE] @{User} in #{Channel}", author.Username, guildChannel.Name);
+                logger.LogInformation("[MESSAGE DELETE] @{User} in #{Channel}", author.Username, guildChannel.Name);
 
                 if (logConfig.DeleteDelayMs > 0)
                     _ = Task.Delay(logConfig.DeleteDelayMs)
@@ -117,7 +121,7 @@ public class MessageLogger
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex,
+                logger.LogError(ex,
                     "Failed to send message delete log via webhook for Message {MessageId} in Channel {ChannelId}.",
                     message.Id, guildChannel.Id);
             }

@@ -132,49 +132,51 @@ else
         });
 }
 
+// Data Services
 builder.Services.AddSingleton<GameStatsService>();
 builder.Services.AddSingleton<MusicHistoryService>();
 builder.Services.AddSingleton<PlaylistService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<GuildService>();
-builder.Services.AddSingleton<UserActivityTrackingService>();
 builder.Services.AddSingleton<GameSessionService>();
 builder.Services.AddSingleton<PollService>();
 builder.Services.AddSingleton<StarboardConfigService>();
-builder.Services.AddSingleton<StarboardService>();
 builder.Services.AddSingleton<LoggingConfigService>();
-builder.Services.AddSingleton<DmRelayService>();
 builder.Services.AddSingleton<ReminderService>();
 builder.Services.AddSingleton<WebhookService>();
+builder.Services.AddSingleton<MusicService>();
+
+// External APIs
 builder.Services.AddSingleton<UrbanDictionaryService>();
 builder.Services.AddSingleton<RedditService>();
 builder.Services.AddSingleton<GeniusLyricsService>();
-builder.Services.AddSingleton<MessageLogger>();
-builder.Services.AddSingleton<UserLogger>();
-builder.Services.AddSingleton<VoiceLogger>();
-builder.Services.AddSingleton<PresenceLogger>();
-builder.Services.AddSingleton<MusicService>();
-builder.Services.AddSingleton<NowPlayingService>();
 
+// Observers (Hooking Discord events)
+builder.Services.AddHostedService<UserActivityTrackingService>();
+builder.Services.AddHostedService<StarboardService>();
+builder.Services.AddHostedService<MessageLogger>();
+builder.Services.AddHostedService<UserLogger>();
+builder.Services.AddHostedService<VoiceLogger>();
+builder.Services.AddHostedService<PresenceLogger>();
+
+// Hybrid Services
+builder.Services.AddSingleton<DmRelayService>();
+builder.Services.AddHostedService(p => p.GetRequiredService<DmRelayService>());
+
+builder.Services.AddSingleton<NowPlayingService>();
+builder.Services.AddHostedService(p => p.GetRequiredService<NowPlayingService>());
+
+// Background Workers
 builder.Services.AddHostedService<DiscordBotService>();
 builder.Services.AddHostedService<InteractionHandler>();
 builder.Services.AddHostedService<ReminderWorker>();
 
 var app = builder.Build();
 
+// Ensure DB Creation
 using (var scope = app.Services.CreateScope())
 {
     var provider = scope.ServiceProvider;
-
-    provider.GetRequiredService<UserActivityTrackingService>();
-    provider.GetRequiredService<StarboardService>();
-    provider.GetRequiredService<DmRelayService>();
-    provider.GetRequiredService<NowPlayingService>();
-    provider.GetRequiredService<MessageLogger>();
-    provider.GetRequiredService<UserLogger>();
-    provider.GetRequiredService<VoiceLogger>();
-    provider.GetRequiredService<PresenceLogger>();
-
     var dbContext = provider.GetRequiredService<AssistantDbContext>();
     try
     {

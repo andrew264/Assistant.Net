@@ -5,29 +5,32 @@ using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities.Ui;
 using Discord;
 using Discord.WebSocket;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Logging;
 
-public class VoiceLogger
+public class VoiceLogger(
+    DiscordSocketClient client,
+    ILogger<VoiceLogger> logger,
+    WebhookService webhookService,
+    LoggingConfigService loggingConfigService)
+    : IHostedService
 {
-    private readonly ILogger<VoiceLogger> _logger;
-    private readonly LoggingConfigService _loggingConfigService;
-    private readonly WebhookService _webhookService;
-
-    public VoiceLogger(
-        DiscordSocketClient client,
-        ILogger<VoiceLogger> logger,
-        WebhookService webhookService,
-        LoggingConfigService loggingConfigService)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger = logger;
-        _webhookService = webhookService;
-        _loggingConfigService = loggingConfigService;
-
         client.UserVoiceStateUpdated += HandleVoiceStateUpdatedAsync;
 
-        _logger.LogInformation("VoiceLogger initialized.");
+        logger.LogInformation("VoiceLogger started.");
+        return Task.CompletedTask;
+    }
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        client.UserVoiceStateUpdated -= HandleVoiceStateUpdatedAsync;
+
+        logger.LogInformation("VoiceLogger stopped.");
+        return Task.CompletedTask;
     }
 
     private Task HandleVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
@@ -43,12 +46,12 @@ public class VoiceLogger
                 before.IsSuppressed == after.IsSuppressed)
                 return;
 
-            var logConfig = await _loggingConfigService.GetLogConfigAsync(member.Guild.Id, LogType.Voice)
+            var logConfig = await loggingConfigService.GetLogConfigAsync(member.Guild.Id, LogType.Voice)
                 .ConfigureAwait(false);
 
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-            var webhookClient = await _webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -93,7 +96,7 @@ public class VoiceLogger
                     allowedMentions: AllowedMentions.None,
                     flags: MessageFlags.ComponentsV2
                 ).ConfigureAwait(false);
-                _logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {Action}", member.Guild.Name,
+                logger.LogInformation("[UPDATE] Voice {GuildName}: @{User}: {Action}", member.Guild.Name,
                     member.Username, actionDescription.ToString().Replace("\n", " "));
 
                 if (logConfig.DeleteDelayMs > 0)
@@ -102,7 +105,7 @@ public class VoiceLogger
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send voice state update log via webhook for User {UserId}.", member.Id);
+                logger.LogError(ex, "Failed to send voice state update log via webhook for User {UserId}.", member.Id);
             }
         });
     }
