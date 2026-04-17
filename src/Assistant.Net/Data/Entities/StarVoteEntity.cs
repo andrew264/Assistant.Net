@@ -11,7 +11,7 @@ public class StarVoteEntity
 
     [ForeignKey(nameof(StarredMessageId))] public StarredMessageEntity StarredMessage { get; set; } = null!;
 
-    public decimal UserId { get; set; }
+    public ulong UserId { get; set; }
 
     [ForeignKey(nameof(UserId))] public UserEntity User { get; set; } = null!;
 }

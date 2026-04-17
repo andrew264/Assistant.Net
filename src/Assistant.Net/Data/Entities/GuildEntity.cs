@@ -8,5 +8,5 @@ public class GuildEntity
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    public decimal Id { get; set; }
+    public ulong Id { get; set; }
 }

@@ -8,34 +8,31 @@ public class UserRepository(AssistantDbContext context) : IUserRepository
 {
     public async Task EnsureExistsAsync(ulong userId)
     {
-        var decimalId = (decimal)userId;
-        var exists = await context.Users.AnyAsync(u => u.Id == decimalId).ConfigureAwait(false);
-        if (!exists) context.Users.Add(new UserEntity { Id = decimalId });
+        var exists = await context.Users.AnyAsync(u => u.Id == userId).ConfigureAwait(false);
+        if (!exists) context.Users.Add(new UserEntity { Id = userId });
     }
 
     public async Task<UserEntity?> GetAsync(ulong userId) =>
-        await context.Users.FindAsync((decimal)userId).ConfigureAwait(false);
+        await context.Users.FindAsync(userId).ConfigureAwait(false);
 
     public async Task UpdateIntroductionAsync(ulong userId, string introduction)
     {
-        var decimalId = (decimal)userId;
         var affected = await context.Users
-            .Where(u => u.Id == decimalId)
+            .Where(u => u.Id == userId)
             .ExecuteUpdateAsync(s => s.SetProperty(u => u.About, introduction))
             .ConfigureAwait(false);
 
-        if (affected == 0) context.Users.Add(new UserEntity { Id = decimalId, About = introduction });
+        if (affected == 0) context.Users.Add(new UserEntity { Id = userId, About = introduction });
     }
 
     public async Task UpdateLastSeenAsync(ulong userId)
     {
-        var decimalId = (decimal)userId;
         var now = DateTime.UtcNow;
         var affected = await context.Users
-            .Where(u => u.Id == decimalId)
+            .Where(u => u.Id == userId)
             .ExecuteUpdateAsync(s => s.SetProperty(u => u.LastSeen, now))
             .ConfigureAwait(false);
 
-        if (affected == 0) context.Users.Add(new UserEntity { Id = decimalId, LastSeen = now });
+        if (affected == 0) context.Users.Add(new UserEntity { Id = userId, LastSeen = now });
     }
 }

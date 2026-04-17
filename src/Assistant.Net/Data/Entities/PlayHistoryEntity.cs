@@ -10,7 +10,7 @@ public class PlayHistoryEntity
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
 
-    public decimal GuildId { get; set; }
+    public ulong GuildId { get; set; }
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 
@@ -18,7 +18,7 @@ public class PlayHistoryEntity
 
     [ForeignKey(nameof(TrackId))] public TrackEntity Track { get; set; } = null!;
 
-    public decimal RequestedBy { get; set; }
+    public ulong RequestedBy { get; set; }
 
     [ForeignKey(nameof(RequestedBy))] public UserEntity Requester { get; set; } = null!;
 

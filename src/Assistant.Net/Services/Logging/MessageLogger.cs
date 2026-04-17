@@ -50,7 +50,7 @@ public class MessageLogger(
             var before = await beforeCache.GetOrDownloadAsync().ConfigureAwait(false);
             if (before == null || before.Content == after.Content) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -98,7 +98,7 @@ public class MessageLogger(
             var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
             if (message == null || message.Author.IsBot) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 

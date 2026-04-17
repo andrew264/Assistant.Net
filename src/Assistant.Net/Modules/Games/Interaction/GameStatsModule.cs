@@ -60,9 +60,8 @@ public class GameStatsModule(
             for (var i = 0; i < leaderboardData.Count; i++)
             {
                 var entry = leaderboardData[i];
-                var userId = (ulong)entry.UserId;
-                var user = await client.Rest.GetUserAsync(userId).ConfigureAwait(false);
-                var userName = user?.ToString() ?? $"User ID: {userId}";
+                var user = await client.Rest.GetUserAsync(entry.UserId).ConfigureAwait(false);
+                var userName = user?.ToString() ?? $"User ID: {entry.UserId}";
                 var userAvatarUrl = user?.GetDisplayAvatarUrl() ?? user?.GetDefaultAvatarUrl();
 
                 var userSection = new SectionBuilder()

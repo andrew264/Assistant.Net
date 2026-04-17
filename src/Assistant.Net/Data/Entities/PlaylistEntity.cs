@@ -10,11 +10,11 @@ public class PlaylistEntity
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
-    public decimal UserId { get; set; }
+    public ulong UserId { get; set; }
 
     [ForeignKey(nameof(UserId))] public UserEntity User { get; set; } = null!;
 
-    public decimal GuildId { get; set; }
+    public ulong GuildId { get; set; }
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 

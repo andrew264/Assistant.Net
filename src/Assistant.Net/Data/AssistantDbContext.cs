@@ -29,15 +29,12 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
 
         modelBuilder.HasPostgresExtension("pg_trgm");
 
-        modelBuilder.Entity<UserEntity>(entity => { entity.Property(e => e.Id).HasColumnType("numeric(20,0)"); });
-        modelBuilder.Entity<GuildEntity>(entity => { entity.Property(e => e.Id).HasColumnType("numeric(20,0)"); });
+        modelBuilder.Entity<UserEntity>(entity => { entity.Property(e => e.Id); });
+        modelBuilder.Entity<GuildEntity>(entity => { entity.Property(e => e.Id); });
 
         modelBuilder.Entity<TrackEntity>(entity => { entity.HasIndex(e => e.Uri).IsUnique(); });
 
-        modelBuilder.Entity<GuildMusicSettingsEntity>(entity =>
-        {
-            entity.Property(e => e.GuildId).HasColumnType("numeric(20,0)");
-        });
+        modelBuilder.Entity<GuildMusicSettingsEntity>(entity => { entity.Property(e => e.GuildId); });
 
         modelBuilder.Entity<PlayHistoryEntity>(entity =>
         {
@@ -82,8 +79,8 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
 
         modelBuilder.Entity<GameStatEntity>(entity =>
         {
-            entity.Property(e => e.GuildId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.UserId).HasColumnType("numeric(20,0)");
+            entity.Property(e => e.GuildId);
+            entity.Property(e => e.UserId);
 
             entity.HasOne(e => e.User)
                 .WithMany()
@@ -93,10 +90,10 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
 
         modelBuilder.Entity<ReminderEntity>(entity =>
         {
-            entity.Property(e => e.CreatorId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.TargetUserId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.GuildId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.ChannelId).HasColumnType("numeric(20,0)");
+            entity.Property(e => e.CreatorId);
+            entity.Property(e => e.TargetUserId);
+            entity.Property(e => e.GuildId);
+            entity.Property(e => e.ChannelId);
 
             entity.HasQueryFilter("ActiveOnly", r => r.IsActive);
 
@@ -115,18 +112,18 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
 
         modelBuilder.Entity<StarboardConfigEntity>(entity =>
         {
-            entity.Property(e => e.GuildId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.StarboardChannelId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.LogChannelId).HasColumnType("numeric(20,0)");
+            entity.Property(e => e.GuildId);
+            entity.Property(e => e.StarboardChannelId);
+            entity.Property(e => e.LogChannelId);
         });
 
         modelBuilder.Entity<StarredMessageEntity>(entity =>
         {
-            entity.Property(e => e.GuildId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.OriginalChannelId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.OriginalMessageId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.AuthorId).HasColumnType("numeric(20,0)");
-            entity.Property(e => e.StarboardMessageId).HasColumnType("numeric(20,0)");
+            entity.Property(e => e.GuildId);
+            entity.Property(e => e.OriginalChannelId);
+            entity.Property(e => e.OriginalMessageId);
+            entity.Property(e => e.AuthorId);
+            entity.Property(e => e.StarboardMessageId);
 
             entity.HasOne(e => e.Author)
                 .WithMany()
@@ -136,7 +133,7 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
 
         modelBuilder.Entity<StarVoteEntity>(entity =>
         {
-            entity.Property(e => e.UserId).HasColumnType("numeric(20,0)");
+            entity.Property(e => e.UserId);
 
             entity.HasOne(e => e.StarredMessage)
                 .WithMany(sm => sm.Votes)

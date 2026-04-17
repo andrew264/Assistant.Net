@@ -7,7 +7,7 @@ namespace Assistant.Net.Data.Repositories.Impl;
 public class MusicRepository(AssistantDbContext context) : IMusicRepository
 {
     public async Task<GuildMusicSettingsEntity?> GetGuildSettingsAsync(ulong guildId) =>
-        await context.GuildMusicSettings.FindAsync((decimal)guildId).ConfigureAwait(false);
+        await context.GuildMusicSettings.FindAsync(guildId).ConfigureAwait(false);
 
     public void AddGuildSettings(GuildMusicSettingsEntity settings)
     {
@@ -32,15 +32,13 @@ public class MusicRepository(AssistantDbContext context) : IMusicRepository
     public async Task<List<(TrackEntity Track, int Count)>> GetTopPlaysAsync(ulong guildId, ulong? requesterId,
         int limit)
     {
-        var dGuildId = (decimal)guildId;
-
         var query = context.PlayHistories
             .Include(ph => ph.Track)
-            .Where(ph => ph.GuildId == dGuildId);
+            .Where(ph => ph.GuildId == guildId);
 
         if (requesterId.HasValue)
         {
-            var dRequesterId = (decimal)requesterId.Value;
+            var dRequesterId = requesterId.Value;
             query = query.Where(ph => ph.RequestedBy == dRequesterId);
         }
 

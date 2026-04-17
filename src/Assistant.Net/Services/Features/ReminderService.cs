@@ -127,7 +127,7 @@ public class ReminderService(
     {
         try
         {
-            var creator = await client.GetUserAsync((ulong)reminder.CreatorId).ConfigureAwait(false);
+            var creator = await client.GetUserAsync(reminder.CreatorId).ConfigureAwait(false);
             var components = BuildReminderComponent(reminder, creator);
 
             if (reminder.IsDm)
@@ -185,19 +185,18 @@ public class ReminderService(
         string? title = null)
     {
         await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
-        var dCreatorId = (decimal)creatorUserId;
-        var dTargetId = targetUserId ?? dCreatorId;
+        var targetId = targetUserId ?? creatorUserId;
 
         await uow.Users.EnsureExistsAsync(creatorUserId).ConfigureAwait(false);
         await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
-        if (dTargetId != dCreatorId) await uow.Users.EnsureExistsAsync((ulong)dTargetId).ConfigureAwait(false);
+        if (targetId != creatorUserId) await uow.Users.EnsureExistsAsync(targetId).ConfigureAwait(false);
 
         try
         {
             var reminder = new ReminderEntity
             {
-                CreatorId = dCreatorId,
-                TargetUserId = dTargetId,
+                CreatorId = creatorUserId,
+                TargetUserId = targetId,
                 ChannelId = channelId,
                 GuildId = guildId,
                 Message = message,
@@ -220,7 +219,7 @@ public class ReminderService(
 
             InterruptWait();
 
-            logger.LogInformation("Created reminder (ID: {Id}) for User {TargetUserId}.", reminder.Id, dTargetId);
+            logger.LogInformation("Created reminder (ID: {Id}) for User {TargetUserId}.", reminder.Id, targetId);
             return reminder;
         }
         catch (Exception ex)
@@ -317,7 +316,7 @@ public class ReminderService(
 
     private async Task SendDmReminderAsync(ReminderEntity reminder, MessageComponent components)
     {
-        var targetId = (ulong)(reminder.TargetUserId ?? reminder.CreatorId);
+        var targetId = reminder.TargetUserId ?? reminder.CreatorId;
         var user = await client.GetUserAsync(targetId).ConfigureAwait(false);
 
         if (user == null)
@@ -346,7 +345,7 @@ public class ReminderService(
     private async Task SendChannelReminderAsync(ReminderEntity reminder, MessageComponent components,
         bool isFallback = false)
     {
-        if (client.GetChannel((ulong)reminder.ChannelId) is not ITextChannel channel)
+        if (client.GetChannel(reminder.ChannelId) is not ITextChannel channel)
         {
             logger.LogWarning("Could not find channel {ChannelId} for reminder (ID: {Id}).", reminder.ChannelId,
                 reminder.Id);

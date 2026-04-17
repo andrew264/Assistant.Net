@@ -51,7 +51,7 @@ public class PresenceLogger(
                 bClients.SetEquals(aClients) &&
                 before.Activities.SequenceEqual(after.Activities, ActivityComparer.Instance)) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 

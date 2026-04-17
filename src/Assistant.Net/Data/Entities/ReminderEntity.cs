@@ -10,19 +10,19 @@ public class ReminderEntity
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public int Id { get; set; }
 
-    public decimal CreatorId { get; set; }
+    public ulong CreatorId { get; set; }
 
     [ForeignKey(nameof(CreatorId))] public UserEntity Creator { get; set; } = null!;
 
-    public decimal? TargetUserId { get; set; }
+    public ulong? TargetUserId { get; set; }
 
     [ForeignKey(nameof(TargetUserId))] public UserEntity? TargetUser { get; set; }
 
-    public decimal GuildId { get; set; }
+    public ulong GuildId { get; set; }
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 
-    public decimal ChannelId { get; set; }
+    public ulong ChannelId { get; set; }
 
     [Required] [MaxLength(2000)] public string Message { get; set; } = null!;
 

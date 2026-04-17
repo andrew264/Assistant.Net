@@ -7,7 +7,7 @@ namespace Assistant.Net.Data.Repositories.Impl;
 public class StarboardRepository(AssistantDbContext context) : IStarboardRepository
 {
     public async Task<StarboardConfigEntity?> GetConfigAsync(ulong guildId) =>
-        await context.StarboardConfigs.FindAsync((decimal)guildId).ConfigureAwait(false);
+        await context.StarboardConfigs.FindAsync(guildId).ConfigureAwait(false);
 
     public void AddConfig(StarboardConfigEntity config)
     {
@@ -16,12 +16,9 @@ public class StarboardRepository(AssistantDbContext context) : IStarboardReposit
 
     public async Task<StarredMessageEntity?> GetStarredMessageAsync(ulong guildId, ulong originalMessageId)
     {
-        var dGuildId = (decimal)guildId;
-        var dMsgId = (decimal)originalMessageId;
-
         return await context.StarredMessages
             .Include(sm => sm.Votes)
-            .FirstOrDefaultAsync(sm => sm.GuildId == dGuildId && sm.OriginalMessageId == dMsgId)
+            .FirstOrDefaultAsync(sm => sm.GuildId == guildId && sm.OriginalMessageId == originalMessageId)
             .ConfigureAwait(false);
     }
 
@@ -36,11 +33,8 @@ public class StarboardRepository(AssistantDbContext context) : IStarboardReposit
     public async Task<List<StarredMessageEntity>> GetStarredMessagesByOriginalIdsAsync(ulong guildId,
         IEnumerable<ulong> originalMessageIds)
     {
-        var dGuildId = (decimal)guildId;
-        var dMsgIds = originalMessageIds.Select(id => (decimal)id).ToList();
-
         return await context.StarredMessages
-            .Where(sm => sm.GuildId == dGuildId && dMsgIds.Contains(sm.OriginalMessageId))
+            .Where(sm => sm.GuildId == guildId && originalMessageIds.Contains(sm.OriginalMessageId))
             .ToListAsync()
             .ConfigureAwait(false);
     }

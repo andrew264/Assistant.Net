@@ -8,7 +8,7 @@ public class UserEntity
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    public decimal Id { get; set; }
+    public ulong Id { get; set; }
 
     [MaxLength(4000)] public string? About { get; set; }
 

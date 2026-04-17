@@ -53,15 +53,14 @@ public class LoggingConfigService(
     public async Task UpdateLogConfigAsync(LogSettingsEntity config)
     {
         await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
-        var guildId = (ulong)config.GuildId;
 
-        await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
+        await uow.Guilds.EnsureExistsAsync(config.GuildId).ConfigureAwait(false);
 
         var affected = await uow.Logging.ExecuteUpdateAsync(
-            guildId,
+            config.GuildId,
             config.LogType,
             config.IsEnabled,
-            (ulong?)config.ChannelId,
+            config.ChannelId,
             config.DeleteDelayMs,
             config.UpdatedAt).ConfigureAwait(false);
 
@@ -69,9 +68,9 @@ public class LoggingConfigService(
 
         await uow.SaveChangesAsync().ConfigureAwait(false);
 
-        var cacheKey = $"{CachePrefix}{guildId}:{config.LogType}";
+        var cacheKey = $"{CachePrefix}{config.GuildId}:{config.LogType}";
         memoryCache.Set(cacheKey, config, CacheDuration);
 
-        logger.LogInformation("Updated log config for Guild {GuildId}, Type {LogType}", guildId, config.LogType);
+        logger.LogInformation("Updated log config for Guild {GuildId}, Type {LogType}", config.GuildId, config.LogType);
     }
 }

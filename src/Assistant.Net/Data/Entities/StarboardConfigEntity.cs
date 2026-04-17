@@ -8,13 +8,13 @@ public class StarboardConfigEntity
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    public decimal GuildId { get; set; }
+    public ulong GuildId { get; set; }
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 
     public bool IsEnabled { get; set; }
 
-    public decimal? StarboardChannelId { get; set; }
+    public ulong? StarboardChannelId { get; set; }
 
     [MaxLength(100)]
     public string StarEmoji
@@ -37,7 +37,7 @@ public class StarboardConfigEntity
 
     public bool DeleteIfUnStarred { get; set; }
 
-    public decimal? LogChannelId { get; set; }
+    public ulong? LogChannelId { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

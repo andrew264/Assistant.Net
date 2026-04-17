@@ -132,7 +132,7 @@ public class StarboardService(
 
         var config = await configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (!config.IsEnabled || config.StarboardChannelId == null || reaction.Emote.ToString() != config.StarEmoji ||
-            guildChannel.Id == (ulong)config.StarboardChannelId.Value) return;
+            guildChannel.Id == config.StarboardChannelId.Value) return;
 
         var originalMessage = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
         if (originalMessage == null) return;
@@ -208,7 +208,7 @@ public class StarboardService(
 
         var config = await configService.GetGuildConfigAsync(guildId).ConfigureAwait(false);
         if (config.StarboardChannelId == null || reaction.Emote.ToString() != config.StarEmoji ||
-            guildChannel.Id == (ulong)config.StarboardChannelId.Value) return;
+            guildChannel.Id == config.StarboardChannelId.Value) return;
 
         await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
         var entry = await uow.Starboard.GetStarredMessageAsync(guildId, messageCache.Id).ConfigureAwait(false);
@@ -359,15 +359,15 @@ public class StarboardService(
             var resolvedOriginalMessage = originalMessage;
             if (resolvedOriginalMessage == null)
             {
-                if (client.GetChannel((ulong)currentEntry.OriginalChannelId) is ITextChannel originalChannel)
+                if (client.GetChannel(currentEntry.OriginalChannelId) is ITextChannel originalChannel)
                     resolvedOriginalMessage = await originalChannel
-                        .GetMessageAsync((ulong)currentEntry.OriginalMessageId).ConfigureAwait(false);
+                        .GetMessageAsync(currentEntry.OriginalMessageId).ConfigureAwait(false);
                 else return;
             }
 
             if (resolvedOriginalMessage == null) return;
 
-            if (await channel.GetMessageAsync((ulong)currentEntry.StarboardMessageId!.Value).ConfigureAwait(false) is
+            if (await channel.GetMessageAsync(currentEntry.StarboardMessageId!.Value).ConfigureAwait(false) is
                 not IUserMessage starboardMsg)
             {
                 currentEntry.IsPosted = false;
@@ -408,7 +408,7 @@ public class StarboardService(
         return;
 
         async Task DeleteAction(StarredMessageEntity currentEntry, ITextChannel channel) =>
-            await channel.DeleteMessageAsync((ulong)currentEntry.StarboardMessageId!.Value).ConfigureAwait(false);
+            await channel.DeleteMessageAsync(currentEntry.StarboardMessageId!.Value).ConfigureAwait(false);
     }
 
     private static MessageComponent BuildStarboardComponents(IMessage originalMessage, int starCount, string starEmoji)
@@ -471,7 +471,7 @@ public class StarboardService(
             return (false, null);
         }
 
-        var channelId = (ulong)config.StarboardChannelId.Value;
+        var channelId = config.StarboardChannelId.Value;
         var starboardChannel = client.GetChannel(channelId) as ITextChannel ??
                                await client.Rest.GetChannelAsync(channelId).ConfigureAwait(false) as ITextChannel;
 
@@ -481,7 +481,7 @@ public class StarboardService(
             return (false, null);
         }
 
-        var guild = client.GetGuild((ulong)config.GuildId);
+        var guild = client.GetGuild(config.GuildId);
         if (guild == null)
         {
             logger.LogError("[{Context}] Could not get guild {GuildId} from cache.", logContext, config.GuildId);

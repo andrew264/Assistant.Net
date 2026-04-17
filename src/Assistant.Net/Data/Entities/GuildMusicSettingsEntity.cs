@@ -8,7 +8,7 @@ public class GuildMusicSettingsEntity
 {
     [Key]
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
-    public decimal GuildId { get; set; }
+    public ulong GuildId { get; set; }
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 

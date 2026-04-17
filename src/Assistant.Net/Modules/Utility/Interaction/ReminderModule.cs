@@ -314,7 +314,7 @@ public class ReminderModule(ReminderService reminderService)
                 .WithMaxValues(1);
 
             var currentTargetId = reminder.TargetUserId ?? reminder.CreatorId;
-            menu.AddDefaultValue((ulong)currentTargetId, SelectDefaultValueType.User);
+            menu.AddDefaultValue(currentTargetId, SelectDefaultValueType.User);
             modalBuilder.AddSelectMenu("Target User", menu);
         }
         else
@@ -327,7 +327,7 @@ public class ReminderModule(ReminderService reminderService)
                 .WithMaxValues(1);
 
             if (reminder.ChannelId != 0)
-                menu.AddDefaultValue((ulong)reminder.ChannelId, SelectDefaultValueType.Channel);
+                menu.AddDefaultValue(reminder.ChannelId, SelectDefaultValueType.Channel);
             modalBuilder.AddSelectMenu("Target Channel", menu);
         }
 

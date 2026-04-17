@@ -44,9 +44,9 @@ public class StarboardConfigService(
         config.UpdatedAt = DateTime.UtcNow;
 
         await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
-        await uow.Guilds.EnsureExistsAsync((ulong)config.GuildId).ConfigureAwait(false);
+        await uow.Guilds.EnsureExistsAsync(config.GuildId).ConfigureAwait(false);
 
-        var existing = await uow.Starboard.GetConfigAsync((ulong)config.GuildId).ConfigureAwait(false);
+        var existing = await uow.Starboard.GetConfigAsync(config.GuildId).ConfigureAwait(false);
         if (existing == null)
         {
             config.CreatedAt = DateTime.UtcNow;
@@ -81,7 +81,7 @@ public class StarboardConfigService(
             .SetSize(1);
 
         memoryCache.Set(key, config, cacheEntryOptions);
-        _cacheKeysQueue.Enqueue((ulong)config.GuildId);
+        _cacheKeysQueue.Enqueue(config.GuildId);
 
         while (_cacheKeysQueue.Count > CacheSize && _cacheKeysQueue.TryDequeue(out var oldestGuildId))
             memoryCache.Remove($"{CachePrefix}{oldestGuildId}");

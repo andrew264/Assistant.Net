@@ -59,7 +59,7 @@ public class UserLogger(
 
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -106,7 +106,7 @@ public class UserLogger(
                 if (!logConfig.IsEnabled || logConfig.ChannelId == null) continue;
 
                 var webhookClient = await webhookService
-                    .GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+                    .GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                     .ConfigureAwait(false);
                 if (webhookClient == null) continue;
 
@@ -156,7 +156,7 @@ public class UserLogger(
             var logConfig = await loggingConfigService.GetLogConfigAsync(guild.Id, LogType.User).ConfigureAwait(false);
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -194,7 +194,7 @@ public class UserLogger(
                 .ConfigureAwait(false);
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -231,7 +231,7 @@ public class UserLogger(
             var logConfig = await loggingConfigService.GetLogConfigAsync(guild.Id, LogType.User).ConfigureAwait(false);
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 
@@ -281,7 +281,7 @@ public class UserLogger(
             var logConfig = await loggingConfigService.GetLogConfigAsync(guild.Id, LogType.User).ConfigureAwait(false);
             if (!logConfig.IsEnabled || logConfig.ChannelId == null) return;
 
-            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync((ulong)logConfig.ChannelId.Value)
+            var webhookClient = await webhookService.GetOrCreateWebhookClientAsync(logConfig.ChannelId.Value)
                 .ConfigureAwait(false);
             if (webhookClient == null) return;
 

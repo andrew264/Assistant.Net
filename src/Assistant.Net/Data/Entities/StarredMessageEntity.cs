@@ -10,19 +10,19 @@ public class StarredMessageEntity
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
     public long Id { get; set; }
 
-    public decimal GuildId { get; set; }
+    public ulong GuildId { get; set; }
 
     [ForeignKey(nameof(GuildId))] public GuildEntity Guild { get; set; } = null!;
 
-    public decimal OriginalChannelId { get; set; }
+    public ulong OriginalChannelId { get; set; }
 
-    public decimal OriginalMessageId { get; set; }
+    public ulong OriginalMessageId { get; set; }
 
-    public decimal AuthorId { get; set; }
+    public ulong AuthorId { get; set; }
 
     [ForeignKey(nameof(AuthorId))] public UserEntity Author { get; set; } = null!;
 
-    public decimal? StarboardMessageId { get; set; }
+    public ulong? StarboardMessageId { get; set; }
 
     public int StarCount { get; set; }
 

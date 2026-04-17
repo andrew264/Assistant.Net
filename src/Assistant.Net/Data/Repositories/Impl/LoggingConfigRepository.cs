@@ -9,9 +9,8 @@ public class LoggingConfigRepository(AssistantDbContext context) : ILoggingConfi
 {
     public async Task<LogSettingsEntity?> GetAsync(ulong guildId, LogType logType)
     {
-        var dGuildId = (decimal)guildId;
         return await context.LogSettings
-            .FirstOrDefaultAsync(l => l.GuildId == dGuildId && l.LogType == logType)
+            .FirstOrDefaultAsync(l => l.GuildId == guildId && l.LogType == logType)
             .ConfigureAwait(false);
     }
 
@@ -23,14 +22,11 @@ public class LoggingConfigRepository(AssistantDbContext context) : ILoggingConfi
     public async Task<int> ExecuteUpdateAsync(ulong guildId, LogType logType, bool isEnabled, ulong? channelId,
         int deleteDelayMs, DateTime updatedAt)
     {
-        var dGuildId = (decimal)guildId;
-        var dChannelId = (decimal?)channelId;
-
         return await context.LogSettings
-            .Where(l => l.GuildId == dGuildId && l.LogType == logType)
+            .Where(l => l.GuildId == guildId && l.LogType == logType)
             .ExecuteUpdateAsync(s => s
                 .SetProperty(l => l.IsEnabled, isEnabled)
-                .SetProperty(l => l.ChannelId, dChannelId)
+                .SetProperty(l => l.ChannelId, channelId)
                 .SetProperty(l => l.DeleteDelayMs, deleteDelayMs)
                 .SetProperty(l => l.UpdatedAt, updatedAt))
             .ConfigureAwait(false);

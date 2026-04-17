@@ -16,10 +16,9 @@ public class ReminderRepository(AssistantDbContext context) : IReminderRepositor
 
     public async Task<List<ReminderEntity>> GetUserRemindersAsync(ulong userId)
     {
-        var dUserId = (decimal)userId;
         return await context.Reminders
             .IgnoreQueryFilters()
-            .Where(r => r.CreatorId == dUserId || r.TargetUserId == dUserId)
+            .Where(r => r.CreatorId == userId || r.TargetUserId == userId)
             .OrderBy(r => r.TriggerTime)
             .ToListAsync()
             .ConfigureAwait(false);
@@ -27,10 +26,9 @@ public class ReminderRepository(AssistantDbContext context) : IReminderRepositor
 
     public async Task<ReminderEntity?> GetAsync(ulong userId, int reminderId)
     {
-        var dUserId = (decimal)userId;
         return await context.Reminders
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(r => r.Id == reminderId && (r.CreatorId == dUserId || r.TargetUserId == dUserId))
+            .FirstOrDefaultAsync(r => r.Id == reminderId && (r.CreatorId == userId || r.TargetUserId == userId))
             .ConfigureAwait(false);
     }
 
@@ -71,11 +69,9 @@ public class ReminderRepository(AssistantDbContext context) : IReminderRepositor
         ulong? newTargetUserId = null,
         bool? isActive = null)
     {
-        var dUserId = (decimal)userId;
-
         return await context.Reminders
             .IgnoreQueryFilters()
-            .Where(r => r.Id == reminderId && (r.CreatorId == dUserId || r.TargetUserId == dUserId))
+            .Where(r => r.Id == reminderId && (r.CreatorId == userId || r.TargetUserId == userId))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(r => r.Message, b => newMessage ?? b.Message)
                 .SetProperty(r => r.Title, b => newTitle ?? b.Title)

@@ -220,7 +220,7 @@ public class StarboardModule(
             .WithPlaceholder("Select a channel for starboard posts...");
 
         if (config.StarboardChannelId.HasValue &&
-            Context.Guild.GetChannel((ulong)config.StarboardChannelId.Value) is IChannel existingChannel)
+            Context.Guild.GetChannel(config.StarboardChannelId.Value) is IChannel existingChannel)
             channelSelect.WithDefaultValues(SelectMenuDefaultValue.FromChannel(existingChannel));
 
         container.WithActionRow(new ActionRowBuilder().WithComponents([channelSelect]));
