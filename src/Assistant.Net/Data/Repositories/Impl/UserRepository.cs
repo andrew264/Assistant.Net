@@ -12,6 +12,21 @@ public class UserRepository(AssistantDbContext context) : IUserRepository
         if (!exists) context.Users.Add(new UserEntity { Id = userId });
     }
 
+    public async Task EnsureUsersExistAsync(IEnumerable<ulong> userIds)
+    {
+        var distinctIds = userIds.Distinct().ToList();
+
+        var existingIds = await context.Users
+            .Where(u => distinctIds.Contains(u.Id))
+            .Select(u => u.Id)
+            .ToListAsync()
+            .ConfigureAwait(false);
+
+        var missingIds = distinctIds.Except(existingIds).ToList();
+
+        if (missingIds.Count > 0) context.Users.AddRange(missingIds.Select(id => new UserEntity { Id = id }));
+    }
+
     public async Task<UserEntity?> GetAsync(ulong userId) =>
         await context.Users.FindAsync(userId).ConfigureAwait(false);
 

@@ -77,12 +77,14 @@ public class GameStatsService(
 
         try
         {
-            await uow.Users.EnsureExistsAsync(winnerId).ConfigureAwait(false);
-            await uow.Users.EnsureExistsAsync(loserId).ConfigureAwait(false);
+            await uow.Users.EnsureUsersExistAsync([winnerId, loserId]).ConfigureAwait(false);
             await uow.Guilds.EnsureExistsAsync(guildId).ConfigureAwait(false);
 
-            var winnerStats = await uow.GameStats.EnsureExistsAsync(winnerId, guildId, gameType).ConfigureAwait(false);
-            var loserStats = await uow.GameStats.EnsureExistsAsync(loserId, guildId, gameType).ConfigureAwait(false);
+            var stats = await uow.GameStats.GetOrCreateStatsAsync(guildId, gameType, [winnerId, loserId])
+                .ConfigureAwait(false);
+
+            var winnerStats = stats[winnerId];
+            var loserStats = stats[loserId];
 
             var player1Score = isTie ? 0.5 : 1.0;
             var player2Score = 1.0 - player1Score;
@@ -105,8 +107,7 @@ public class GameStatsService(
             }
 
             await uow.SaveChangesAsync().ConfigureAwait(false);
-            logger.LogInformation(
-                "Recorded {Result} for {GameName} in {GuildId}. P1: {P1}, P2: {P2}",
+            logger.LogInformation("Recorded {Result} for {GameName} in {GuildId}. P1: {P1}, P2: {P2}",
                 isTie ? "Tie" : "Win", gameName, guildId, winnerId, loserId);
         }
         catch (Exception ex)

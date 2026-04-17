@@ -33,6 +33,7 @@ public class MusicRepository(AssistantDbContext context) : IMusicRepository
         int limit)
     {
         var query = context.PlayHistories
+            .AsNoTracking()
             .Include(ph => ph.Track)
             .Where(ph => ph.GuildId == guildId);
 
@@ -43,10 +44,14 @@ public class MusicRepository(AssistantDbContext context) : IMusicRepository
         }
 
         var result = await query
-            .GroupBy(ph => ph.Track)
-            .Select(g => new { Track = g.Key, Count = g.Count() })
+            .GroupBy(ph => ph.TrackId)
+            .Select(g => new { TrackId = g.Key, Count = g.Count() })
             .OrderByDescending(x => x.Count)
             .Take(limit)
+            .Join(context.Tracks,
+                g => g.TrackId,
+                t => t.Id,
+                (g, t) => new { Track = t, g.Count })
             .ToListAsync()
             .ConfigureAwait(false);
 
@@ -58,6 +63,7 @@ public class MusicRepository(AssistantDbContext context) : IMusicRepository
         if (searchTerm.StartsWith("http", StringComparison.OrdinalIgnoreCase) ||
             searchTerm.StartsWith("www", StringComparison.OrdinalIgnoreCase))
             return await context.Tracks
+                .AsNoTracking()
                 .Where(t => EF.Functions.ILike(t.Uri, $"%{searchTerm}%"))
                 .OrderBy(t => t.Title)
                 .Take(limit)
@@ -65,6 +71,7 @@ public class MusicRepository(AssistantDbContext context) : IMusicRepository
                 .ConfigureAwait(false);
 
         return await context.Tracks
+            .AsNoTracking()
             .Where(t => EF.Functions.TrigramsSimilarity(t.Title, searchTerm) > similarityCutoff ||
                         EF.Functions.ILike(t.Title, $"%{searchTerm}%"))
             .OrderByDescending(t => t.Title)

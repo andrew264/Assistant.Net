@@ -21,8 +21,10 @@ public class PlaylistRepository(AssistantDbContext context) : IPlaylistRepositor
     public async Task<PlaylistEntity?> GetAsync(ulong userId, ulong guildId, string name)
     {
         return await context.Playlists
+            .AsNoTracking()
             .Include(p => p.Items)
             .ThenInclude(i => i.Track)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.UserId == userId && p.GuildId == guildId && p.Name == name)
             .ConfigureAwait(false);
     }
@@ -30,8 +32,10 @@ public class PlaylistRepository(AssistantDbContext context) : IPlaylistRepositor
     public async Task<PlaylistEntity?> GetByIdAsync(ulong userId, ulong guildId, long playlistId)
     {
         return await context.Playlists
+            .AsNoTracking()
             .Include(p => p.Items)
             .ThenInclude(i => i.Track)
+            .AsSplitQuery()
             .FirstOrDefaultAsync(p => p.UserId == userId && p.GuildId == guildId && p.Id == playlistId)
             .ConfigureAwait(false);
     }
@@ -39,9 +43,11 @@ public class PlaylistRepository(AssistantDbContext context) : IPlaylistRepositor
     public async Task<List<PlaylistEntity>> GetAllAsync(ulong userId, ulong guildId)
     {
         return await context.Playlists
+            .AsNoTracking()
             .Where(p => p.UserId == userId && p.GuildId == guildId)
             .OrderBy(p => p.Name)
             .Include(p => p.Items)
+            .AsSplitQuery()
             .ToListAsync()
             .ConfigureAwait(false);
     }
