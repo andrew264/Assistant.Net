@@ -156,8 +156,9 @@ public class TicTacToeGame
 
         var isMaximizing = botMarker == PlayerMarker.O;
         var bestScore = isMaximizing ? int.MinValue : int.MaxValue;
-        (int row, int col)? bestMove = null;
         var nextPlayer = isMaximizing ? PlayerMarker.X : PlayerMarker.O;
+
+        var bestMoves = new List<(int row, int col)>();
 
         foreach (var move in availableMoves)
         {
@@ -165,15 +166,36 @@ public class TicTacToeGame
             var score = RunMinimax(Board, MovesMade + 1, nextPlayer, 1, int.MinValue, int.MaxValue);
             Board[move.row, move.col] = PlayerMarker.None;
 
-            var isBetter = isMaximizing ? score > bestScore : score < bestScore;
-            if (!isBetter) continue;
-
-            bestScore = score;
-            bestMove = move;
+            if (isMaximizing)
+            {
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestMoves.Clear();
+                    bestMoves.Add(move);
+                }
+                else if (score == bestScore)
+                {
+                    bestMoves.Add(move);
+                }
+            }
+            else
+            {
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    bestMoves.Clear();
+                    bestMoves.Add(move);
+                }
+                else if (score == bestScore)
+                {
+                    bestMoves.Add(move);
+                }
+            }
         }
 
-        if (bestMove is not null)
-            return (bestMove.Value, bestScore);
+        if (bestMoves.Count > 0)
+            return (bestMoves[_random.Next(bestMoves.Count)], bestScore);
 
         if (availableMoves.Count > 0)
         {
@@ -255,11 +277,35 @@ public class TicTacToeGame
             IsGameOver = true;
             Result = winner == Player1Marker ? GameResultState.XWins : GameResultState.OWins;
         }
-        else if (IsBoardFull)
+        else if (IsBoardFull ||
+                 (!HasAnyWinningPath(Board, PlayerMarker.X) && !HasAnyWinningPath(Board, PlayerMarker.O)))
         {
             IsGameOver = true;
             Result = GameResultState.Tie;
         }
+    }
+
+    private static bool HasAnyWinningPath(PlayerMarker[,] board, PlayerMarker playerMarker)
+    {
+        var opponentMarker = playerMarker == PlayerMarker.X ? PlayerMarker.O : PlayerMarker.X;
+
+        // rows
+        for (var i = 0; i < BoardSize; i++)
+            if (board[i, 0] != opponentMarker && board[i, 1] != opponentMarker && board[i, 2] != opponentMarker)
+                return true;
+
+        // columns
+        for (var i = 0; i < BoardSize; i++)
+            if (board[0, i] != opponentMarker && board[1, i] != opponentMarker && board[2, i] != opponentMarker)
+                return true;
+
+        // diagonals
+        if (board[0, 0] != opponentMarker && board[1, 1] != opponentMarker && board[2, 2] != opponentMarker)
+            return true;
+        if (board[0, 2] != opponentMarker && board[1, 1] != opponentMarker && board[2, 0] != opponentMarker)
+            return true;
+
+        return false;
     }
 
     private static PlayerMarker CheckWinnerOnBoard(PlayerMarker[,] board)
