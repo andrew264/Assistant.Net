@@ -89,7 +89,6 @@ public class GameSessionService(
         cts.Dispose();
     }
 
-    // --- RPS Game Management ---
     public GameCreationResult StartRpsGame(IUser player1, IUser? player2Input, ulong messageId, ulong guildId)
     {
         var player2 = player2Input ?? client.CurrentUser;
@@ -185,7 +184,6 @@ public class GameSessionService(
     public RpsGame? GetRpsGame(string gameKey) => _activeRpsGames.GetValueOrDefault(gameKey);
 
 
-    // --- Tic Tac Toe Game Management ---
     public GameCreationResult StartTicTacToeGame(IUser player1User, IUser? opponent)
     {
         var player2User = opponent == null || opponent.Id == player1User.Id ? client.CurrentUser : opponent;
@@ -196,7 +194,6 @@ public class GameSessionService(
 
         var gameId = Guid.NewGuid().ToString();
         IUser playerX, playerO;
-        // Randomly assign X and O
         if (new Random().Next(0, 2) == 0)
         {
             playerX = player1User;
@@ -243,7 +240,6 @@ public class GameSessionService(
         if (!game.MakeMove(row, col))
             return new GameUpdateResult(GameUpdateStatus.InvalidMove, ErrorMessage: "That spot is already taken!");
 
-        // Bot move logic
         if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
         {
             var botMoveCoords = await game.GetBestMoveAsync().ConfigureAwait(false);
@@ -254,7 +250,7 @@ public class GameSessionService(
                     game.GameId);
         }
 
-        var component = GameUiFactory.BuildTicTacToeComponent(game); // Get updated components
+        var component = GameUiFactory.BuildTicTacToeComponent(game);
 
         if (!game.IsGameOver) return new GameUpdateResult(GameUpdateStatus.Success, component);
         if (guildId != 0) await game.RecordStatsIfApplicable(guildId).ConfigureAwait(false);
@@ -272,7 +268,6 @@ public class GameSessionService(
     public TicTacToeGame? GetTicTacToeGame(string gameKey) => _activeTicTacToeGames.GetValueOrDefault(gameKey);
 
 
-    // --- Hand Cricket Game Management ---
     public GameCreationResult StartHandCricketGame(IUser player1, IUser player2, ulong channelId, ulong guildId)
     {
         if (player1.Id == player2.Id)
@@ -310,13 +305,11 @@ public class GameSessionService(
         if (user.Id != game.Player1.Id && user.Id != game.Player2.Id)
             return new GameUpdateResult(GameUpdateStatus.NotPlayerInGame, ErrorMessage: "This isn't your game!");
 
-        // Refresh timeout on interaction
         CancelTimeoutTask(gameId);
         StartTimeoutTask(gameId, HandCricketTimeout, _activeHandCricketGames, "HandCricket");
 
         string? userVisibleErrorMessage = null;
 
-        // --- HandCricket Specific Logic based on `action` and `data` ---
         switch (action)
         {
             case "toss_eo":

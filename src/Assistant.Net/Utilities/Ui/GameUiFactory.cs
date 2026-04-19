@@ -10,7 +10,6 @@ public static class GameUiFactory
     private const string TttCustomIdPrefix = "tictactoe";
     private const string HcCustomIdPrefix = "hc";
 
-    // --- Timeouts ---
     public static MessageComponent GetRpsTimeoutDisplay()
     {
         var container = new ContainerBuilder()
@@ -31,10 +30,10 @@ public static class GameUiFactory
             .WithTextDisplay(new TextDisplayBuilder("This game has timed out due to inactivity."))
             .WithSeparator();
 
-        for (var i = 0; i < 3; i++) // 3 rows
+        for (var i = 0; i < 3; i++)
         {
             var rowBuilder = new ActionRowBuilder();
-            for (var j = 0; j < 3; j++) // 3 buttons per row
+            for (var j = 0; j < 3; j++)
                 rowBuilder.WithButton("\u200b", $"dummy_disabled_{i}_{j}", ButtonStyle.Secondary, disabled: true);
             container.WithActionRow(rowBuilder);
         }
@@ -53,7 +52,6 @@ public static class GameUiFactory
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
 
-    // --- RPS ---
     public static MessageComponent BuildRpsGameComponent(ulong messageId, RpsGame game)
     {
         var builder = new ComponentBuilderV2();
@@ -115,7 +113,6 @@ public static class GameUiFactory
         _ => "❔"
     };
 
-    // --- TicTacToe ---
     public static MessageComponent BuildTicTacToeComponent(TicTacToeGame game)
     {
         var builder = new ComponentBuilderV2();
@@ -145,8 +142,15 @@ public static class GameUiFactory
         container
             .WithTextDisplay(new TextDisplayBuilder("# Tic Tac Toe"))
             .WithTextDisplay(new TextDisplayBuilder($"{game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)"))
-            .WithTextDisplay(new TextDisplayBuilder(statusMessage))
-            .WithSeparator();
+            .WithTextDisplay(new TextDisplayBuilder(statusMessage));
+
+        if (game is { IsGameOver: false, IsBotGuaranteedWin: true } && !string.IsNullOrEmpty(game.BotTaunt))
+        {
+            container.WithSeparator();
+            container.WithTextDisplay(new TextDisplayBuilder(game.BotTaunt));
+        }
+
+        container.WithSeparator();
 
         var disableAll = game.IsGameOver;
         for (var row = 0; row < 3; row++)
@@ -184,7 +188,6 @@ public static class GameUiFactory
         return builder.Build();
     }
 
-    // --- Hand Cricket ---
     public static MessageComponent BuildHandCricketComponent(HandCricketGame game)
     {
         var builder = new ComponentBuilderV2();

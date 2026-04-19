@@ -23,7 +23,6 @@ public class TicTacToeGame
 {
     private const int BoardSize = 3;
 
-    // Player1 is always X, Player2 is always O
     private const PlayerMarker Player1Marker = PlayerMarker.X;
     private const PlayerMarker Player2Marker = PlayerMarker.O;
 
@@ -55,6 +54,9 @@ public class TicTacToeGame
     private bool IsBoardFull => MovesMade >= BoardSize * BoardSize;
     public bool IsGameOver { get; private set; }
     public GameResultState Result { get; private set; } = GameResultState.None;
+    public bool IsBotGuaranteedWin { get; private set; }
+    public string? BotTaunt { get; private set; }
+
 
     public PlayerMarker GetMarkerAt(int row, int col) => Board[row, col];
 
@@ -109,92 +111,130 @@ public class TicTacToeGame
         return ((index - 1) / BoardSize, (index - 1) % BoardSize);
     }
 
-    // --- Minimax Implementation ---
-
     public async Task<(int row, int col)?> GetBestMoveAsync()
     {
         if (!CurrentPlayer.IsBot || IsGameOver)
             return null;
-        return await Task.Run(FindBestMoveInternal).ConfigureAwait(false);
+
+        var result = await Task.Run(FindBestMoveInternal).ConfigureAwait(false);
+
+        if (result?.score is not { } score || MovesMade < 3) return result?.move;
+
+        var botMarker = GetPlayerMarker(CurrentPlayer);
+        var botWinScore = botMarker == PlayerMarker.O ? 1 : -1;
+
+        if (Math.Sign(score) != Math.Sign(botWinScore) || IsBotGuaranteedWin) return result.Value.move;
+
+        IsBotGuaranteedWin = true;
+        BotTaunt = GetRandomTaunt();
+        return result.Value.move;
     }
 
-    private (int row, int col)? FindBestMoveInternal()
+    private string GetRandomTaunt()
     {
-        var botMarker = CurrentMarker; // The marker the bot is currently playing
-        var bestScore = botMarker == PlayerMarker.O ? int.MinValue : int.MaxValue; // O maximizes, X minimizes
-        (int row, int col)? bestMove = null;
-        var availableMoves = GetEmptyCells();
+        string[] taunts =
+        [
+            "I've analyzed 14,000,605 futures. You lose in all of them. 🤖",
+            "You've activated my trap card! 🃏",
+            "Checkmate! Wait, wrong game... you still lost though!",
+            "I'm about to end your whole career.",
+            "Resistance is futile. 🛸",
+            "Omae wa mou shindeiru.",
+            "I've already won, you just don't know it yet.",
+            "Well, get Forked!"
+        ];
+        return taunts[_random.Next(taunts.Length)];
+    }
 
-        // Handle first move randomly
-        if (availableMoves.Count == BoardSize * BoardSize) return availableMoves[_random.Next(availableMoves.Count)];
+    private ((int row, int col) move, int? score)? FindBestMoveInternal()
+    {
+        var botMarker = CurrentMarker;
+        var availableMoves = GetEmptyCells(Board);
+
+        if (availableMoves.Count == BoardSize * BoardSize)
+            return (availableMoves[_random.Next(availableMoves.Count)], null);
+
+        var isMaximizing = botMarker == PlayerMarker.O;
+        var bestScore = isMaximizing ? int.MinValue : int.MaxValue;
+        (int row, int col)? bestMove = null;
+        var nextPlayer = isMaximizing ? PlayerMarker.X : PlayerMarker.O;
 
         foreach (var move in availableMoves)
         {
             Board[move.row, move.col] = botMarker;
-            MovesMade++; // Temporarily increment
+            var score = RunMinimax(Board, MovesMade + 1, nextPlayer, 1, int.MinValue, int.MaxValue);
+            Board[move.row, move.col] = PlayerMarker.None;
 
-            var score = RunMinimax(Board, MovesMade,
-                botMarker == PlayerMarker.O ? PlayerMarker.X : PlayerMarker.O); // Score from opponent's perspective
-
-            Board[move.row, move.col] = PlayerMarker.None; // Undo move
-            MovesMade--; // Decrement back
-
-            if (botMarker == PlayerMarker.O) // Bot is O (Maximizing)
-            {
-                if (score <= bestScore) continue;
-            }
-            else // Bot is X (Minimizing)
-            {
-                if (score >= bestScore) continue;
-            }
+            var isBetter = isMaximizing ? score > bestScore : score < bestScore;
+            if (!isBetter) continue;
 
             bestScore = score;
             bestMove = move;
         }
 
-        switch (bestMove)
+        if (bestMove is not null)
+            return (bestMove.Value, bestScore);
+
+        if (availableMoves.Count > 0)
         {
-            case null when availableMoves.Count > 0:
-                _logger.LogWarning("Minimax couldn't determine best move for Game {GameId}, falling back to random.",
-                    GameId);
-                bestMove = availableMoves[_random.Next(availableMoves.Count)];
-                break;
-            case null:
-                _logger.LogError("Minimax failed to find a move for Game {GameId} when board is not full.", GameId);
-                break;
+            _logger.LogWarning(
+                "Minimax couldn't determine best move for Game {GameId}, falling back to random.", GameId);
+            return (availableMoves[_random.Next(availableMoves.Count)], null);
         }
 
-
-        return bestMove;
+        _logger.LogError(
+            "Minimax failed to find a move for Game {GameId} when board is not full.", GameId);
+        return null;
     }
 
-    private static int RunMinimax(PlayerMarker[,] currentBoard, int currentMovesMade, PlayerMarker playerToSimulate)
+    private static int RunMinimax(
+        PlayerMarker[,] board,
+        int movesMade,
+        PlayerMarker playerToSimulate,
+        int depth,
+        int alpha,
+        int beta)
     {
-        var winner = CheckWinnerOnBoard(currentBoard);
-        if (winner != PlayerMarker.None) return (int)winner;
-        if (currentMovesMade == BoardSize * BoardSize) return 0;
+        var winner = CheckWinnerOnBoard(board);
+        if (winner != PlayerMarker.None)
+            return (int)winner * (10 - depth);
 
-        var bestScore = playerToSimulate == PlayerMarker.O ? int.MinValue : int.MaxValue;
-        var availableMoves = GetEmptyCells(currentBoard);
+        if (movesMade == BoardSize * BoardSize)
+            return 0;
+
+        var isMaximizing = playerToSimulate == PlayerMarker.O;
+        var bestScore = isMaximizing ? int.MinValue : int.MaxValue;
+        var nextPlayer = isMaximizing ? PlayerMarker.X : PlayerMarker.O;
+        var availableMoves = GetEmptyCells(board);
 
         foreach (var move in availableMoves)
         {
-            currentBoard[move.row, move.col] = playerToSimulate;
-            var score = RunMinimax(currentBoard, currentMovesMade + 1,
-                playerToSimulate == PlayerMarker.O ? PlayerMarker.X : PlayerMarker.O);
-            currentBoard[move.row, move.col] = PlayerMarker.None;
+            board[move.row, move.col] = playerToSimulate;
 
-            bestScore = playerToSimulate == PlayerMarker.O ? Math.Max(bestScore, score) : Math.Min(bestScore, score);
+            var score = RunMinimax(board, movesMade + 1, nextPlayer, depth + 1, alpha, beta);
+
+            board[move.row, move.col] = PlayerMarker.None;
+
+            if (isMaximizing)
+            {
+                bestScore = Math.Max(bestScore, score);
+                alpha = Math.Max(alpha, bestScore);
+            }
+            else
+            {
+                bestScore = Math.Min(bestScore, score);
+                beta = Math.Min(beta, bestScore);
+            }
+
+            if (beta <= alpha) break;
         }
 
         return bestScore;
     }
 
-    private List<(int row, int col)> GetEmptyCells() => GetEmptyCells(Board);
-
     private static List<(int row, int col)> GetEmptyCells(PlayerMarker[,] boardState)
     {
-        var cells = new List<(int row, int col)>();
+        var cells = new List<(int row, int col)>(BoardSize * BoardSize);
         for (var i = 0; i < BoardSize; i++)
         for (var j = 0; j < BoardSize; j++)
             if (boardState[i, j] == PlayerMarker.None)
@@ -203,15 +243,12 @@ public class TicTacToeGame
         return cells;
     }
 
-
-    // --- Game Over Checks ---
-
     private void CheckForGameOver()
     {
         if (IsGameOver)
             return;
 
-        var winner = CheckWinnerInternal();
+        var winner = CheckWinnerOnBoard(Board);
 
         if (winner != PlayerMarker.None)
         {
@@ -225,38 +262,32 @@ public class TicTacToeGame
         }
     }
 
-    // Checks winner on the *current* game board
-    private PlayerMarker CheckWinnerInternal() => CheckWinnerOnBoard(Board);
-
-    // Checks winner on a board state
-    private static PlayerMarker CheckWinnerOnBoard(PlayerMarker[,] boardState)
+    private static PlayerMarker CheckWinnerOnBoard(PlayerMarker[,] board)
     {
-        // Check rows and columns
         for (var i = 0; i < BoardSize; i++)
         {
-            if (boardState[i, 0] != PlayerMarker.None && boardState[i, 0] == boardState[i, 1] &&
-                boardState[i, 1] == boardState[i, 2]) return boardState[i, 0];
-            if (boardState[0, i] != PlayerMarker.None && boardState[0, i] == boardState[1, i] &&
-                boardState[1, i] == boardState[2, i]) return boardState[0, i];
+            var rowFirst = board[i, 0];
+            if (rowFirst != PlayerMarker.None && rowFirst == board[i, 1] && rowFirst == board[i, 2])
+                return rowFirst;
+
+            var colFirst = board[0, i];
+            if (colFirst != PlayerMarker.None && colFirst == board[1, i] && colFirst == board[2, i])
+                return colFirst;
         }
 
-        // Check diagonals
-        if (boardState[0, 0] != PlayerMarker.None && boardState[0, 0] == boardState[1, 1] &&
-            boardState[1, 1] == boardState[2, 2]) return boardState[0, 0];
-        if (boardState[0, 2] != PlayerMarker.None && boardState[0, 2] == boardState[1, 1] &&
-            boardState[1, 1] == boardState[2, 0]) return boardState[0, 2];
+        var center = board[1, 1];
+        if (center == PlayerMarker.None) return PlayerMarker.None;
+        if ((center == board[0, 0] && center == board[2, 2]) ||
+            (center == board[0, 2] && center == board[2, 0])) return center;
 
-        // No winner found
         return PlayerMarker.None;
     }
 
-    // --- Stat Recording ---
     public async Task RecordStatsIfApplicable(ulong guildId)
     {
         if (!IsGameOver || _gameStatsService == null || Player1.IsBot || Player2.IsBot)
             return;
 
-        // Ensure Player1 is X, Player2 is O
         var playerXId = Player1.Id;
         var playerOId = Player2.Id;
 
@@ -264,15 +295,12 @@ public class TicTacToeGame
         {
             var recordTask = Result switch
             {
-                // Player X (Player1) wins
-                GameResultState.XWins => _gameStatsService.RecordGameResultAsync(playerXId, playerOId, guildId,
-                    GameStatsService.TicTacToeGameName),
-                // Player O (Player2) wins
-                GameResultState.OWins => _gameStatsService.RecordGameResultAsync(playerOId, playerXId, guildId,
-                    GameStatsService.TicTacToeGameName),
-                // Tie
-                GameResultState.Tie => _gameStatsService.RecordGameResultAsync(playerXId, playerOId, guildId,
-                    GameStatsService.TicTacToeGameName, true),
+                GameResultState.XWins => _gameStatsService.RecordGameResultAsync(
+                    playerXId, playerOId, guildId, GameStatsService.TicTacToeGameName),
+                GameResultState.OWins => _gameStatsService.RecordGameResultAsync(
+                    playerOId, playerXId, guildId, GameStatsService.TicTacToeGameName),
+                GameResultState.Tie => _gameStatsService.RecordGameResultAsync(
+                    playerXId, playerOId, guildId, GameStatsService.TicTacToeGameName, true),
                 _ => Task.CompletedTask
             };
             await recordTask.ConfigureAwait(false);

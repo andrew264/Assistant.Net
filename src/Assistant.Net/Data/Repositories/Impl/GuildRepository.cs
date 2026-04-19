@@ -1,4 +1,3 @@
-using Assistant.Net.Data.Entities;
 using Assistant.Net.Data.Repositories.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
