@@ -92,7 +92,10 @@ builder.Services.AddSingleton<IUnitOfWorkFactory, UnitOfWorkFactory>();
 
 builder.Services.AddHttpClient().ConfigureHttpClientDefaults(defaults => defaults.RemoveAllLoggers());
 
-builder.Services.AddMemoryCache();
+builder.Services.AddMemoryCache(options =>
+{
+    options.SizeLimit = 10000;
+});
 
 var lavalinkSettings = builder.Configuration.GetSection(LavalinkOptions.SectionName).Get<LavalinkOptions>();
 

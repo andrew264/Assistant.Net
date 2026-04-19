@@ -8,8 +8,8 @@ public class UserRepository(AssistantDbContext context) : IUserRepository
 {
     public async Task EnsureExistsAsync(ulong userId)
     {
-        var exists = await context.Users.AnyAsync(u => u.Id == userId).ConfigureAwait(false);
-        if (!exists) context.Users.Add(new UserEntity { Id = userId });
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO \"Users\" (\"Id\") VALUES ({userId}) ON CONFLICT (\"Id\") DO NOTHING");
     }
 
     public async Task EnsureUsersExistAsync(IEnumerable<ulong> userIds)

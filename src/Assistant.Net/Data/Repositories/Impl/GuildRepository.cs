@@ -8,7 +8,7 @@ public class GuildRepository(AssistantDbContext context) : IGuildRepository
 {
     public async Task EnsureExistsAsync(ulong guildId)
     {
-        var exists = await context.Guilds.AnyAsync(g => g.Id == guildId).ConfigureAwait(false);
-        if (!exists) context.Guilds.Add(new GuildEntity { Id = guildId });
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO \"Guilds\" (\"Id\") VALUES ({guildId}) ON CONFLICT (\"Id\") DO NOTHING");
     }
 }
