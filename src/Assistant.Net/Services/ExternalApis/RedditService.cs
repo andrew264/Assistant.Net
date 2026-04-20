@@ -196,20 +196,22 @@ public class RedditService(
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
             var response = await httpClient.SendAsync(request).ConfigureAwait(false);
-
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(CacheDuration)
+                .SetSize(1);
             switch (response.StatusCode)
             {
                 case HttpStatusCode.NotFound:
                     logger.LogInformation("Subreddit 'r/{Subreddit}' not found (404) via OAuth.", subreddit);
                     var emptyList404 = new List<RedditPostData>();
-                    memoryCache.Set(cacheKey, emptyList404, CacheDuration);
+                    memoryCache.Set(cacheKey, emptyList404, cacheEntryOptions);
                     return emptyList404;
                 case HttpStatusCode.Forbidden:
                     logger.LogWarning(
                         "Access forbidden (403) via OAuth for subreddit 'r/{Subreddit}'. It might be private or the bot's account lacks access.",
                         subreddit);
                     var emptyList403 = new List<RedditPostData>();
-                    memoryCache.Set(cacheKey, emptyList403, CacheDuration);
+                    memoryCache.Set(cacheKey, emptyList403, cacheEntryOptions);
                     return emptyList403;
                 case HttpStatusCode.Unauthorized:
                     logger.LogWarning(
@@ -222,7 +224,7 @@ public class RedditService(
                         "Received redirect (302) via OAuth for subreddit 'r/{Subreddit}', likely doesn't exist or is private.",
                         subreddit);
                     var emptyList302 = new List<RedditPostData>();
-                    memoryCache.Set(cacheKey, emptyList302, CacheDuration);
+                    memoryCache.Set(cacheKey, emptyList302, cacheEntryOptions);
                     return emptyList302;
             }
 
@@ -262,7 +264,7 @@ public class RedditService(
                 "Successfully fetched {Count} top posts from r/{Subreddit} (Limit: {Limit}, Timeframe: {Timeframe}) using OAuth.",
                 posts.Count, subreddit, limit, timeframe);
 
-            memoryCache.Set(cacheKey, posts, CacheDuration);
+            memoryCache.Set(cacheKey, posts, cacheEntryOptions);
             return posts;
         }
         catch (HttpRequestException ex)

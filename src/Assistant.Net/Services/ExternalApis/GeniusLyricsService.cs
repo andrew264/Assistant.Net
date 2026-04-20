@@ -272,8 +272,10 @@ public class GeniusLyricsService(
                 copy.RemoveChild(firstChild);
             return HtmlEntity.DeEntitize(copy.InnerText);
         })).Trim('\n');
-
-        memoryCache.Set(cacheKey, lyrics, CacheDuration);
+        var cacheEntryOptions = new MemoryCacheEntryOptions()
+            .SetAbsoluteExpiration(CacheDuration)
+            .SetSize(1);
+        memoryCache.Set(cacheKey, lyrics, cacheEntryOptions);
         return lyrics;
     }
 }

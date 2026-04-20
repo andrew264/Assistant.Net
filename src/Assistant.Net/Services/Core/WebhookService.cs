@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net;
-using Discord;
 using Discord.Net;
 using Discord.Rest;
 using Discord.Webhook;
@@ -22,13 +21,6 @@ public class WebhookService(
 
     private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _channelLocks = new();
 
-    /// <summary>
-    ///     Gets an existing webhook client from cache or retrieves/creates it for the specified channel.
-    /// </summary>
-    /// <param name="channelId">The ID of the text channel.</param>
-    /// <param name="webhookName">The desired name of the webhook.</param>
-    /// <param name="defaultAvatarUrl">Optional URL for the webhook avatar if creating a new one. If null, tries bot's avatar.</param>
-    /// <returns>A DiscordWebhookClient if successful, otherwise null.</returns>
     public async Task<DiscordWebhookClient?> GetOrCreateWebhookClientAsync(
         ulong channelId,
         string webhookName = DefaultWebhookName,
@@ -45,132 +37,136 @@ public class WebhookService(
 
         var channelLock = _channelLocks.GetOrAdd(channelId, _ => new SemaphoreSlim(1, 1));
         await channelLock.WaitAsync();
-
         try
         {
-            // Double-check cache after acquiring lock
             if (memoryCache.TryGetValue(cacheKey, out cachedClient) && cachedClient != null)
-            {
-                logger.LogTrace("Webhook client cache hit (after lock) for Channel {ChannelId}, Name {WebhookName}",
-                    channelId, webhookName);
                 return cachedClient;
-            }
 
-            logger.LogTrace("Webhook client cache miss for Channel {ChannelId}, Name {WebhookName}", channelId,
-                webhookName);
-
-            if (client.GetChannel(channelId) is not SocketTextChannel textChannel)
-            {
-                logger.LogWarning("Target channel {ChannelId} not found or is not a text channel for webhook.",
-                    channelId);
-                return null;
-            }
-
-            var botGuildUser = textChannel.Guild.CurrentUser;
-            if (botGuildUser == null || !botGuildUser.GetPermissions(textChannel).ManageWebhooks)
-            {
-                logger.LogError(
-                    "Bot lacks 'Manage Webhooks' permission in channel {ChannelId} ({ChannelName}) in Guild {GuildId} for webhook '{WebhookName}'.",
-                    channelId, textChannel.Name, textChannel.Guild.Id, webhookName);
-                return null;
-            }
-
-            RestWebhook? existingWebhook = null;
-            try
-            {
-                var webhooks = await textChannel.GetWebhooksAsync().ConfigureAwait(false);
-                // Try to find by name and creator (bot) to ensure it's one we manage
-                existingWebhook =
-                    webhooks.FirstOrDefault(w => w.Name == webhookName && w.Creator.Id == client.CurrentUser.Id);
-                existingWebhook ??=
-                    webhooks.FirstOrDefault(w =>
-                        w.Name == webhookName); // Fallback to just name if not found by creator
-            }
-            catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
-            {
-                logger.LogError(ex, "Forbidden to get webhooks in channel {ChannelId} ({ChannelName}).", channelId,
-                    textChannel.Name);
-                return null;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to get webhooks for channel {ChannelId} ({ChannelName}).", channelId,
-                    textChannel.Name);
-                // Potentially proceed to create if this was transient, but might indicate deeper issues.
-            }
-
-            if (existingWebhook != null)
-            {
-                logger.LogDebug("Found existing webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
-                    existingWebhook.Name, existingWebhook.Id, channelId);
-                var webhookClient = new DiscordWebhookClient(existingWebhook); // Uses ID and Token
-                memoryCache.Set(cacheKey, webhookClient, WebhookCacheDuration);
-                return webhookClient;
-            }
-
-            // Create new webhook
-            logger.LogInformation("Webhook '{WebhookName}' not found in channel {ChannelId}. Creating new one.",
-                webhookName, channelId);
-            Image? avatarImage = null;
-            Stream? avatarStream = null;
-            try
-            {
-                var avatarUrlToFetch = defaultAvatarUrl ??
-                                       client.CurrentUser.GetDisplayAvatarUrl() ??
-                                       client.CurrentUser.GetDefaultAvatarUrl();
-                if (!string.IsNullOrEmpty(avatarUrlToFetch))
-                {
-                    using var httpClient = httpClientFactory.CreateClient("WebhookAvatar");
-                    var response = await httpClient.GetAsync(avatarUrlToFetch).ConfigureAwait(false);
-                    if (response.IsSuccessStatusCode)
-                    {
-                        avatarStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                        avatarImage = new Image(avatarStream);
-                    }
-                    else
-                    {
-                        logger.LogWarning(
-                            "Failed to download avatar (Status: {StatusCode}) from {AvatarUrl} for webhook creation. Using default.",
-                            response.StatusCode, avatarUrlToFetch);
-                    }
-                }
-            }
-            catch (Exception avatarEx)
-            {
-                logger.LogWarning(avatarEx, "Error downloading avatar for webhook creation. Using default.");
-            }
-
-            try
-            {
-                var newWebhook = await textChannel.CreateWebhookAsync(webhookName, avatarImage?.Stream)
-                    .ConfigureAwait(false);
-                logger.LogInformation("Created webhook '{WebhookName}' ({WebhookId}) in channel {ChannelId}.",
-                    newWebhook.Name, newWebhook.Id, channelId);
-                var webhookClient = new DiscordWebhookClient(newWebhook);
-                memoryCache.Set(cacheKey, webhookClient, WebhookCacheDuration);
-                return webhookClient;
-            }
-            catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
-            {
-                logger.LogError(ex,
-                    "Forbidden to create webhook '{WebhookName}' in channel {ChannelId} ({ChannelName}).", webhookName,
-                    channelId, textChannel.Name);
-                return null;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Failed to create webhook '{WebhookName}' in channel {ChannelId} ({ChannelName}).",
-                    webhookName, channelId, textChannel.Name);
-                return null;
-            }
-            finally
-            {
-                avatarStream?.Dispose();
-            }
+            return await ResolveAndCacheWebhookAsync(channelId, webhookName, defaultAvatarUrl, cacheKey);
         }
         finally
         {
             channelLock.Release();
+        }
+    }
+
+    private async Task<DiscordWebhookClient?> ResolveAndCacheWebhookAsync(
+        ulong channelId,
+        string webhookName,
+        string? defaultAvatarUrl,
+        string cacheKey)
+    {
+        if (client.GetChannel(channelId) is not SocketTextChannel textChannel)
+        {
+            logger.LogWarning("Channel {ChannelId} not found or is not a text channel.", channelId);
+            return null;
+        }
+
+        if (!textChannel.Guild.CurrentUser.GetPermissions(textChannel).ManageWebhooks)
+        {
+            logger.LogError(
+                "Bot lacks 'Manage Webhooks' in channel {ChannelId} ({ChannelName}), Guild {GuildId}.",
+                channelId, textChannel.Name, textChannel.Guild.Id);
+            return null;
+        }
+
+        var existing = await FindExistingWebhookAsync(textChannel, webhookName);
+        var webhook = existing ?? await CreateWebhookAsync(textChannel, webhookName, defaultAvatarUrl);
+
+        if (webhook is null)
+            return null;
+
+        var webhookClient = new DiscordWebhookClient(webhook);
+        var cacheOptions = new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(WebhookCacheDuration)
+            .SetSize(1);
+        memoryCache.Set(cacheKey, webhookClient, cacheOptions);
+        return webhookClient;
+    }
+
+    private async Task<RestWebhook?> FindExistingWebhookAsync(SocketTextChannel channel, string webhookName)
+    {
+        try
+        {
+            var webhooks = await channel.GetWebhooksAsync().ConfigureAwait(false);
+            var match = webhooks.FirstOrDefault(w => w.Name == webhookName && w.Creator.Id == client.CurrentUser.Id)
+                        ?? webhooks.FirstOrDefault(w => w.Name == webhookName);
+
+            if (match is not null)
+                logger.LogDebug("Found existing webhook '{Name}' ({Id}) in channel {ChannelId}.", match.Name, match.Id,
+                    channel.Id);
+
+            return match;
+        }
+        catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
+        {
+            logger.LogError(ex, "Forbidden to list webhooks in channel {ChannelId} ({Name}).", channel.Id,
+                channel.Name);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to list webhooks in channel {ChannelId} ({Name}).", channel.Id, channel.Name);
+            return null;
+        }
+    }
+
+    private async Task<RestWebhook?> CreateWebhookAsync(
+        SocketTextChannel channel,
+        string webhookName,
+        string? defaultAvatarUrl)
+    {
+        logger.LogInformation("Creating webhook '{Name}' in channel {ChannelId}.", webhookName, channel.Id);
+
+        await using var avatarStream = await TryFetchAvatarAsync(defaultAvatarUrl);
+
+        try
+        {
+            var webhook = await channel.CreateWebhookAsync(webhookName, avatarStream).ConfigureAwait(false);
+            logger.LogInformation("Created webhook '{Name}' ({Id}) in channel {ChannelId}.", webhook.Name, webhook.Id,
+                channel.Id);
+            return webhook;
+        }
+        catch (HttpException ex) when (ex.HttpCode == HttpStatusCode.Forbidden)
+        {
+            logger.LogError(ex, "Forbidden to create webhook '{Name}' in channel {ChannelId} ({ChannelName}).",
+                webhookName, channel.Id, channel.Name);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to create webhook '{Name}' in channel {ChannelId} ({ChannelName}).",
+                webhookName, channel.Id, channel.Name);
+            return null;
+        }
+    }
+
+    private async Task<Stream?> TryFetchAvatarAsync(string? defaultAvatarUrl)
+    {
+        var url = defaultAvatarUrl
+                  ?? client.CurrentUser.GetDisplayAvatarUrl()
+                  ?? client.CurrentUser.GetDefaultAvatarUrl();
+
+        if (string.IsNullOrEmpty(url))
+            return null;
+
+        try
+        {
+            using var httpClient = httpClientFactory.CreateClient("WebhookAvatar");
+            var response = await httpClient.GetAsync(url).ConfigureAwait(false);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("Failed to download avatar (HTTP {Status}) from {Url}.", response.StatusCode, url);
+                return null;
+            }
+
+            return await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Error downloading avatar for webhook. Proceeding without.");
+            return null;
         }
     }
 }

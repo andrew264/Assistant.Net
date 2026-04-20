@@ -39,8 +39,10 @@ public class LoggingConfigService(
                 IsEnabled = false,
                 DeleteDelayMs = 86400000 // 24 hours
             };
-
-            memoryCache.Set(cacheKey, config, CacheDuration);
+            var cacheEntryOptions = new MemoryCacheEntryOptions()
+                .SetSlidingExpiration(CacheDuration)
+                .SetSize(1);
+            memoryCache.Set(cacheKey, config, cacheEntryOptions);
             return config;
         }
         finally
@@ -69,7 +71,10 @@ public class LoggingConfigService(
         await uow.SaveChangesAsync().ConfigureAwait(false);
 
         var cacheKey = $"{CachePrefix}{config.GuildId}:{config.LogType}";
-        memoryCache.Set(cacheKey, config, CacheDuration);
+        var cacheEntryOptions = new MemoryCacheEntryOptions()
+            .SetSlidingExpiration(CacheDuration)
+            .SetSize(1);
+        memoryCache.Set(cacheKey, config, cacheEntryOptions);
 
         logger.LogInformation("Updated log config for Guild {GuildId}, Type {LogType}", config.GuildId, config.LogType);
     }
