@@ -32,12 +32,12 @@ namespace Assistant.Net.Migrations
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    Uri = table.Column<string>(type: "text", nullable: false),
-                    Title = table.Column<string>(type: "text", nullable: false),
-                    Artist = table.Column<string>(type: "text", nullable: true),
-                    ThumbnailUrl = table.Column<string>(type: "text", nullable: true),
+                    Uri = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: false),
+                    Title = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: false),
+                    Artist = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: true),
+                    ThumbnailUrl = table.Column<string>(type: "character varying(2048)", maxLength: 2048, nullable: true),
                     Duration = table.Column<double>(type: "double precision", nullable: false),
-                    Source = table.Column<string>(type: "text", nullable: false)
+                    Source = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -49,7 +49,7 @@ namespace Assistant.Net.Migrations
                 columns: table => new
                 {
                     Id = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
-                    About = table.Column<string>(type: "text", nullable: true),
+                    About = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: true),
                     LastSeen = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
@@ -76,13 +76,37 @@ namespace Assistant.Net.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "log_settings",
+                columns: table => new
+                {
+                    id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    guild_id = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
+                    log_type = table.Column<int>(type: "integer", nullable: false),
+                    is_enabled = table.Column<bool>(type: "boolean", nullable: false),
+                    channel_id = table.Column<decimal>(type: "numeric(20,0)", nullable: true),
+                    delete_delay_ms = table.Column<int>(type: "integer", nullable: false),
+                    updated_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_log_settings", x => x.id);
+                    table.ForeignKey(
+                        name: "FK_log_settings_Guilds_guild_id",
+                        column: x => x.guild_id,
+                        principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "StarboardConfigs",
                 columns: table => new
                 {
                     GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
                     IsEnabled = table.Column<bool>(type: "boolean", nullable: false),
                     StarboardChannelId = table.Column<decimal>(type: "numeric(20,0)", nullable: true),
-                    StarEmoji = table.Column<string>(type: "text", nullable: false),
+                    StarEmoji = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     Threshold = table.Column<int>(type: "integer", nullable: false),
                     AllowSelfStar = table.Column<bool>(type: "boolean", nullable: false),
                     AllowBotMessages = table.Column<bool>(type: "boolean", nullable: false),
@@ -99,6 +123,45 @@ namespace Assistant.Net.Migrations
                         name: "FK_StarboardConfigs_Guilds_GuildId",
                         column: x => x.GuildId,
                         principalTable: "Guilds",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "DmRelayChannels",
+                columns: table => new
+                {
+                    UserId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
+                    ChannelId = table.Column<decimal>(type: "numeric(20,0)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DmRelayChannels", x => x.UserId);
+                    table.ForeignKey(
+                        name: "FK_DmRelayChannels_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "DmRelayMappings",
+                columns: table => new
+                {
+                    Id = table.Column<long>(type: "bigint", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    UserId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
+                    OriginalMessageId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
+                    RelayMessageId = table.Column<decimal>(type: "numeric(20,0)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_DmRelayMappings", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_DmRelayMappings_Users_UserId",
+                        column: x => x.UserId,
+                        principalTable: "Users",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -174,7 +237,7 @@ namespace Assistant.Net.Migrations
                         .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
                     UserId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
                     GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
-                    Name = table.Column<string>(type: "text", nullable: false),
+                    Name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -204,11 +267,11 @@ namespace Assistant.Net.Migrations
                     TargetUserId = table.Column<decimal>(type: "numeric(20,0)", nullable: true),
                     GuildId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
                     ChannelId = table.Column<decimal>(type: "numeric(20,0)", nullable: false),
-                    Message = table.Column<string>(type: "text", nullable: false),
+                    Message = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
                     TriggerTime = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    Recurrence = table.Column<string>(type: "text", nullable: true),
-                    Title = table.Column<string>(type: "text", nullable: true),
+                    Recurrence = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    Title = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: true),
                     LastTriggered = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     IsActive = table.Column<bool>(type: "boolean", nullable: false),
                     IsDm = table.Column<bool>(type: "boolean", nullable: false)
@@ -320,9 +383,24 @@ namespace Assistant.Net.Migrations
                 });
 
             migrationBuilder.CreateIndex(
+                name: "IX_DmRelayMappings_RelayMessageId",
+                table: "DmRelayMappings",
+                column: "RelayMessageId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_DmRelayMappings_UserId",
+                table: "DmRelayMappings",
+                column: "UserId");
+
+            migrationBuilder.CreateIndex(
                 name: "IX_GameStats_UserId",
                 table: "GameStats",
                 column: "UserId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_log_settings_guild_id",
+                table: "log_settings",
+                column: "guild_id");
 
             migrationBuilder.CreateIndex(
                 name: "IX_PlayHistory_GuildId",
@@ -406,10 +484,19 @@ namespace Assistant.Net.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
+                name: "DmRelayChannels");
+
+            migrationBuilder.DropTable(
+                name: "DmRelayMappings");
+
+            migrationBuilder.DropTable(
                 name: "GameStats");
 
             migrationBuilder.DropTable(
                 name: "GuildMusicSettings");
+
+            migrationBuilder.DropTable(
+                name: "log_settings");
 
             migrationBuilder.DropTable(
                 name: "PlayHistory");

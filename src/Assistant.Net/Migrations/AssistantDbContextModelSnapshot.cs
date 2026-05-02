@@ -17,11 +17,50 @@ namespace Assistant.Net.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.6")
+                .HasAnnotation("ProductVersion", "10.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayChannelEntity", b =>
+                {
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("DmRelayChannels");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayMappingEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("OriginalMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<decimal>("RelayMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RelayMessageId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("DmRelayMappings");
+                });
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.GameStatEntity", b =>
                 {
@@ -424,6 +463,28 @@ namespace Assistant.Net.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayChannelEntity", b =>
+                {
+                    b.HasOne("Assistant.Net.Data.Entities.UserEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayMappingEntity", b =>
+                {
+                    b.HasOne("Assistant.Net.Data.Entities.UserEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.GameStatEntity", b =>

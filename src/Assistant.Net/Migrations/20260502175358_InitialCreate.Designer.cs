@@ -12,19 +12,58 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Assistant.Net.Migrations
 {
     [DbContext(typeof(AssistantDbContext))]
-    [Migration("20260108100753_CreateLoggingConfig")]
-    partial class CreateLoggingConfig
+    [Migration("20260502175358_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.1")
+                .HasAnnotation("ProductVersion", "10.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "pg_trgm");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayChannelEntity", b =>
+                {
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<decimal>("ChannelId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("DmRelayChannels");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayMappingEntity", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("OriginalMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<decimal>("RelayMessageId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.Property<decimal>("UserId")
+                        .HasColumnType("numeric(20,0)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RelayMessageId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("DmRelayMappings");
+                });
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.GameStatEntity", b =>
                 {
@@ -89,7 +128,7 @@ namespace Assistant.Net.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
                     b.Property<decimal?>("ChannelId")
-                        .HasColumnType("numeric")
+                        .HasColumnType("numeric(20,0)")
                         .HasColumnName("channel_id");
 
                     b.Property<int>("DeleteDelayMs")
@@ -166,7 +205,8 @@ namespace Assistant.Net.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<decimal>("UserId")
                         .HasColumnType("numeric(20,0)");
@@ -238,16 +278,19 @@ namespace Assistant.Net.Migrations
 
                     b.Property<string>("Message")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
 
                     b.Property<string>("Recurrence")
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<decimal?>("TargetUserId")
                         .HasColumnType("numeric(20,0)");
 
                     b.Property<string>("Title")
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime>("TriggerTime")
                         .HasColumnType("timestamp with time zone");
@@ -308,7 +351,8 @@ namespace Assistant.Net.Migrations
 
                     b.Property<string>("StarEmoji")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
 
                     b.Property<decimal?>("StarboardChannelId")
                         .HasColumnType("numeric(20,0)");
@@ -374,25 +418,30 @@ namespace Assistant.Net.Migrations
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
                     b.Property<string>("Artist")
-                        .HasColumnType("text");
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
 
                     b.Property<double>("Duration")
                         .HasColumnType("double precision");
 
                     b.Property<string>("Source")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<string>("ThumbnailUrl")
-                        .HasColumnType("text");
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.Property<string>("Title")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
 
                     b.Property<string>("Uri")
                         .IsRequired()
-                        .HasColumnType("text");
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)");
 
                     b.HasKey("Id");
 
@@ -408,7 +457,8 @@ namespace Assistant.Net.Migrations
                         .HasColumnType("numeric(20,0)");
 
                     b.Property<string>("About")
-                        .HasColumnType("text");
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
 
                     b.Property<DateTime?>("LastSeen")
                         .HasColumnType("timestamp with time zone");
@@ -416,6 +466,28 @@ namespace Assistant.Net.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Users");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayChannelEntity", b =>
+                {
+                    b.HasOne("Assistant.Net.Data.Entities.UserEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Assistant.Net.Data.Entities.DmRelayMappingEntity", b =>
+                {
+                    b.HasOne("Assistant.Net.Data.Entities.UserEntity", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Assistant.Net.Data.Entities.GameStatEntity", b =>
