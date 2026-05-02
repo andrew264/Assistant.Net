@@ -35,7 +35,8 @@ public class GameModule(
         var responseMessage = await ReplyAsync("Starting Rock Paper Scissors...").ConfigureAwait(false);
         var messageId = responseMessage.Id;
 
-        var creationResult = gameSessionService.StartRpsGame(player1, player2, messageId, Context.Guild?.Id ?? 0);
+        var creationResult =
+            gameSessionService.StartRpsGame(player1, player2, Context.Channel.Id, messageId, Context.Guild?.Id ?? 0);
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
@@ -66,7 +67,7 @@ public class GameModule(
         if (game is { BothPlayersChosen: true })
         {
             var updateResult = await gameSessionService.ProcessRpsChoiceAsync(messageId.ToString(), player1,
-                game.GetChoice(player1), Context.Guild?.Id ?? 0).ConfigureAwait(false);
+                game.GetChoice(player1.Id), Context.Guild?.Id ?? 0).ConfigureAwait(false);
             if (updateResult.Status == GameUpdateStatus.GameOver)
                 await responseMessage.ModifyAsync(props =>
                 {
@@ -98,29 +99,38 @@ public class GameModule(
             player2User = guildUser;
         }
 
-        var creationResult = gameSessionService.StartTicTacToeGame(player1User, player2User);
+        var responseMessage = await ReplyAsync("Starting Tic Tac Toe...").ConfigureAwait(false);
+
+        var creationResult =
+            gameSessionService.StartTicTacToeGame(player1User, player2User, Context.Channel.Id, responseMessage.Id);
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
-            await ReplyAsync(creationResult.ErrorMessage ?? "Failed to start Tic Tac Toe game.").ConfigureAwait(false);
+            await responseMessage
+                .ModifyAsync(props =>
+                    props.Content = creationResult.ErrorMessage ?? "Failed to start Tic Tac Toe game.")
+                .ConfigureAwait(false);
             return;
         }
 
-        var responseMessage =
-            await ReplyAsync(components: creationResult.Component, flags: MessageFlags.ComponentsV2)
-                .ConfigureAwait(false);
+        await responseMessage.ModifyAsync(props =>
+        {
+            props.Content = "";
+            props.Components = creationResult.Component;
+            props.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
 
         if (creationResult.GameKey != null)
         {
             var game = gameSessionService.GetTicTacToeGame(creationResult.GameKey);
-            if (game is { IsGameOver: false, CurrentPlayer.IsBot: true })
+            if (game is { IsGameOver: false, CurrentPlayerIsBot: true })
             {
                 var botMove = await game.GetBestMoveAsync().ConfigureAwait(false);
                 if (botMove.HasValue)
                 {
                     var (row, col) = botMove.Value;
                     var updateResult = await gameSessionService.ProcessTicTacToeMoveAsync(creationResult.GameKey,
-                        game.CurrentPlayer, row, col, Context.Guild?.Id ?? 0).ConfigureAwait(false);
+                        Context.Client.CurrentUser, row, col, Context.Guild?.Id ?? 0).ConfigureAwait(false);
                     if (updateResult.Status != GameUpdateStatus.Error)
                         await responseMessage.ModifyAsync(props =>
                         {
@@ -160,15 +170,26 @@ public class GameModule(
             actualPlayer2 = player2Param;
         }
 
+        var responseMessage = await ReplyAsync("Starting Hand Cricket...").ConfigureAwait(false);
+
         var creationResult =
-            gameSessionService.StartHandCricketGame(actualPlayer1, actualPlayer2, Context.Channel.Id, Context.Guild.Id);
+            gameSessionService.StartHandCricketGame(actualPlayer1, actualPlayer2, Context.Channel.Id,
+                responseMessage.Id);
 
         if (creationResult.Status != GameCreationStatus.Success)
         {
-            await ReplyAsync(creationResult.ErrorMessage ?? "Failed to start Hand Cricket game.").ConfigureAwait(false);
+            await responseMessage
+                .ModifyAsync(props =>
+                    props.Content = creationResult.ErrorMessage ?? "Failed to start Hand Cricket game.")
+                .ConfigureAwait(false);
             return;
         }
 
-        await ReplyAsync(components: creationResult.Component, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+        await responseMessage.ModifyAsync(props =>
+        {
+            props.Content = "";
+            props.Components = creationResult.Component;
+            props.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
     }
 }

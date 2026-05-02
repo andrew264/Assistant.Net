@@ -1,40 +1,44 @@
-using Assistant.Net.Services.Data;
 using Assistant.Net.Services.Games.Models;
-using Discord;
-using Microsoft.Extensions.Logging;
 
 namespace Assistant.Net.Services.Games.Logic;
 
 public class RpsGame
 {
     private readonly Dictionary<ulong, RpsChoice> _choices = new();
-    private readonly GameStatsService? _gameStatsService;
-    private readonly ILogger _logger;
     private readonly Random _random = new();
 
-    public RpsGame(IUser player1, IUser player2, GameStatsService? gameStatsService, ILogger logger)
+    public RpsGame(ulong player1Id, string player1Name, bool p1IsBot, ulong player2Id, string player2Name, bool p2IsBot)
     {
-        Player1 = player1;
-        Player2 = player2;
-        _gameStatsService = gameStatsService;
-        _logger = logger;
+        Player1Id = player1Id;
+        Player1Name = player1Name;
+        Player2Id = player2Id;
+        Player2Name = player2Name;
 
-        _choices[Player1.Id] = RpsChoice.None;
-        _choices[Player2.Id] = RpsChoice.None;
+        P1IsBot = p1IsBot;
+        P2IsBot = p2IsBot;
 
-        if (Player1.IsBot)
-            _choices[Player1.Id] = GetRandomChoice();
-        if (Player2.IsBot)
-            _choices[Player2.Id] = GetRandomChoice();
+        _choices[Player1Id] = RpsChoice.None;
+        _choices[Player2Id] = RpsChoice.None;
+
+        if (P1IsBot)
+            _choices[Player1Id] = GetRandomChoice();
+        if (P2IsBot)
+            _choices[Player2Id] = GetRandomChoice();
     }
 
-    public IUser Player1 { get; }
-    public IUser Player2 { get; }
-    public bool BothPlayersChosen => HasChosen(Player1) && HasChosen(Player2);
+    public ulong Player1Id { get; }
+    public string Player1Name { get; }
+    public bool P1IsBot { get; }
 
-    public RpsChoice GetChoice(IUser player) => _choices.GetValueOrDefault(player.Id, RpsChoice.None);
+    public ulong Player2Id { get; }
+    public string Player2Name { get; }
+    public bool P2IsBot { get; }
 
-    public bool HasChosen(IUser player) => GetChoice(player) != RpsChoice.None;
+    public bool BothPlayersChosen => HasChosen(Player1Id) && HasChosen(Player2Id);
+
+    public RpsChoice GetChoice(ulong playerId) => _choices.GetValueOrDefault(playerId, RpsChoice.None);
+
+    public bool HasChosen(ulong playerId) => GetChoice(playerId) != RpsChoice.None;
 
     private RpsChoice GetRandomChoice()
     {
@@ -42,34 +46,32 @@ public class RpsGame
         return choices[_random.Next(choices.Length)];
     }
 
-    public bool MakeChoice(IUser player, RpsChoice choice)
+    public bool MakeChoice(ulong playerId, RpsChoice choice)
     {
-        if (!_choices.ContainsKey(player.Id) || choice == RpsChoice.None) return false;
-        if (HasChosen(player)) return false;
+        if (!_choices.ContainsKey(playerId) || choice == RpsChoice.None) return false;
+        if (HasChosen(playerId)) return false;
 
-        _choices[player.Id] = choice;
-        _logger.LogDebug("RPS Game ({P1} vs {P2}): {Player} chose {Choice}", Player1.Username, Player2.Username,
-            player.Username, choice);
+        _choices[playerId] = choice;
         return true;
     }
 
-    public IUser? GetWinner()
+    public ulong? GetWinnerId()
     {
         if (!BothPlayersChosen) return null;
 
-        var choice1 = _choices[Player1.Id];
-        var choice2 = _choices[Player2.Id];
+        var choice1 = _choices[Player1Id];
+        var choice2 = _choices[Player2Id];
 
         if (choice1 == choice2) return null;
 
         return (choice1, choice2) switch
         {
-            (RpsChoice.Rock, RpsChoice.Scissors) => Player1,
-            (RpsChoice.Paper, RpsChoice.Rock) => Player1,
-            (RpsChoice.Scissors, RpsChoice.Paper) => Player1,
-            (RpsChoice.Scissors, RpsChoice.Rock) => Player2,
-            (RpsChoice.Rock, RpsChoice.Paper) => Player2,
-            (RpsChoice.Paper, RpsChoice.Scissors) => Player2,
+            (RpsChoice.Rock, RpsChoice.Scissors) => Player1Id,
+            (RpsChoice.Paper, RpsChoice.Rock) => Player1Id,
+            (RpsChoice.Scissors, RpsChoice.Paper) => Player1Id,
+            (RpsChoice.Scissors, RpsChoice.Rock) => Player2Id,
+            (RpsChoice.Rock, RpsChoice.Paper) => Player2Id,
+            (RpsChoice.Paper, RpsChoice.Scissors) => Player2Id,
             _ => null
         };
     }
@@ -78,31 +80,7 @@ public class RpsGame
     {
         if (!BothPlayersChosen) return "Waiting for players...";
 
-        var winner = GetWinner();
-        return winner != null ? $"{winner.Mention} wins!" : "It's a tie!";
-    }
-
-    public async Task RecordStatsIfApplicable(ulong guildId)
-    {
-        if (!BothPlayersChosen || Player1.IsBot || Player2.IsBot || _gameStatsService == null) return;
-
-        var winner = GetWinner();
-        try
-        {
-            if (winner == Player1)
-                await _gameStatsService.RecordGameResultAsync(Player1.Id, Player2.Id, guildId,
-                    GameStatsService.RpsGameName).ConfigureAwait(false);
-            else if (winner == Player2)
-                await _gameStatsService.RecordGameResultAsync(Player2.Id, Player1.Id, guildId,
-                    GameStatsService.RpsGameName).ConfigureAwait(false);
-            else
-                await _gameStatsService.RecordGameResultAsync(Player1.Id, Player2.Id, guildId,
-                    GameStatsService.RpsGameName, true).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to record RPS game stats for Guild {GuildId} ({P1} vs {P2})", guildId,
-                Player1.Username, Player2.Username);
-        }
+        var winnerId = GetWinnerId();
+        return winnerId != null ? $"<@{winnerId}> wins!" : "It's a tie!";
     }
 }

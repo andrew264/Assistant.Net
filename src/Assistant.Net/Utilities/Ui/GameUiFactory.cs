@@ -67,33 +67,36 @@ public static class GameUiFactory
 
         if (game.BothPlayersChosen)
         {
-            var winner = game.GetWinner();
-            container.WithAccentColor(winner != null ? Color.Green : Color.DarkGrey);
+            var winnerId = game.GetWinnerId();
+            container.WithAccentColor(winnerId != null ? Color.Green : Color.DarkGrey);
+
+            var winnerName = winnerId == game.Player1Id ? game.Player1Name :
+                winnerId == game.Player2Id ? game.Player2Name : null;
 
             container.WithTextDisplay(
-                new TextDisplayBuilder(winner != null ? $"# {winner.Username} won!" : "# It's a tie!"));
-            container.WithTextDisplay(new TextDisplayBuilder($"{game.Player1.Mention} vs {game.Player2.Mention}"));
+                new TextDisplayBuilder(winnerName != null ? $"# {winnerName} won!" : "# It's a tie!"));
+            container.WithTextDisplay(new TextDisplayBuilder($"<@{game.Player1Id}> vs <@{game.Player2Id}>"));
             container.WithSeparator();
 
-            var p1Choice = game.GetChoice(game.Player1);
-            var p2Choice = game.GetChoice(game.Player2);
+            var p1Choice = game.GetChoice(game.Player1Id);
+            var p2Choice = game.GetChoice(game.Player2Id);
 
             container.WithTextDisplay(
-                new TextDisplayBuilder($"**{game.Player1.Username}:** {GetRpsChoiceEmoji(p1Choice)} {p1Choice}"));
+                new TextDisplayBuilder($"**{game.Player1Name}:** {GetRpsChoiceEmoji(p1Choice)} {p1Choice}"));
             container.WithTextDisplay(
-                new TextDisplayBuilder($"**{game.Player2.Username}:** {GetRpsChoiceEmoji(p2Choice)} {p2Choice}"));
+                new TextDisplayBuilder($"**{game.Player2Name}:** {GetRpsChoiceEmoji(p2Choice)} {p2Choice}"));
         }
         else
         {
             container.WithTextDisplay(new TextDisplayBuilder("# Rock Paper Scissors"));
-            container.WithTextDisplay(new TextDisplayBuilder($"{game.Player1.Mention} vs {game.Player2.Mention}"));
+            container.WithTextDisplay(new TextDisplayBuilder($"<@{game.Player1Id}> vs <@{game.Player2Id}>"));
             container.WithSeparator();
 
             string status;
-            if (game.HasChosen(game.Player1) && !game.HasChosen(game.Player2))
-                status = $"{game.Player1.Mention} has chosen! Waiting for {game.Player2.Mention}...";
-            else if (!game.HasChosen(game.Player1) && game.HasChosen(game.Player2))
-                status = $"{game.Player2.Mention} has chosen! Waiting for {game.Player1.Mention}...";
+            if (game.HasChosen(game.Player1Id) && !game.HasChosen(game.Player2Id))
+                status = $"<@{game.Player1Id}> has chosen! Waiting for <@{game.Player2Id}>...";
+            else if (!game.HasChosen(game.Player1Id) && game.HasChosen(game.Player2Id))
+                status = $"<@{game.Player2Id}> has chosen! Waiting for <@{game.Player1Id}>...";
             else
                 status = "Choose your weapon!";
 
@@ -122,11 +125,11 @@ public static class GameUiFactory
         switch (game.Result)
         {
             case GameResultState.XWins:
-                statusMessage = $"**{game.Player1.Mention} wins!**";
+                statusMessage = $"**<@{game.Player1Id}> wins!**";
                 container.WithAccentColor(Color.Green);
                 break;
             case GameResultState.OWins:
-                statusMessage = $"**{game.Player2.Mention} wins!**";
+                statusMessage = $"**<@{game.Player2Id}> wins!**";
                 container.WithAccentColor(Color.Green);
                 break;
             case GameResultState.Tie:
@@ -135,13 +138,13 @@ public static class GameUiFactory
                 break;
             case GameResultState.None:
             default:
-                statusMessage = $"It's {game.CurrentPlayer.Mention}'s turn!";
+                statusMessage = $"It's {game.CurrentPlayerMention}'s turn!";
                 break;
         }
 
         container
             .WithTextDisplay(new TextDisplayBuilder("# Tic Tac Toe"))
-            .WithTextDisplay(new TextDisplayBuilder($"{game.Player1.Mention} (❌) vs {game.Player2.Mention} (⭕)"))
+            .WithTextDisplay(new TextDisplayBuilder($"<@{game.Player1Id}> (❌) vs <@{game.Player2Id}> (⭕)"))
             .WithTextDisplay(new TextDisplayBuilder(statusMessage));
 
         if (game is { IsGameOver: false, IsBotGuaranteedWin: true } && !string.IsNullOrEmpty(game.BotTaunt))
@@ -194,14 +197,14 @@ public static class GameUiFactory
         var container = new ContainerBuilder();
 
         container.AddComponent(
-            new TextDisplayBuilder($"# Hand Cricket: {game.Player1.Username} vs {game.Player2.Username}"));
+            new TextDisplayBuilder($"# Hand Cricket: {game.Player1Name} vs {game.Player2Name}"));
         container.AddComponent(new TextDisplayBuilder($"*Phase: {GetHumanPhaseName(game.CurrentPhase)}*"));
         container.WithSeparator();
 
-        var p1Role = game.CurrentBatterId == game.Player1.Id ? "🏏" : "⚾";
-        var p2Role = game.CurrentBatterId == game.Player2.Id ? "🏏" : "⚾";
-        container.AddComponent(new TextDisplayBuilder($"**{game.Player1.Username} {p1Role}:** {game.Player1Score}"));
-        container.AddComponent(new TextDisplayBuilder($"**{game.Player2.Username} {p2Role}:** {game.Player2Score}"));
+        var p1Role = game.CurrentBatterId == game.Player1Id ? "🏏" : "⚾";
+        var p2Role = game.CurrentBatterId == game.Player2Id ? "🏏" : "⚾";
+        container.AddComponent(new TextDisplayBuilder($"**{game.Player1Name} {p1Role}:** {game.Player1Score}"));
+        container.AddComponent(new TextDisplayBuilder($"**{game.Player2Name} {p2Role}:** {game.Player2Score}"));
 
         var targetScore = game.GetTargetScore();
         if (targetScore > 0 && game.CurrentPhase == HandCricketPhase.Inning2Batting)

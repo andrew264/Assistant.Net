@@ -1,7 +1,3 @@
-using Assistant.Net.Services.Data;
-using Discord;
-using Microsoft.Extensions.Logging;
-
 namespace Assistant.Net.Services.Games.Logic;
 
 public enum PlayerMarker
@@ -26,28 +22,40 @@ public class TicTacToeGame
     private const PlayerMarker Player1Marker = PlayerMarker.X;
     private const PlayerMarker Player2Marker = PlayerMarker.O;
 
-    private readonly GameStatsService? _gameStatsService;
-    private readonly ILogger _logger;
     private readonly Random _random = new();
 
-    public TicTacToeGame(IUser player1, IUser player2, string gameId, GameStatsService? gameStatsService,
-        ILogger logger)
+    public TicTacToeGame(ulong player1Id, string player1Name, bool p1IsBot, ulong player2Id, string player2Name,
+        bool p2IsBot, string gameId)
     {
-        Player1 = player1;
-        Player2 = player2;
-        GameId = gameId;
-        _gameStatsService = gameStatsService;
-        _logger = logger;
+        Player1Id = player1Id;
+        Player1Name = player1Name;
+        P1IsBot = p1IsBot;
 
-        CurrentPlayer = Player1;
+        Player2Id = player2Id;
+        Player2Name = player2Name;
+        P2IsBot = p2IsBot;
+
+        GameId = gameId;
+
+        CurrentPlayerId = Player1Id;
         InitializeBoard();
     }
 
     public string GameId { get; }
-    public IUser Player1 { get; }
-    public IUser Player2 { get; }
-    public IUser CurrentPlayer { get; private set; }
-    private PlayerMarker CurrentMarker => GetPlayerMarker(CurrentPlayer);
+
+    public ulong Player1Id { get; }
+    public string Player1Name { get; }
+    public bool P1IsBot { get; }
+
+    public ulong Player2Id { get; }
+    public string Player2Name { get; }
+    public bool P2IsBot { get; }
+
+    public ulong CurrentPlayerId { get; private set; }
+    public bool CurrentPlayerIsBot => CurrentPlayerId == Player1Id ? P1IsBot : P2IsBot;
+    public string CurrentPlayerMention => $"<@{CurrentPlayerId}>";
+
+    private PlayerMarker CurrentMarker => GetPlayerMarker(CurrentPlayerId);
 
     private PlayerMarker[,] Board { get; } = new PlayerMarker[BoardSize, BoardSize];
     private int MovesMade { get; set; }
@@ -67,21 +75,21 @@ public class TicTacToeGame
             Board[i, j] = PlayerMarker.None;
     }
 
-    private PlayerMarker GetPlayerMarker(IUser user)
+    private PlayerMarker GetPlayerMarker(ulong userId)
     {
-        return user.Id switch
+        return userId switch
         {
-            var id when id == Player1.Id => Player1Marker,
-            var id when id == Player2.Id => Player2Marker,
+            var id when id == Player1Id => Player1Marker,
+            var id when id == Player2Id => Player2Marker,
             _ => PlayerMarker.None
         };
     }
 
-    public bool IsPlayerTurn(IUser user) => !IsGameOver && user.Id == CurrentPlayer.Id;
+    public bool IsPlayerTurn(ulong userId) => !IsGameOver && userId == CurrentPlayerId;
 
-    public bool IsPlayerInGame(IUser user) => user.Id == Player1.Id || user.Id == Player2.Id;
+    public bool IsPlayerInGame(ulong userId) => userId == Player1Id || userId == Player2Id;
 
-    private IUser OtherPlayer(IUser user) => user.Id == Player1.Id ? Player2 : Player1;
+    private ulong OtherPlayerId(ulong userId) => userId == Player1Id ? Player2Id : Player1Id;
 
     public bool MakeMove(int row, int col)
     {
@@ -93,7 +101,7 @@ public class TicTacToeGame
         CheckForGameOver();
 
         if (!IsGameOver)
-            CurrentPlayer = OtherPlayer(CurrentPlayer);
+            CurrentPlayerId = OtherPlayerId(CurrentPlayerId);
 
         return true;
     }
@@ -113,14 +121,14 @@ public class TicTacToeGame
 
     public async Task<(int row, int col)?> GetBestMoveAsync()
     {
-        if (!CurrentPlayer.IsBot || IsGameOver)
+        if (!CurrentPlayerIsBot || IsGameOver)
             return null;
 
         var result = await Task.Run(FindBestMoveInternal).ConfigureAwait(false);
 
         if (result?.score is not { } score || MovesMade < 3) return result?.move;
 
-        var botMarker = GetPlayerMarker(CurrentPlayer);
+        var botMarker = GetPlayerMarker(CurrentPlayerId);
         var botWinScore = botMarker == PlayerMarker.O ? 1 : -1;
 
         if (Math.Sign(score) != Math.Sign(botWinScore) || IsBotGuaranteedWin) return result.Value.move;
@@ -198,14 +206,8 @@ public class TicTacToeGame
             return (bestMoves[_random.Next(bestMoves.Count)], bestScore);
 
         if (availableMoves.Count > 0)
-        {
-            _logger.LogWarning(
-                "Minimax couldn't determine best move for Game {GameId}, falling back to random.", GameId);
             return (availableMoves[_random.Next(availableMoves.Count)], null);
-        }
 
-        _logger.LogError(
-            "Minimax failed to find a move for Game {GameId} when board is not full.", GameId);
         return null;
     }
 
@@ -327,33 +329,5 @@ public class TicTacToeGame
             (center == board[0, 2] && center == board[2, 0])) return center;
 
         return PlayerMarker.None;
-    }
-
-    public async Task RecordStatsIfApplicable(ulong guildId)
-    {
-        if (!IsGameOver || _gameStatsService == null || Player1.IsBot || Player2.IsBot)
-            return;
-
-        var playerXId = Player1.Id;
-        var playerOId = Player2.Id;
-
-        try
-        {
-            var recordTask = Result switch
-            {
-                GameResultState.XWins => _gameStatsService.RecordGameResultAsync(
-                    playerXId, playerOId, guildId, GameStatsService.TicTacToeGameName),
-                GameResultState.OWins => _gameStatsService.RecordGameResultAsync(
-                    playerOId, playerXId, guildId, GameStatsService.TicTacToeGameName),
-                GameResultState.Tie => _gameStatsService.RecordGameResultAsync(
-                    playerXId, playerOId, guildId, GameStatsService.TicTacToeGameName, true),
-                _ => Task.CompletedTask
-            };
-            await recordTask.ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to record game stats for game {GameId} in guild {GuildId}", GameId, guildId);
-        }
     }
 }

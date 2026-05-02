@@ -139,6 +139,7 @@ builder.Services.AddSingleton<PlaylistService>();
 builder.Services.AddSingleton<UserService>();
 builder.Services.AddSingleton<GuildService>();
 builder.Services.AddSingleton<GameSessionService>();
+builder.Services.AddHostedService<GameTimeoutSweeperService>();
 builder.Services.AddSingleton<PollService>();
 builder.Services.AddSingleton<StarboardConfigService>();
 builder.Services.AddSingleton<LoggingConfigService>();
