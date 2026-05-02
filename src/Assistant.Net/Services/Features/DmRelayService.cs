@@ -1,4 +1,6 @@
 using System.Text;
+using Assistant.Net.Data.Entities;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Assistant.Net.Options;
 using Assistant.Net.Services.Core;
 using Assistant.Net.Utilities;
@@ -17,12 +19,10 @@ public class DmRelayService(
     IOptions<DiscordOptions> options,
     ILogger<DmRelayService> logger,
     IHttpClientFactory httpClientFactory,
-    WebhookService webhookService)
+    WebhookService webhookService,
+    IUnitOfWorkFactory uowFactory)
     : IHostedService
 {
-    private const string ChannelTopicPrefix = "USERID:";
-    private const string MessageIdPrefix = "MSGID:";
-
     private readonly DiscordOptions _options = options.Value;
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -44,6 +44,7 @@ public class DmRelayService(
         logger.LogInformation("DmRelayService stopped and events unhooked.");
         return Task.CompletedTask;
     }
+
     // --- Event Handlers ---
 
     private Task HandleMessageReceivedAsync(SocketMessage message)
@@ -96,10 +97,22 @@ public class DmRelayService(
 
             try
             {
-                await webhookClient.SendFilesAsync(files, messageContent,
+                var relayMessageId = await webhookClient.SendFilesAsync(files, messageContent,
                         username: after.Author.Username,
                         avatarUrl: after.Author.GetDisplayAvatarUrl() ?? after.Author.GetDefaultAvatarUrl())
                     .ConfigureAwait(false);
+
+                // Map this new edit notification message so the owner can reply to it as well
+                await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+                await uow.Users.EnsureExistsAsync(after.Author.Id).ConfigureAwait(false);
+                uow.DmRelay.AddMapping(new DmRelayMappingEntity
+                {
+                    UserId = after.Author.Id,
+                    OriginalMessageId = after.Id,
+                    RelayMessageId = relayMessageId
+                });
+                await uow.SaveChangesAsync().ConfigureAwait(false);
+
                 await after.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -119,14 +132,12 @@ public class DmRelayService(
     {
         return Task.Run(async () =>
         {
-            // Ensure the channel is a DM channel before proceeding
             var channel = channelCache.HasValue
                 ? channelCache.Value
                 : await channelCache.GetOrDownloadAsync().ConfigureAwait(false);
             if (channel is not IDMChannel) return;
 
             var message = await messageCache.GetOrDownloadAsync().ConfigureAwait(false);
-            // Don't relay deletion notices for bot messages or if message data is unavailable
             if (message == null || message.Author.IsBot) return;
 
             logger.LogInformation("[DELETED DM] from {User} ({UserId}): {Content}", message.Author, message.Author.Id,
@@ -153,13 +164,13 @@ public class DmRelayService(
     }
 
     // --- Processing Logic ---
+
     private async Task ProcessIncomingDmAsync(SocketMessage message)
     {
         logger.LogInformation("[NEW DM] from {User} ({UserId}): {Content}", message.Author, message.Author.Id,
             message.Content);
 
-        var webhookClient =
-            await GetOrCreateUserRelayWebhookAsync(message.Author).ConfigureAwait(false); // Changed to use helper
+        var webhookClient = await GetOrCreateUserRelayWebhookAsync(message.Author).ConfigureAwait(false);
         if (webhookClient == null)
         {
             await message.Channel.SendMessageAsync("Sorry, I encountered an error setting up the DM relay.")
@@ -173,10 +184,22 @@ public class DmRelayService(
 
         try
         {
-            await webhookClient.SendFilesAsync(files, messageContent,
+            var relayMessageId = await webhookClient.SendFilesAsync(files, messageContent,
                     username: message.Author.Username,
                     avatarUrl: message.Author.GetDisplayAvatarUrl() ?? message.Author.GetDefaultAvatarUrl())
                 .ConfigureAwait(false);
+
+            await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+            await uow.Users.EnsureExistsAsync(message.Author.Id).ConfigureAwait(false);
+
+            uow.DmRelay.AddMapping(new DmRelayMappingEntity
+            {
+                UserId = message.Author.Id,
+                OriginalMessageId = message.Id,
+                RelayMessageId = relayMessageId
+            });
+            await uow.SaveChangesAsync().ConfigureAwait(false);
+
             await message.AddReactionAsync(Emoji.Parse("✅")).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -200,18 +223,21 @@ public class DmRelayService(
 
     private async Task ProcessOwnerRelayMessageAsync(SocketMessage message, SocketTextChannel textChannel)
     {
-        var userId = ExtractUserIdFromTopic(textChannel.Topic);
-        if (userId == null)
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        var channelRecord = await uow.DmRelay.GetChannelByDiscordIdAsync(textChannel.Id).ConfigureAwait(false);
+
+        if (channelRecord == null)
         {
-            logger.LogWarning("Could not parse UserID from topic '{Topic}' in relay channel {ChannelId}",
-                textChannel.Topic, textChannel.Id);
+            logger.LogWarning("Could not find mapped UserID for relay channel {ChannelId}", textChannel.Id);
             return;
         }
 
-        var user = client.GetUser(userId.Value);
+        var userId = channelRecord.UserId;
+        var user = client.GetUser(userId);
+
         if (user == null)
         {
-            logger.LogError("Failed to find user with ID {UserId} for relay from channel {ChannelId}", userId.Value,
+            logger.LogError("Failed to find user with ID {UserId} for relay from channel {ChannelId}", userId,
                 textChannel.Id);
             await message.AddReactionAsync(Emoji.Parse("❓")).ConfigureAwait(false);
             return;
@@ -224,21 +250,29 @@ public class DmRelayService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to create DM channel for user {UserId}", userId.Value);
+            logger.LogError(ex, "Failed to create DM channel for user {UserId}", userId);
             await message.AddReactionAsync(Emoji.Parse("❌")).ConfigureAwait(false);
             return;
         }
 
-        // Check for reply reference
-        var replyMessageReference = await GetReplyReferenceAsync(message, textChannel, dmChannel).ConfigureAwait(false);
+        var replyMessageReference = await GetReplyReferenceAsync(message, dmChannel).ConfigureAwait(false);
         var files = await AttachmentUtils.DownloadAttachmentsAsync(message.Attachments, httpClientFactory, logger)
             .ConfigureAwait(false);
 
         try
         {
-            await dmChannel.SendFilesAsync(files, message.Content,
+            var sentDm = await dmChannel.SendFilesAsync(files, message.Content,
                 embeds: message.Embeds.ToArray(),
                 messageReference: replyMessageReference).ConfigureAwait(false);
+
+            await using var uow2 = await uowFactory.CreateAsync().ConfigureAwait(false);
+            uow2.DmRelay.AddMapping(new DmRelayMappingEntity
+            {
+                UserId = userId,
+                OriginalMessageId = sentDm.Id,
+                RelayMessageId = message.Id
+            });
+            await uow2.SaveChangesAsync().ConfigureAwait(false);
 
             logger.LogInformation("[DM SENT by Owner] to {User} ({UserId}): {Content}", user, user.Id,
                 message.Content);
@@ -247,7 +281,7 @@ public class DmRelayService(
         catch (HttpException httpEx) when (httpEx.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
         {
             logger.LogError(httpEx, "Failed to send DM to user {UserId} (User blocked bot or disabled DMs)",
-                userId.Value);
+                userId);
             await message.AddReactionAsync(Emoji.Parse("❌")).ConfigureAwait(false);
             await message.Channel.SendMessageAsync(
                 "Failed to send DM. User might have DMs disabled or blocked the bot.",
@@ -255,7 +289,7 @@ public class DmRelayService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to send owner relay DM to user {UserId}", userId.Value);
+            logger.LogError(ex, "Failed to send owner relay DM to user {UserId}", userId);
             await message.AddReactionAsync(Emoji.Parse("❌")).ConfigureAwait(false);
         }
         finally
@@ -282,23 +316,28 @@ public class DmRelayService(
             return null;
         }
 
-        // Find or create the user-specific channel
-        var userTopic = $"{ChannelTopicPrefix}{user.Id}";
-        var targetChannel = categoryChannel.Channels
-            .OfType<SocketTextChannel>()
-            .FirstOrDefault(c => c.Topic == userTopic);
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        var channelRecord = await uow.DmRelay.GetChannelAsync(user.Id).ConfigureAwait(false);
+        SocketTextChannel? targetChannel = null;
+
+        if (channelRecord != null)
+            targetChannel = categoryChannel.Channels
+                .OfType<SocketTextChannel>()
+                .FirstOrDefault(c => c.Id == channelRecord.ChannelId);
 
         if (targetChannel != null)
             return await webhookService.GetOrCreateWebhookClientAsync(targetChannel.Id).ConfigureAwait(false);
-        targetChannel = await CreateRelayChannelAsync(user, categoryChannel, guild, botGuildUser, userTopic)
+
+        targetChannel = await CreateRelayChannelAsync(user, categoryChannel, guild, botGuildUser, uow)
             .ConfigureAwait(false);
-        if (targetChannel == null) return null; // Failed to create channel
+
+        if (targetChannel == null) return null;
 
         return await webhookService.GetOrCreateWebhookClientAsync(targetChannel.Id).ConfigureAwait(false);
     }
 
     private async Task<SocketTextChannel?> CreateRelayChannelAsync(IUser user, SocketCategoryChannel categoryChannel,
-        SocketGuild guild, SocketGuildUser botGuildUser, string userTopic)
+        SocketGuild guild, SocketGuildUser botGuildUser, IUnitOfWork uow)
     {
         if (!botGuildUser.GuildPermissions.ManageChannels)
         {
@@ -307,9 +346,6 @@ public class DmRelayService(
                 categoryChannel.Name, categoryChannel.Id, user.Username, user.Id);
             return null;
         }
-
-        // ManageWebhooks permission is checked by WebhookService for the target channel.
-        // Here, we only need ManageChannels for the category.
 
         logger.LogInformation("Relay channel for user {User} ({UserId}) not found. Creating...", user.Username,
             user.Id);
@@ -320,7 +356,6 @@ public class DmRelayService(
             var createdRestChannel = await guild.CreateTextChannelAsync(channelName, props =>
             {
                 props.CategoryId = categoryChannel.Id;
-                props.Topic = userTopic;
                 props.PermissionOverwrites = new List<Overwrite>
                 {
                     new(guild.EveryoneRole.Id, PermissionTarget.Role,
@@ -328,21 +363,20 @@ public class DmRelayService(
                     new(botGuildUser.Id, PermissionTarget.User,
                         new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow,
                             manageMessages: PermValue.Allow,
-                            manageWebhooks: PermValue.Allow, // Bot needs manage webhooks here
+                            manageWebhooks: PermValue.Allow,
                             readMessageHistory: PermValue.Allow)),
-                    new(_options.OwnerId, PermissionTarget.User, // Assuming OwnerId is configured
+                    new(_options.OwnerId, PermissionTarget.User,
                         new OverwritePermissions(viewChannel: PermValue.Allow, sendMessages: PermValue.Allow,
                             manageMessages: PermValue.Allow, readMessageHistory: PermValue.Allow,
                             manageChannel: PermValue.Allow))
                 };
             }).ConfigureAwait(false);
 
-            // Fetch the SocketTextChannel instance after creation
             var targetChannel = client.GetChannel(createdRestChannel.Id) as SocketTextChannel;
 
             if (targetChannel == null)
             {
-                await Task.Delay(1000).ConfigureAwait(false); // Wait a moment for cache to update
+                await Task.Delay(1000).ConfigureAwait(false);
                 targetChannel = client.GetChannel(createdRestChannel.Id) as SocketTextChannel;
                 if (targetChannel == null)
                 {
@@ -352,6 +386,15 @@ public class DmRelayService(
                     return null;
                 }
             }
+
+            await uow.Users.EnsureExistsAsync(user.Id).ConfigureAwait(false);
+            var channelRecord = await uow.DmRelay.GetChannelAsync(user.Id).ConfigureAwait(false);
+
+            if (channelRecord == null)
+                uow.DmRelay.AddChannel(new DmRelayChannelEntity { UserId = user.Id, ChannelId = targetChannel.Id });
+            else
+                channelRecord.ChannelId = targetChannel.Id;
+            await uow.SaveChangesAsync().ConfigureAwait(false);
 
             logger.LogInformation("Created relay channel {ChannelName} ({ChannelId}) for user {User} ({UserId})",
                 targetChannel.Name, targetChannel.Id, user.Username, user.Id);
@@ -366,19 +409,15 @@ public class DmRelayService(
             return null;
         }
     }
+
     // --- Helper Methods for Building Message Content ---
 
     private static string BuildEditedMessageContent(IMessage? before, SocketMessage after)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"{MessageIdPrefix}{after.Id}");
-        sb.AppendLine();
 
         if (after.Reference is { MessageId.IsSpecified: true })
-            // For simplicity, we won't resolve the replied-to message content here in the log.
-            // The owner can see the reply context in the relay channel itself.
             sb.AppendLine($"- Replying to a message (Original ID in DM: {after.Reference.MessageId.Value})");
-
 
         if (before?.Content != null)
         {
@@ -393,40 +432,31 @@ public class DmRelayService(
             AppendUrlIfPresent(sb, after.Content);
         }
 
-        sb.AppendLine("----------");
         return sb.ToString();
     }
 
     private static string BuildDeletedMessageContent(IMessage message)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"- Deleted Message (ID: {message.Id}):");
+        sb.AppendLine("- Deleted Message:");
         sb.AppendLine($"```{SanitizeCodeBlock(message.Content ?? "*(No text content)*")}```");
 
         if (message.Attachments.Count != 0)
             sb.AppendLine($"- Attachments: {message.Attachments.Count} (cannot be displayed)");
-
-        sb.AppendLine("----------");
         return sb.ToString();
     }
 
     private async Task<string> BuildNewMessageContentAsync(SocketMessage message)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"{MessageIdPrefix}{message.Id}");
-        sb.AppendLine();
 
         if (message.Reference is { MessageId.IsSpecified: true })
             await AppendReferencedMessageInfoAsync(sb, message).ConfigureAwait(false);
 
-        if (!string.IsNullOrWhiteSpace(message.Content))
-        {
-            sb.AppendLine("- Content:");
-            sb.AppendLine($"```{SanitizeCodeBlock(message.Content)}```");
-            AppendUrlIfPresent(sb, message.Content);
-        }
-
-        sb.AppendLine("----------");
+        if (string.IsNullOrWhiteSpace(message.Content)) return sb.ToString();
+        sb.AppendLine("- Content:");
+        sb.AppendLine($"```{SanitizeCodeBlock(message.Content)}```");
+        AppendUrlIfPresent(sb, message.Content);
         return sb.ToString();
     }
 
@@ -437,7 +467,6 @@ public class DmRelayService(
         IMessage? referencedMessage = null;
         try
         {
-            // Try fetching from the DM channel context
             referencedMessage = await message.Channel.GetMessageAsync(message.Reference.MessageId.Value)
                 .ConfigureAwait(false);
         }
@@ -454,64 +483,47 @@ public class DmRelayService(
             sb.AppendLine("- Replying to: *[Message not found or inaccessible]*");
     }
 
-
     private static void AppendUrlIfPresent(StringBuilder sb, string content)
     {
         var urlMatch = RegexPatterns.Url().Match(content);
         if (urlMatch.Success) sb.AppendLine($"URL: {urlMatch.Groups["url"].Value}");
     }
 
-    private async Task<MessageReference?> GetReplyReferenceAsync(SocketMessage message, SocketTextChannel textChannel,
-        IDMChannel dmChannel)
+    private async Task<MessageReference?> GetReplyReferenceAsync(SocketMessage message, IDMChannel dmChannel)
     {
         if (message.Reference?.MessageId.IsSpecified != true) return null;
 
-        var referencedWebhookMsg =
-            await textChannel.GetMessageAsync(message.Reference.MessageId.Value).ConfigureAwait(false);
-        if (referencedWebhookMsg == null || !referencedWebhookMsg.Author.IsWebhook) return null;
+        var relayMsgId = message.Reference.MessageId.Value;
 
-        var originalDmId = ExtractMessageIdFromWebhookContent(referencedWebhookMsg.Content);
-        if (!originalDmId.HasValue) return null;
+        await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+        var mapping = await uow.DmRelay.GetMappingByRelayIdAsync(relayMsgId).ConfigureAwait(false);
+
+        if (mapping == null) return null;
+
+        var originalDmId = mapping.OriginalMessageId;
 
         logger.LogDebug("Replying to original DM {OriginalDmId} in DM channel {DmChannelId}",
-            originalDmId.Value, dmChannel.Id);
+            originalDmId, dmChannel.Id);
 
-        // Verify the message exists in the DM channel before creating a reference
         try
         {
-            await dmChannel.GetMessageAsync(originalDmId.Value).ConfigureAwait(false);
-            return new MessageReference(originalDmId.Value, dmChannel.Id, null, false);
+            await dmChannel.GetMessageAsync(originalDmId).ConfigureAwait(false);
+            return new MessageReference(originalDmId, dmChannel.Id, null, false);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error fetching original DM {OriginalDmId} for reply reference.", originalDmId.Value);
+            logger.LogError(ex, "Error fetching original DM {OriginalDmId} for reply reference.", originalDmId);
             return null;
         }
     }
 
     // --- Utility Methods ---
+
     private static string SanitizeChannelName(IUser user)
     {
         var channelName = RegexPatterns.SanitizeText().Replace(user.Username, "").ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(channelName)) channelName = $"user-{user.Id}";
         return channelName.Truncate(100);
-    }
-
-    private static ulong? ExtractUserIdFromTopic(string? topic)
-    {
-        if (string.IsNullOrEmpty(topic) || !topic.StartsWith(ChannelTopicPrefix)) return null;
-
-        return ulong.TryParse(topic.AsSpan(ChannelTopicPrefix.Length), out var userId) ? userId : null;
-    }
-
-    private static ulong? ExtractMessageIdFromWebhookContent(string? content)
-    {
-        if (string.IsNullOrWhiteSpace(content)) return null;
-
-        var firstLine = content.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-        if (firstLine == null || !firstLine.StartsWith(MessageIdPrefix)) return null;
-
-        return ulong.TryParse(firstLine.AsSpan(MessageIdPrefix.Length), out var messageId) ? messageId : null;
     }
 
     public static string SanitizeCodeBlock(string? content) =>

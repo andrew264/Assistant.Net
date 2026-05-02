@@ -1,4 +1,6 @@
 using System.Text;
+using Assistant.Net.Data.Entities;
+using Assistant.Net.Data.Repositories.Interfaces;
 using Assistant.Net.Modules.Shared.Attributes;
 using Assistant.Net.Services.Features;
 using Assistant.Net.Utilities;
@@ -12,11 +14,10 @@ namespace Assistant.Net.Modules.Admin.Prefix;
 public class DmRelayModule(
     DmRelayService dmRelayService,
     ILogger<DmRelayModule> logger,
-    IHttpClientFactory httpClientFactory)
+    IHttpClientFactory httpClientFactory,
+    IUnitOfWorkFactory uowFactory)
     : ModuleBase<SocketCommandContext>
 {
-    private const string MessageIdPrefix = "MSGID:";
-
     [Command("dm", RunMode = RunMode.Async)]
     [Summary("Sends a direct message to a user.")]
     [RequireBotOwner]
@@ -83,8 +84,6 @@ public class DmRelayModule(
                 logger).ConfigureAwait(false);
 
             var sb = new StringBuilder();
-            sb.AppendLine($"{MessageIdPrefix}{sentDmMessage.Id}");
-            sb.AppendLine();
             if (!string.IsNullOrWhiteSpace(sentDmMessage.Content))
             {
                 sb.AppendLine("- Content:");
@@ -93,8 +92,7 @@ public class DmRelayModule(
                 if (urlMatch.Success) sb.AppendLine($"URL: {urlMatch.Groups["url"].Value}");
             }
 
-            sb.AppendLine("----------");
-            var webhookClient = await dmRelayService.GetOrCreateUserRelayWebhookAsync(Context.User)
+            var webhookClient = await dmRelayService.GetOrCreateUserRelayWebhookAsync(recipientUser)
                 .ConfigureAwait(false);
             if (webhookClient == null)
             {
@@ -102,10 +100,19 @@ public class DmRelayModule(
                 return;
             }
 
-            await webhookClient.SendFilesAsync(logFiles, sb.ToString(),
+            var relayMsgId = await webhookClient.SendFilesAsync(logFiles, sb.ToString(),
                     username: Context.User.Username,
                     avatarUrl: Context.User.GetDisplayAvatarUrl() ?? Context.User.GetDefaultAvatarUrl())
                 .ConfigureAwait(false);
+            await using var uow = await uowFactory.CreateAsync().ConfigureAwait(false);
+            await uow.Users.EnsureExistsAsync(recipientUser.Id).ConfigureAwait(false);
+            uow.DmRelay.AddMapping(new DmRelayMappingEntity
+            {
+                UserId = recipientUser.Id,
+                OriginalMessageId = sentDmMessage.Id,
+                RelayMessageId = relayMsgId
+            });
+            await uow.SaveChangesAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {

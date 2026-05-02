@@ -12,6 +12,7 @@ public class UnitOfWork(AssistantDbContext context) : IUnitOfWork
     public IReminderRepository Reminders => field ??= new ReminderRepository(context);
     public IStarboardRepository Starboard => field ??= new StarboardRepository(context);
     public ILoggingConfigRepository Logging => field ??= new LoggingConfigRepository(context);
+    public IDmRelayRepository DmRelay => field ??= new DmRelayRepository(context);
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) =>
         await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

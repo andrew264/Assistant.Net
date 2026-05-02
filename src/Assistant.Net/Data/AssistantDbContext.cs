@@ -23,6 +23,9 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
     public DbSet<StarredMessageEntity> StarredMessages { get; set; }
     public DbSet<StarVoteEntity> StarVotes { get; set; }
 
+    public DbSet<DmRelayChannelEntity> DmRelayChannels { get; set; }
+    public DbSet<DmRelayMappingEntity> DmRelayMappings { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -145,5 +148,8 @@ public class AssistantDbContext(DbContextOptions<AssistantDbContext> options) : 
                 .HasForeignKey(e => e.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<DmRelayChannelEntity>(entity => { entity.Property(e => e.UserId); });
+        modelBuilder.Entity<DmRelayMappingEntity>(entity => { entity.HasIndex(e => e.RelayMessageId); });
     }
 }

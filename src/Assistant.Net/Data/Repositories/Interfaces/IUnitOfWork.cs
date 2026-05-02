@@ -10,6 +10,7 @@ public interface IUnitOfWork : IAsyncDisposable, IDisposable
     IReminderRepository Reminders { get; }
     IStarboardRepository Starboard { get; }
     ILoggingConfigRepository Logging { get; }
+    IDmRelayRepository DmRelay { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }
