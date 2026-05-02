@@ -147,20 +147,12 @@ public class VotingModule(ILogger<VotingModule> logger, PollService pollService)
         }
     }
 
-    [ComponentInteraction("poll:vote:*", true)]
-    public async Task HandleVoteButtonAsync()
+    [ComponentInteraction("poll:vote:*:*:*", true)]
+    public async Task HandleVoteButtonAsync(ulong userId, string encodedWinner, string encodedLoser)
     {
         if (Context.Interaction is not SocketMessageComponent component) return;
 
-        var customIdParts = component.Data.CustomId.Split(':');
-        if (customIdParts.Length != 6)
-        {
-            logger.LogWarning("Invalid vote button CustomId format: {CustomId}", component.Data.CustomId);
-            await component.RespondAsync("Invalid button data.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        if (!ulong.TryParse(customIdParts[3], out var userIdFromId) || userIdFromId != Context.User.Id)
+        if (userId != Context.User.Id)
         {
             await component.RespondAsync("This button isn't for you!", ephemeral: true).ConfigureAwait(false);
             return;
@@ -169,8 +161,8 @@ public class VotingModule(ILogger<VotingModule> logger, PollService pollService)
         string winner, loser;
         try
         {
-            winner = EloRatingSystem.DecodeCandidate(customIdParts[4]);
-            loser = EloRatingSystem.DecodeCandidate(customIdParts[5]);
+            winner = EloRatingSystem.DecodeCandidate(encodedWinner);
+            loser = EloRatingSystem.DecodeCandidate(encodedLoser);
         }
         catch (FormatException ex)
         {

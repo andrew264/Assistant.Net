@@ -47,6 +47,7 @@ public class WebhookService(
         finally
         {
             channelLock.Release();
+            _channelLocks.TryRemove(channelId, out _);
         }
     }
 

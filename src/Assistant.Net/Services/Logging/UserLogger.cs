@@ -51,7 +51,7 @@ public class UserLogger(
         {
             if (after.IsBot) return;
 
-            var before = beforeCache.HasValue ? beforeCache.Value : null;
+            var before = await beforeCache.GetOrDownloadAsync();
             if (before == null || before.DisplayName == after.DisplayName) return;
 
             var logConfig = await loggingConfigService.GetLogConfigAsync(after.Guild.Id, LogType.User)
