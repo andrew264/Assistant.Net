@@ -76,11 +76,7 @@ public class StarboardConfigService(
 
     private void AddToCache(string key, StarboardConfigEntity config)
     {
-        var cacheEntryOptions = new MemoryCacheEntryOptions()
-            .SetAbsoluteExpiration(CacheDuration)
-            .SetSize(1);
-
-        memoryCache.Set(key, config, cacheEntryOptions);
+        memoryCache.Set(key, config);
         _cacheKeysQueue.Enqueue(config.GuildId);
 
         while (_cacheKeysQueue.Count > CacheSize && _cacheKeysQueue.TryDequeue(out var oldestGuildId))

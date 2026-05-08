@@ -87,11 +87,7 @@ public class GeniusLyricsService(
 
             if (songs.Count == 0) logger.LogInformation("No songs found on Genius for query: '{Query}'", searchQuery);
 
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(CacheDuration)
-                .SetSize(1);
-
-            memoryCache.Set(cacheKey, songs, cacheEntryOptions);
+            memoryCache.Set(cacheKey, songs);
             logger.LogDebug("Cached {Count} Genius songs for query: '{Query}'", songs.Count, normalizedQuery);
 
             return songs;
@@ -164,11 +160,7 @@ public class GeniusLyricsService(
             }
 
             var song = geniusResponse.Response.Song;
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(CacheDuration)
-                .SetSize(1);
-
-            memoryCache.Set(cacheKey, song, cacheEntryOptions);
+            memoryCache.Set(cacheKey, song);
             logger.LogDebug("Cached Genius song for ID: {SongId}", songId);
 
             return song;
@@ -272,10 +264,7 @@ public class GeniusLyricsService(
                 copy.RemoveChild(firstChild);
             return HtmlEntity.DeEntitize(copy.InnerText);
         })).Trim('\n');
-        var cacheEntryOptions = new MemoryCacheEntryOptions()
-            .SetAbsoluteExpiration(CacheDuration)
-            .SetSize(1);
-        memoryCache.Set(cacheKey, lyrics, cacheEntryOptions);
+        memoryCache.Set(cacheKey, lyrics);
         return lyrics;
     }
 }

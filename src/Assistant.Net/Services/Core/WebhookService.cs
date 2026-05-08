@@ -78,10 +78,7 @@ public class WebhookService(
             return null;
 
         var webhookClient = new DiscordWebhookClient(webhook);
-        var cacheOptions = new MemoryCacheEntryOptions()
-            .SetSlidingExpiration(WebhookCacheDuration)
-            .SetSize(1);
-        memoryCache.Set(cacheKey, webhookClient, cacheOptions);
+        memoryCache.Set(cacheKey, webhookClient);
         return webhookClient;
     }
 

@@ -67,10 +67,7 @@ public class MusicHistoryService
                 _logger.LogInformation("Created default music settings for Guild {GuildId}", guildId);
             }
 
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(SettingsCacheDuration)
-                .SetSize(1);
-            _memoryCache.Set(cacheKey, settings, cacheEntryOptions);
+            _memoryCache.Set(cacheKey, settings);
 
             return settings;
         }
@@ -186,11 +183,7 @@ public class MusicHistoryService
         {
             await uow.SaveChangesAsync().ConfigureAwait(false);
             _logger.LogInformation("Set volume for Guild {GuildId} to {Volume}%.", guildId, clampedVolume * 100);
-
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetSlidingExpiration(SettingsCacheDuration)
-                .SetSize(1);
-            _memoryCache.Set(cacheKey, settings, cacheEntryOptions);
+            _memoryCache.Set(cacheKey, settings);
         }
         catch (Exception ex)
         {

@@ -36,9 +36,6 @@ public class UrbanDictionaryService(
         {
             var httpClient = httpClientFactory.CreateClient("UrbanDictionary");
             var response = await httpClient.GetAsync(apiUrl).ConfigureAwait(false);
-            var cacheEntryOptions = new MemoryCacheEntryOptions()
-                .SetAbsoluteExpiration(CacheDuration)
-                .SetSize(1);
             if (!response.IsSuccessStatusCode)
             {
                 logger.LogWarning("Urban Dictionary API request failed with status code {StatusCode} for URL: {Url}",
@@ -53,7 +50,7 @@ public class UrbanDictionaryService(
             {
                 logger.LogInformation("No Urban Dictionary definitions found for term: {Term}",
                     searchTerm ?? "[Random]");
-                if (!isRandom) memoryCache.Set(cacheKey, new List<UrbanDictionaryEntry>(), cacheEntryOptions);
+                if (!isRandom) memoryCache.Set(cacheKey, new List<UrbanDictionaryEntry>());
                 return [];
             }
 
@@ -63,7 +60,7 @@ public class UrbanDictionaryService(
             {
                 logger.LogDebug("Cache miss for Urban Dictionary term: {Term}. Caching {Count} results.", searchTerm,
                     searchResults.Count);
-                memoryCache.Set(cacheKey, searchResults, cacheEntryOptions);
+                memoryCache.Set(cacheKey, searchResults);
             }
             else
             {
