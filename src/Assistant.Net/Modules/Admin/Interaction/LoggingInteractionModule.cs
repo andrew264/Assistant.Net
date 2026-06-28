@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text.RegularExpressions;
 using Assistant.Net.Data.Entities;
 using Assistant.Net.Data.Enums;
 using Assistant.Net.Services.Features;
@@ -9,7 +7,7 @@ using Discord.Interactions;
 
 namespace Assistant.Net.Modules.Admin.Interaction;
 
-public partial class LoggingInteractionModule(LoggingConfigService configService)
+public class LoggingInteractionModule(LoggingConfigService configService)
     : InteractionModuleBase<SocketInteractionContext>
 {
     private async Task<List<LogSettingsEntity>> GetAllConfigsAsync()
@@ -24,107 +22,89 @@ public partial class LoggingInteractionModule(LoggingConfigService configService
         return configs;
     }
 
-    [ComponentInteraction(LoggingUiBuilder.IdConfigToggle + ":*")]
+    [ComponentInteraction(LoggingUiBuilder.IdConfigOpen + ":*")]
     [RequireUserPermission(GuildPermission.Administrator)]
-    public async Task HandleToggle(string typeStr)
+    public async Task HandleConfigOpenButton(string typeStr)
     {
         if (!Enum.TryParse<LogType>(typeStr, out var logType)) return;
 
-        await DeferAsync().ConfigureAwait(false);
         var config = await configService.GetLogConfigAsync(Context.Guild.Id, logType).ConfigureAwait(false);
 
-        if (config.ChannelId == null && !config.IsEnabled)
+        var currentDelayStr = config.DeleteDelayMs.ToString();
+        string[] validDelays = ["0", "3600000", "43200000", "86400000", "604800000"];
+
+        if (!validDelays.Contains(currentDelayStr))
+            currentDelayStr = "86400000";
+
+        var currentChannel = config.ChannelId.HasValue
+            ? Context.Guild.GetChannel(config.ChannelId.Value)
+            : null;
+
+        var modal = new LoggingSettingsModal
         {
-            await FollowupAsync("⚠️ Please select a log channel first before enabling.", ephemeral: true)
-                .ConfigureAwait(false);
-            return;
-        }
+            Title = $"{typeStr} Logging",
+            Channel = currentChannel != null ? [currentChannel] : null,
+            IsEnabled = config.IsEnabled,
+            Delay = currentDelayStr
+        };
 
-        config.IsEnabled = !config.IsEnabled;
-        await configService.UpdateLogConfigAsync(config).ConfigureAwait(false);
-
-        var allConfigs = await GetAllConfigsAsync().ConfigureAwait(false);
-        var components = LoggingUiBuilder.BuildDashboard(allConfigs);
-
-        await ModifyOriginalResponseAsync(msg =>
-        {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
+        await RespondWithModalAsync($"log:modal:cfg:{typeStr}", modal).ConfigureAwait(false);
     }
 
-    [ComponentInteraction(LoggingUiBuilder.IdConfigChannel + ":*")]
+    [ModalInteraction("log:modal:cfg:*")]
     [RequireUserPermission(GuildPermission.Administrator)]
-    public async Task HandleChannelSelect(string typeStr, string[] selectedChannels)
-    {
-        if (!Enum.TryParse<LogType>(typeStr, out var logType) || selectedChannels.Length == 0) return;
-        if (!ulong.TryParse(selectedChannels[0], out var channelId)) return;
-
-        await DeferAsync().ConfigureAwait(false);
-        var config = await configService.GetLogConfigAsync(Context.Guild.Id, logType).ConfigureAwait(false);
-
-        config.ChannelId = channelId;
-
-        await configService.UpdateLogConfigAsync(config).ConfigureAwait(false);
-
-        var allConfigs = await GetAllConfigsAsync().ConfigureAwait(false);
-        var components = LoggingUiBuilder.BuildDashboard(allConfigs);
-
-        await ModifyOriginalResponseAsync(msg =>
-        {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
-    }
-
-    [ComponentInteraction(LoggingUiBuilder.IdConfigDelay + ":*")]
-    [RequireUserPermission(GuildPermission.Administrator)]
-    public async Task HandleDelayButton(string typeStr)
-    {
-        var modal = new ModalBuilder()
-            .WithTitle("Auto-Delete Delay")
-            .WithCustomId($"log:modal:delay:{typeStr}")
-            .AddTextInput(
-                "Duration (e.g. '24h', '7 days', '0')",
-                "duration_input",
-                placeholder: "Enter 0 or 'never' to disable auto-delete.",
-                maxLength: 50)
-            .Build();
-
-        await RespondWithModalAsync(modal).ConfigureAwait(false);
-    }
-
-    [ModalInteraction("log:modal:delay:*")]
-    public async Task HandleDelayModalSubmit(string typeStr, LogDelayModal modal)
+    public async Task HandleConfigModalSubmit(string typeStr, LoggingSettingsModal modal)
     {
         if (!Enum.TryParse<LogType>(typeStr, out var logType)) return;
 
-        await DeferAsync().ConfigureAwait(false);
+        await DeferAsync(true).ConfigureAwait(false);
 
-        var input = modal.DurationInput.Trim().ToLowerInvariant();
-        int newDelayMs;
-
-        if (input == "0" || input.Contains("never") || input.Contains("permanent") || input == "none")
+        ulong? newChannelId = null;
+        if (modal.Channel is { Length: > 0 })
         {
-            newDelayMs = 0;
-        }
-        else
-        {
-            var parsedSeconds = ParseDurationToSeconds(input);
-            if (parsedSeconds == null)
+            var channel = modal.Channel[0];
+            if (channel is not ITextChannel textChannel)
             {
-                await FollowupAsync("Invalid time format. Try '1 day', '12 hours', '30m', or '0'.", ephemeral: true)
+                await FollowupAsync("❌ The selected channel is invalid or not a text channel.", ephemeral: true)
                     .ConfigureAwait(false);
                 return;
             }
 
-            newDelayMs = (int)(parsedSeconds.Value * 1000);
+            var botUser = Context.Guild.CurrentUser;
+            var perms = botUser.GetPermissions(textChannel);
+            if (!perms.SendMessages || !perms.EmbedLinks || !perms.ViewChannel)
+            {
+                await FollowupAsync(
+                    $"❌ I lack necessary permissions in {textChannel.Mention}.\nI need: `View Channel`, `Send Messages`, `Embed Links`.",
+                    ephemeral: true).ConfigureAwait(false);
+                return;
+            }
+
+            newChannelId = textChannel.Id;
+        }
+
+        if (modal.IsEnabled && newChannelId == null)
+        {
+            await FollowupAsync("⚠️ You must select a Log Channel if you want to enable this module.", ephemeral: true)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!int.TryParse(modal.Delay, out var newDelayMs))
+        {
+            await FollowupAsync("❌ Invalid delay value.", ephemeral: true).ConfigureAwait(false);
+            return;
         }
 
         var config = await configService.GetLogConfigAsync(Context.Guild.Id, logType).ConfigureAwait(false);
+
+        config.IsEnabled = modal.IsEnabled;
+        config.ChannelId = newChannelId;
         config.DeleteDelayMs = newDelayMs;
+
         await configService.UpdateLogConfigAsync(config).ConfigureAwait(false);
 
+        // Refresh the dashboard message
         var allConfigs = await GetAllConfigsAsync().ConfigureAwait(false);
         var components = LoggingUiBuilder.BuildDashboard(allConfigs);
 
@@ -135,42 +115,25 @@ public partial class LoggingInteractionModule(LoggingConfigService configService
         }).ConfigureAwait(false);
     }
 
-    private static double? ParseDurationToSeconds(string input)
+    public class LoggingSettingsModal : IModal
     {
-        var regex = DurationRegex();
-        var matches = regex.Matches(input);
+        [RequiredInput(false)]
+        [ModalChannelSelect("channel_id")]
+        public IChannel[]? Channel { get; set; }
 
-        if (matches.Count == 0) return null;
+        [ModalCheckbox("is_enabled")]
+        [InputLabel("Enable this logging module")]
+        public bool IsEnabled { get; set; }
 
-        double totalSeconds = 0;
+        [RequiredInput]
+        [ModalRadioGroup("delay")]
+        [ModalRadioGroupOption("Permanent (No Auto-Delete)", "0")]
+        [ModalRadioGroupOption("1 Hour", "3600000")]
+        [ModalRadioGroupOption("12 Hours", "43200000")]
+        [ModalRadioGroupOption("24 Hours", "86400000")]
+        [ModalRadioGroupOption("1 Week", "604800000")]
+        public string Delay { get; set; } = string.Empty;
 
-        foreach (Match match in matches)
-        {
-            if (!double.TryParse(match.Groups["value"].Value, NumberStyles.Any, CultureInfo.InvariantCulture,
-                    out var val))
-                continue;
-
-            var unit = match.Groups["unit"].Value.ToLowerInvariant();
-            var multiplier = 0;
-
-            if (unit.StartsWith('d')) multiplier = 86400; // day, days
-            else if (unit.StartsWith('h')) multiplier = 3600; // h, hr, hour
-            else if (unit.StartsWith('m')) multiplier = 60; // m, min, minute
-            else if (unit.StartsWith('s')) multiplier = 1; // s, sec, second
-
-            totalSeconds += val * multiplier;
-        }
-
-        return totalSeconds > 0 ? totalSeconds : null;
-    }
-
-    [GeneratedRegex(@"(?<value>\d+(\.\d+)?)\s*(?<unit>[a-z]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled,
-        "en-US")]
-    private static partial Regex DurationRegex();
-
-    public class LogDelayModal : IModal
-    {
-        [ModalTextInput("duration_input")] public string DurationInput { get; set; } = string.Empty;
-        public string Title => "Set Delay";
+        public string Title { get; set; } = "Logging Configuration";
     }
 }

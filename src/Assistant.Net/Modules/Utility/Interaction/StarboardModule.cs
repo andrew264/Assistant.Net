@@ -1,4 +1,3 @@
-using Assistant.Net.Data.Entities;
 using Assistant.Net.Services.Features;
 using Discord;
 using Discord.Interactions;
@@ -12,140 +11,56 @@ public class StarboardModule(
     StarboardConfigService configService)
     : InteractionModuleBase<SocketInteractionContext>
 {
-    private const string IdSelectChannel = "sb_select_channel";
-    private const string IdTogglePrefix = "sb_toggle:";
-    private const string IdBtnEmoji = "sb_btn:emoji";
-    private const string IdBtnThreshold = "sb_btn:threshold";
-    private const string IdModalEmoji = "sb_modal_emoji";
-    private const string IdModalThreshold = "sb_modal_threshold";
+    private const string IdModalSettings = "sb_modal_settings";
 
-    [SlashCommand("starboard", "Open the starboard configuration dashboard.")]
-    public async Task StarboardDashboardAsync()
+    [SlashCommand("starboard", "Configure the starboard settings.")]
+    public async Task StarboardCommandAsync()
     {
-        await DeferAsync(true).ConfigureAwait(false);
         var config = await configService.GetGuildConfigAsync(Context.Guild.Id).ConfigureAwait(false);
-        var components = BuildDashboardComponents(config);
-        await FollowupAsync(components: components, flags: MessageFlags.ComponentsV2).ConfigureAwait(false);
+
+        var selectedSettings = new List<string>();
+        if (config.IsEnabled) selectedSettings.Add("enabled");
+        if (config.AllowSelfStar) selectedSettings.Add("self_star");
+        if (config.AllowBotMessages) selectedSettings.Add("bot_msgs");
+        if (config.IgnoreNsfwChannels) selectedSettings.Add("nsfw");
+        if (config.DeleteIfUnStarred) selectedSettings.Add("delete_unstarred");
+
+        var currentChannel = config.StarboardChannelId.HasValue
+            ? Context.Guild.GetChannel(config.StarboardChannelId.Value)
+            : null;
+
+        var modal = new StarboardSettingsModal
+        {
+            Channel = currentChannel != null ? [currentChannel] : null,
+            EmojiInput = config.StarEmoji,
+            ThresholdInput = config.Threshold.ToString(),
+            Settings = selectedSettings.ToArray()
+        };
+
+        await RespondWithModalAsync(IdModalSettings, modal).ConfigureAwait(false);
     }
 
-    [ComponentInteraction(IdSelectChannel)]
-    public async Task HandleChannelSelect(string[] selectedChannelIds)
+    [ModalInteraction(IdModalSettings)]
+    public async Task HandleSettingsModalSubmit(StarboardSettingsModal modal)
     {
         await DeferAsync(true).ConfigureAwait(false);
         var config = await configService.GetGuildConfigAsync(Context.Guild.Id).ConfigureAwait(false);
 
-        if (selectedChannelIds.Length == 0) return;
+        var selected = modal.Settings ?? [];
 
-        if (!ulong.TryParse(selectedChannelIds[0], out var channelId))
+        // Validate Threshold
+        if (!int.TryParse(modal.ThresholdInput, out var newThreshold) || newThreshold < 1)
         {
-            await FollowupAsync("Invalid channel ID.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("❌ Threshold must be a whole number greater than 0.", ephemeral: true)
+                .ConfigureAwait(false);
             return;
         }
 
-        var channel = Context.Guild.GetTextChannel(channelId);
-        if (channel == null)
-        {
-            await FollowupAsync("Channel not found or is not a text channel.", ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        var botUser = Context.Guild.CurrentUser;
-        var perms = botUser.GetPermissions(channel);
-        if (!perms.SendMessages || !perms.EmbedLinks || !perms.AttachFiles || !perms.ReadMessageHistory)
-        {
-            await FollowupAsync(
-                $"❌ I lack necessary permissions in {channel.Mention}.\nI need: `Send Messages`, `Embed Links`, `Attach Files`, `Read Message History`.",
-                ephemeral: true).ConfigureAwait(false);
-            return;
-        }
-
-        config.StarboardChannelId = channel.Id;
-        await configService.UpdateConfigAsync(config).ConfigureAwait(false);
-
-        var components = BuildDashboardComponents(config);
-        await ModifyOriginalResponseAsync(msg =>
-        {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
-    }
-
-    [ComponentInteraction(IdTogglePrefix + "*")]
-    public async Task HandleToggle(string setting)
-    {
-        await DeferAsync(true).ConfigureAwait(false);
-        var config = await configService.GetGuildConfigAsync(Context.Guild.Id).ConfigureAwait(false);
-
-        switch (setting)
-        {
-            case "enabled":
-                if (config.StarboardChannelId == null && !config.IsEnabled)
-                {
-                    await FollowupAsync("⚠️ Please select a channel first.", ephemeral: true).ConfigureAwait(false);
-                    return;
-                }
-
-                config.IsEnabled = !config.IsEnabled;
-                break;
-            case "self_star":
-                config.AllowSelfStar = !config.AllowSelfStar;
-                break;
-            case "bot_msgs":
-                config.AllowBotMessages = !config.AllowBotMessages;
-                break;
-            case "nsfw":
-                config.IgnoreNsfwChannels = !config.IgnoreNsfwChannels;
-                break;
-            case "delete_unstarred":
-                config.DeleteIfUnStarred = !config.DeleteIfUnStarred;
-                break;
-        }
-
-        await configService.UpdateConfigAsync(config).ConfigureAwait(false);
-
-        var components = BuildDashboardComponents(config);
-        await ModifyOriginalResponseAsync(msg =>
-        {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
-    }
-
-    [ComponentInteraction(IdBtnEmoji)]
-    public async Task HandleEmojiButton()
-    {
-        var config = await configService.GetGuildConfigAsync(Context.Guild.Id).ConfigureAwait(false);
-        var modal = new ModalBuilder()
-            .WithTitle("Set Starboard Emoji")
-            .WithCustomId(IdModalEmoji)
-            .AddTextInput("Emoji", "emoji_input", placeholder: "⭐ or <:custom:123>", value: config.StarEmoji,
-                maxLength: 50)
-            .Build();
-        await RespondWithModalAsync(modal).ConfigureAwait(false);
-    }
-
-    [ComponentInteraction(IdBtnThreshold)]
-    public async Task HandleThresholdButton()
-    {
-        var config = await configService.GetGuildConfigAsync(Context.Guild.Id).ConfigureAwait(false);
-        var modal = new ModalBuilder()
-            .WithTitle("Set Star Threshold")
-            .WithCustomId(IdModalThreshold)
-            .AddTextInput("Minimum Stars", "threshold_input", placeholder: "1",
-                value: config.Threshold.ToString(), maxLength: 3)
-            .Build();
-        await RespondWithModalAsync(modal).ConfigureAwait(false);
-    }
-
-    [ModalInteraction(IdModalEmoji)]
-    public async Task HandleEmojiModalSubmit(StarboardEmojiModal modal)
-    {
-        await DeferAsync(true).ConfigureAwait(false);
+        // Validate Emoji
         var inputEmoji = modal.EmojiInput.Trim();
-
         if (!StarboardConfigService.IsValidEmoji(inputEmoji))
         {
-            await FollowupAsync("Invalid emoji format. Please use a standard emoji or a valid custom emoji.",
+            await FollowupAsync("❌ Invalid emoji format. Please use a standard emoji or a valid custom emoji.",
                 ephemeral: true).ConfigureAwait(false);
             return;
         }
@@ -155,7 +70,7 @@ public class StarboardModule(
             var guildEmoji = await Context.Guild.GetEmoteAsync(parsedEmoji.Id).ConfigureAwait(false);
             if (guildEmoji == null)
             {
-                await FollowupAsync("The provided custom emoji is not accessible in this server.", ephemeral: true)
+                await FollowupAsync("❌ The provided custom emoji is not accessible in this server.", ephemeral: true)
                     .ConfigureAwait(false);
                 return;
             }
@@ -163,118 +78,78 @@ public class StarboardModule(
             inputEmoji = guildEmoji.ToString();
         }
 
-        var config = await configService.GetGuildConfigAsync(Context.Guild.Id).ConfigureAwait(false);
-        config.StarEmoji = inputEmoji;
-        await configService.UpdateConfigAsync(config).ConfigureAwait(false);
-
-        var components = BuildDashboardComponents(config);
-        await ModifyOriginalResponseAsync(msg =>
+        // Validate Channel
+        ulong? newChannelId = null;
+        if (modal.Channel is { Length: > 0 })
         {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
-    }
+            var channel = modal.Channel[0];
+            if (channel is not ITextChannel textChannel)
+            {
+                await FollowupAsync("❌ The selected channel is invalid or not a text channel.", ephemeral: true)
+                    .ConfigureAwait(false);
+                return;
+            }
 
-    [ModalInteraction(IdModalThreshold)]
-    public async Task HandleThresholdModalSubmit(StarboardThresholdModal modal)
-    {
-        await DeferAsync(true).ConfigureAwait(false);
+            var botUser = Context.Guild.CurrentUser;
+            var perms = botUser.GetPermissions(textChannel);
+            if (!perms.SendMessages || !perms.EmbedLinks || !perms.AttachFiles || !perms.ReadMessageHistory)
+            {
+                await FollowupAsync(
+                    $"❌ I lack necessary permissions in {textChannel.Mention}.\nI need: `Send Messages`, `Embed Links`, `Attach Files`, `Read Message History`.",
+                    ephemeral: true).ConfigureAwait(false);
+                return;
+            }
 
-        if (!int.TryParse(modal.ThresholdInput, out var newThreshold) || newThreshold < 1)
+            newChannelId = textChannel.Id;
+        }
+
+        // Validate Enable State
+        if (newChannelId == null && selected.Contains("enabled"))
         {
-            await FollowupAsync("Threshold must be a number greater than 0.", ephemeral: true).ConfigureAwait(false);
+            await FollowupAsync("⚠️ You must select a Starboard Channel if you want to enable the starboard.",
+                ephemeral: true).ConfigureAwait(false);
             return;
         }
 
-        var config = await configService.GetGuildConfigAsync(Context.Guild.Id).ConfigureAwait(false);
+        // Save Configuration
+        config.StarboardChannelId = newChannelId;
+        config.StarEmoji = inputEmoji;
         config.Threshold = newThreshold;
+
+        config.IsEnabled = selected.Contains("enabled");
+        config.AllowSelfStar = selected.Contains("self_star");
+        config.AllowBotMessages = selected.Contains("bot_msgs");
+        config.IgnoreNsfwChannels = selected.Contains("nsfw");
+        config.DeleteIfUnStarred = selected.Contains("delete_unstarred");
+
         await configService.UpdateConfigAsync(config).ConfigureAwait(false);
 
-        var components = BuildDashboardComponents(config);
-        await ModifyOriginalResponseAsync(msg =>
-        {
-            msg.Components = components;
-            msg.Flags = MessageFlags.ComponentsV2;
-        }).ConfigureAwait(false);
+        await FollowupAsync("✅ Starboard configuration updated successfully!", ephemeral: true).ConfigureAwait(false);
     }
 
-    private MessageComponent BuildDashboardComponents(StarboardConfigEntity config)
+    public class StarboardSettingsModal : IModal
     {
-        var container = new ContainerBuilder();
-        var iconUrl = Context.Guild.IconUrl ?? "https://cdnjs.cloudflare.com/ajax/libs/twemoji/14.0.2/72x72/2b50.png";
+        [RequiredInput(false)]
+        [ModalChannelSelect("channel_id")]
+        public IChannel[]? Channel { get; set; }
 
-        container.WithSection(new SectionBuilder()
-            .AddComponent(new TextDisplayBuilder("# Starboard Settings"))
-            .AddComponent(new TextDisplayBuilder($"**Current Config:** {config.StarEmoji} x {config.Threshold}"))
-            .WithAccessory(new ThumbnailBuilder
-                { Media = new UnfurledMediaItemProperties { Url = iconUrl } }));
+        [RequiredInput]
+        [ModalTextInput("emoji_input", placeholder: "⭐ or <:custom:123>", maxLength: 50)]
+        public string EmojiInput { get; set; } = string.Empty;
 
-        container.WithSeparator();
+        [RequiredInput]
+        [ModalTextInput("threshold_input", placeholder: "3", maxLength: 3)]
+        public string ThresholdInput { get; set; } = string.Empty;
 
-        // Channel Selector
-        container.WithTextDisplay(new TextDisplayBuilder("## Target Channel"));
-        var channelSelect = new SelectMenuBuilder()
-            .WithType(ComponentType.ChannelSelect)
-            .WithCustomId(IdSelectChannel)
-            .WithType(ComponentType.ChannelSelect)
-            .WithPlaceholder("Select a channel for starboard posts...");
+        [RequiredInput(false)]
+        [ModalCheckboxGroup("settings", 0, 5)]
+        [ModalCheckboxGroupOption("Enable Starboard", "enabled", "Master switch for the starboard system.")]
+        [ModalCheckboxGroupOption("Allow Self Star", "self_star", "Users can star their own messages.")]
+        [ModalCheckboxGroupOption("Allow Bot Messages", "bot_msgs", "Bot messages can be starred.")]
+        [ModalCheckboxGroupOption("Ignore NSFW Channels", "nsfw", "Do not track stars in NSFW channels.")]
+        [ModalCheckboxGroupOption("Delete Unstarred", "delete_unstarred", "Remove post if stars drop below threshold.")]
+        public string[] Settings { get; set; } = [];
 
-        if (config.StarboardChannelId.HasValue &&
-            Context.Guild.GetChannel(config.StarboardChannelId.Value) is IChannel existingChannel)
-            channelSelect.WithDefaultValues(SelectMenuDefaultValue.FromChannel(existingChannel));
-
-        container.WithActionRow(new ActionRowBuilder().WithComponents([channelSelect]));
-
-        // Config Buttons (Emoji & Threshold)
-        container.WithActionRow(new ActionRowBuilder()
-            .WithButton("Change Emoji", IdBtnEmoji, ButtonStyle.Secondary, new Emoji("🎨"))
-            .WithButton("Set Threshold", IdBtnThreshold, ButtonStyle.Secondary, new Emoji("🔢")));
-
-        container.WithSeparator();
-
-        // Toggles
-        AddToggleSection(container, "Enable Starboard", "Master switch for the starboard system.",
-            config.IsEnabled, "enabled", true);
-
-        AddToggleSection(container, "Allow Self Star", "Users can star their own messages.",
-            config.AllowSelfStar, "self_star");
-
-        AddToggleSection(container, "Allow Bot Messages", "Bot messages can be starred.",
-            config.AllowBotMessages, "bot_msgs");
-
-        AddToggleSection(container, "Ignore NSFW Channels", "Do not track stars in NSFW channels.",
-            config.IgnoreNsfwChannels, "nsfw");
-
-        AddToggleSection(container, "Delete Unstarred", "Remove post if stars drop below threshold.",
-            config.DeleteIfUnStarred, "delete_unstarred");
-
-        return new ComponentBuilderV2().WithContainer(container).Build();
-    }
-
-    private static void AddToggleSection(ContainerBuilder container, string title, string description, bool state,
-        string settingKey, bool isMaster = false)
-    {
-        var style = state ? ButtonStyle.Success : ButtonStyle.Secondary;
-        var label = state ? "ON" : "OFF";
-        var customId = $"{IdTogglePrefix}{settingKey}";
-
-        if (isMaster && !state) style = ButtonStyle.Danger;
-
-        container.WithSection(new SectionBuilder()
-            .AddComponent(new TextDisplayBuilder($"**{title}**"))
-            .AddComponent(new TextDisplayBuilder(description))
-            .WithAccessory(new ButtonBuilder(label, customId, style)));
-    }
-
-    public class StarboardEmojiModal : IModal
-    {
-        [ModalTextInput("emoji_input")] public string EmojiInput { get; set; } = string.Empty;
-        public string Title => "Set Starboard Emoji";
-    }
-
-    public class StarboardThresholdModal : IModal
-    {
-        [ModalTextInput("threshold_input")] public string ThresholdInput { get; set; } = string.Empty;
-        public string Title => "Set Star Threshold";
+        public string Title => "Starboard Configuration";
     }
 }

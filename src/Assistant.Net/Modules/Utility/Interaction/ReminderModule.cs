@@ -66,8 +66,14 @@ public class ReminderModule(ReminderService reminderService)
             .AddTextInput("Message", "message", TextInputStyle.Paragraph, maxLength: 1000, required: true,
                 placeholder: "What do you need to be reminded about?")
             .AddTextInput("When?", "time", placeholder: "e.g., in 5 mins, tomorrow 9am", required: true)
-            .AddTextInput("Repeat (Optional)", "repeat", placeholder: "e.g., daily, weekly, none", required: false,
-                maxLength: 50)
+            .AddRadioGroup("Repeat", "repeat", new[]
+            {
+                new RadioGroupOptionProperties { Label = "None", Value = "none", IsDefault = true },
+                new RadioGroupOptionProperties { Label = "Hourly", Value = "hourly" },
+                new RadioGroupOptionProperties { Label = "Daily", Value = "daily" },
+                new RadioGroupOptionProperties { Label = "Weekly", Value = "weekly" },
+                new RadioGroupOptionProperties { Label = "Monthly", Value = "monthly" }
+            }, false)
             .Build();
 
         await RespondWithModalAsync(modal).ConfigureAwait(false);
@@ -296,6 +302,21 @@ public class ReminderModule(ReminderService reminderService)
             return;
         }
 
+        var rec = reminder.Recurrence ?? "none";
+        var radioOptions = new List<RadioGroupOptionProperties>
+        {
+            new() { Label = "None", Value = "none", IsDefault = rec == "none" },
+            new() { Label = "Hourly", Value = "hourly", IsDefault = rec == "hourly" },
+            new() { Label = "Daily", Value = "daily", IsDefault = rec == "daily" },
+            new() { Label = "Weekly", Value = "weekly", IsDefault = rec == "weekly" },
+            new() { Label = "Monthly", Value = "monthly", IsDefault = rec == "monthly" }
+        };
+
+        string[] stds = ["none", "hourly", "daily", "weekly", "monthly", "yearly"];
+        radioOptions.Add(!stds.Contains(rec)
+            ? new RadioGroupOptionProperties { Label = $"Custom ({rec})", Value = rec, IsDefault = true }
+            : new RadioGroupOptionProperties { Label = "Yearly", Value = "yearly", IsDefault = rec == "yearly" });
+
         var modalBuilder = new ModalBuilder()
             .WithTitle($"Edit Reminder #{reminder.Id}")
             .WithCustomId($"remind:modal:edit:{reminder.Id}")
@@ -303,8 +324,8 @@ public class ReminderModule(ReminderService reminderService)
             .AddTextInput("Message", "message", TextInputStyle.Paragraph, value: reminder.Message, maxLength: 1000)
             .AddTextInput("Time (e.g., 'in 1 hour', 'tomorrow')", "time", placeholder: "Leave empty to keep current",
                 required: false)
-            .AddTextInput("Repeat (e.g., 'daily', 'none')", "repeat", value: reminder.Recurrence ?? "none",
-                required: false, maxLength: 50);
+            .AddRadioGroup("Repeat", "repeat", radioOptions, false);
+
         if (reminder.IsDm)
         {
             var menu = new SelectMenuBuilder()
@@ -447,7 +468,7 @@ public class ReminderCreateModal : IModal
     [ModalTextInput("reminder_title")] public string? ReminderTitle { get; set; }
     [ModalTextInput("message")] public string Message { get; set; } = string.Empty;
     [ModalTextInput("time")] public string Time { get; set; } = string.Empty;
-    [ModalTextInput("repeat")] public string? Repeat { get; set; }
+    [ModalRadioGroup("repeat")] public string? Repeat { get; set; }
     public string Title => "Set Reminder";
 }
 
@@ -456,6 +477,6 @@ public class ReminderEditModal : IModal
     [ModalTextInput("reminder_title")] public string? ReminderTitle { get; set; }
     [ModalTextInput("message")] public string Message { get; set; } = string.Empty;
     [ModalTextInput("time")] public string? Time { get; set; }
-    [ModalTextInput("repeat")] public string? Repeat { get; set; }
+    [ModalRadioGroup("repeat")] public string? Repeat { get; set; }
     public string Title => "Edit Reminder";
 }
