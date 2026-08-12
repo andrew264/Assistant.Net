@@ -1,4 +1,5 @@
 using Lavalink4NET.Filters;
+using Lavalink4NET.Players;
 
 namespace Assistant.Net.Utilities.Filters;
 
@@ -20,6 +21,17 @@ public static class FilterOperations
 
     // --- 8D Audio ---
     private const float EightDFrequency = 0.2f;
+
+    // --- Wobble ---
+    public static (float Pitch, float Rate, float Depth) GetWobbleSettings(IPlayerFilters filters)
+    {
+        var pitch = filters.Timescale?.Pitch ?? 1.0f;
+        var wobble = filters.GetFilter<WobbleFilterOptions>();
+        var rate = wobble?.Rate ?? 5.0f;
+        var depth = wobble?.Depth ?? 2.0f;
+
+        return (pitch, rate, depth);
+    }
 
     public static bool IsNightcoreActive(TimescaleFilterOptions? tsOptions)
     {

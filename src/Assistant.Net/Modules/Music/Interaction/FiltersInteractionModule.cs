@@ -212,6 +212,86 @@ public class FiltersInteractionModule(MusicService musicService, ILogger<Filters
         }).ConfigureAwait(false);
     }
 
+    [ComponentInteraction(FilterUiBuilder.WbPrefix + ":*:*:*", true)]
+    public async Task HandleWobbleButtonAsync(string action, ulong requesterId, string stepString)
+    {
+        if (Context.User.Id != requesterId)
+        {
+            await RespondAsync("This interaction is not for you.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        if (!float.TryParse(stepString, NumberStyles.Any, CultureInfo.InvariantCulture, out var buttonStepValue))
+        {
+            await RespondAsync("Invalid step parameter.", ephemeral: true).ConfigureAwait(false);
+            return;
+        }
+
+        await DeferAsync().ConfigureAwait(false);
+        var (player, isError) = await GetPlayerForFilterCommandAsync().ConfigureAwait(false);
+        if (isError || player is null) return;
+
+        if (action == "reset_all")
+        {
+            var tsReset = player.Filters.Timescale;
+            if (tsReset != null)
+                player.Filters.Timescale = new TimescaleFilterOptions
+                {
+                    Pitch = 1.0f,
+                    Rate = tsReset.Rate,
+                    Speed = tsReset.Speed
+                };
+            player.Filters.TryRemove<WobbleFilterOptions>();
+
+            await player.Filters.CommitAsync().ConfigureAwait(false);
+            var resetComponents = FilterUiBuilder.BuildFilterUi(player, requesterId, "view_wb", buttonStepValue);
+            await ModifyOriginalResponseAsync(props =>
+            {
+                props.Components = resetComponents;
+                props.Flags = MessageFlags.ComponentsV2;
+            }).ConfigureAwait(false);
+            return;
+        }
+
+        var (pitch, rate, depth) = FilterOperations.GetWobbleSettings(player.Filters);
+        var pitchStep = buttonStepValue / 10f;
+
+        switch (action)
+        {
+            case "pitch_up": pitch = Math.Min(2.0f, pitch + pitchStep); break;
+            case "pitch_down": pitch = Math.Max(0.5f, pitch - pitchStep); break;
+            case "pitch_reset": pitch = 1.0f; break;
+
+            case "rate_up": rate = Math.Min(20.0f, rate + buttonStepValue); break;
+            case "rate_down": rate = Math.Max(0.1f, rate - buttonStepValue); break;
+            case "rate_reset": rate = 5.0f; break;
+
+            case "depth_up": depth = Math.Min(20.0f, depth + buttonStepValue); break;
+            case "depth_down": depth = Math.Max(0.1f, depth - buttonStepValue); break;
+            case "depth_reset": depth = 2.0f; break;
+
+            case "step_toggle": break;
+        }
+
+        if (action != "step_toggle")
+        {
+            var tsOptions = player.Filters.Timescale ?? new TimescaleFilterOptions();
+            player.Filters.Timescale = new TimescaleFilterOptions
+                { Pitch = pitch, Rate = tsOptions.Rate, Speed = tsOptions.Speed };
+
+            player.Filters.SetFilter(new WobbleFilterOptions(rate, depth));
+
+            await player.Filters.CommitAsync().ConfigureAwait(false);
+        }
+
+        var updatedComponents = FilterUiBuilder.BuildFilterUi(player, requesterId, "view_wb", buttonStepValue);
+        await ModifyOriginalResponseAsync(props =>
+        {
+            props.Components = updatedComponents;
+            props.Flags = MessageFlags.ComponentsV2;
+        }).ConfigureAwait(false);
+    }
+
     [ComponentInteraction(FilterUiBuilder.FxPrefix + ":toggle:*:*", true)]
     public async Task HandleFxToggleAsync(string effect, ulong requesterId)
     {

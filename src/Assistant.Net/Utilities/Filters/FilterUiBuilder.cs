@@ -13,6 +13,7 @@ public static class FilterUiBuilder
     public const string EqResetId = "filters:eq:reset";
     public const string TsPrefix = "filters:ts";
     public const string FxPrefix = "filters:fx";
+    public const string WbPrefix = "filters:wb";
 
     private static readonly Equalizer EqOffPreset = new();
     private static readonly Equalizer BassLowPreset = new() { Band0 = 0.20f, Band1 = 0.15f };
@@ -35,6 +36,7 @@ public static class FilterUiBuilder
         {
             "view_ts" => BuildTimescaleView(player, requesterId, tsStep),
             "view_fx" => BuildEffectsView(player, requesterId),
+            "view_wb" => BuildWobbleView(player, requesterId, tsStep),
             _ => BuildEqualizerView(player, requesterId)
         };
     }
@@ -64,7 +66,13 @@ public static class FilterUiBuilder
                             .WithDescription("Filters like Nightcore, Vaporwave, 8D")
                             .WithValue("view_fx")
                             .WithEmote(Emoji.Parse("✨"))
-                            .WithDefault(currentView == "view_fx")
+                            .WithDefault(currentView == "view_fx"),
+                        new SelectMenuOptionBuilder()
+                            .WithLabel("Wobble")
+                            .WithDescription("Pitch, Rate, and Depth control")
+                            .WithValue("view_wb")
+                            .WithEmote(Emoji.Parse("〰️"))
+                            .WithDefault(currentView == "view_wb")
                     ])
             ]);
 
@@ -173,6 +181,65 @@ public static class FilterUiBuilder
             .WithButton(nextStepLabel, $"{TsPrefix}:step_toggle:{requesterId}:{nextStepStr}", ButtonStyle.Secondary)
             .WithButton("Reset Timescale", $"{TsPrefix}:reset_all_timescale:{requesterId}:{stepStr}",
                 ButtonStyle.Danger));
+
+        return new ComponentBuilderV2().WithContainer(container).Build();
+    }
+
+    private static MessageComponent BuildWobbleView(CustomPlayer player, ulong requesterId, float currentStep)
+    {
+        if (Math.Abs(currentStep - 0.1f) < 0.001f) currentStep = 1.0f; // Default 1.0 step for Wobble context
+
+        var (pitch, rate, depth) = FilterOperations.GetWobbleSettings(player.Filters);
+        var container = new ContainerBuilder();
+
+        container.WithTextDisplay(new TextDisplayBuilder("Filters"));
+        container.WithActionRow(CreateNavigationRow(requesterId, "view_wb"));
+        container.WithSeparator();
+
+        container.WithTextDisplay(
+            new TextDisplayBuilder(
+                $"`Pitch: {pitch:F2}` | `Rate: {rate:F1}` | `Depth: {depth:F1}`"));
+
+        container.WithSeparator();
+
+        var stepStr = currentStep.ToString("0.0#", CultureInfo.InvariantCulture);
+
+        container.WithActionRow(new ActionRowBuilder()
+            .WithButton("Pitch ⬇️", $"{WbPrefix}:pitch_down:{requesterId}:{stepStr}", ButtonStyle.Danger,
+                disabled: pitch <= 0.51f)
+            .WithButton("Reset", $"{WbPrefix}:pitch_reset:{requesterId}:{stepStr}", ButtonStyle.Secondary,
+                disabled: Math.Abs(pitch - 1.0f) < 0.01f)
+            .WithButton("Pitch ⬆️", $"{WbPrefix}:pitch_up:{requesterId}:{stepStr}", ButtonStyle.Success,
+                disabled: pitch >= 2.0f)
+        );
+
+        container.WithActionRow(new ActionRowBuilder()
+            .WithButton("Rate ⬇️", $"{WbPrefix}:rate_down:{requesterId}:{stepStr}", ButtonStyle.Danger,
+                disabled: rate <= 0.1f)
+            .WithButton("Reset", $"{WbPrefix}:rate_reset:{requesterId}:{stepStr}", ButtonStyle.Secondary,
+                disabled: Math.Abs(rate - 5.0f) < 0.01f)
+            .WithButton("Rate ⬆️", $"{WbPrefix}:rate_up:{requesterId}:{stepStr}", ButtonStyle.Success,
+                disabled: rate >= 20.0f)
+        );
+
+        container.WithActionRow(new ActionRowBuilder()
+            .WithButton("Depth ⬇️", $"{WbPrefix}:depth_down:{requesterId}:{stepStr}", ButtonStyle.Danger,
+                disabled: depth <= 0.1f)
+            .WithButton("Reset", $"{WbPrefix}:depth_reset:{requesterId}:{stepStr}", ButtonStyle.Secondary,
+                disabled: Math.Abs(depth - 2.0f) < 0.01f)
+            .WithButton("Depth ⬆️", $"{WbPrefix}:depth_up:{requesterId}:{stepStr}", ButtonStyle.Success,
+                disabled: depth >= 20.0f)
+        );
+
+        container.WithSeparator();
+
+        var nextStepLabel = Math.Abs(currentStep - 0.5f) < 0.01f ? "Set Step: 1.0" : "Set Step: 0.5";
+        var nextStepValue = Math.Abs(currentStep - 0.5f) < 0.01f ? 1.0f : 0.5f;
+        var nextStepStr = nextStepValue.ToString("0.0#", CultureInfo.InvariantCulture);
+
+        container.WithActionRow(new ActionRowBuilder()
+            .WithButton(nextStepLabel, $"{WbPrefix}:step_toggle:{requesterId}:{nextStepStr}", ButtonStyle.Secondary)
+            .WithButton("Reset Wobble", $"{WbPrefix}:reset_all:{requesterId}:{stepStr}", ButtonStyle.Danger));
 
         return new ComponentBuilderV2().WithContainer(container).Build();
     }
