@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Assistant.Net.Models.Music;
 using Assistant.Net.Services.Music;
 using Assistant.Net.Utilities;
@@ -13,6 +14,11 @@ namespace Assistant.Net.Modules.Music.Prefix;
 public class PlayModule(MusicService musicService, ILogger<PlayModule> logger)
     : MusicPrefixModuleBase(musicService, logger)
 {
+    private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".opus", ".webm", ".mp4"
+    };
+
     private async Task HandleSearchResultsUi(IReadOnlyList<LavalinkTrack> tracks, string originalQuery)
     {
         var topTracks = tracks.Take(5).ToList();
@@ -64,6 +70,10 @@ public class PlayModule(MusicService musicService, ILogger<PlayModule> logger)
     [Summary("Plays music, adds to queue, or controls playback.")]
     public async Task PlayAsync([Remainder] string? query = null)
     {
+        string? preferredTitle = null;
+        if (string.IsNullOrWhiteSpace(query))
+            (query, preferredTitle) = await ResolveQueryFromMessageOrReplyAsync().ConfigureAwait(false);
+
         var connectToVoice = !string.IsNullOrWhiteSpace(query);
         var (player, isError) =
             await GetVerifiedPlayerAsync(connectToVoice ? PlayerChannelBehavior.Join : PlayerChannelBehavior.None,
@@ -79,7 +89,8 @@ public class PlayModule(MusicService musicService, ILogger<PlayModule> logger)
             return;
         }
 
-        var loadResult = await MusicService.LoadAndQueueTrackAsync(player, query, Context.User).ConfigureAwait(false);
+        var loadResult = await MusicService.LoadAndQueueTrackAsync(player, query, Context.User, preferredTitle)
+            .ConfigureAwait(false);
 
         switch (loadResult.Status)
         {
@@ -108,4 +119,92 @@ public class PlayModule(MusicService musicService, ILogger<PlayModule> logger)
                 break;
         }
     }
+
+    private async Task<(string? Query, string? Title)> ResolveQueryFromMessageOrReplyAsync()
+    {
+        // Check current message attachments
+        var audioAttachment = Context.Message.Attachments.FirstOrDefault(IsAudioAttachment);
+        if (audioAttachment != null)
+            return (audioAttachment.Url, Path.GetFileNameWithoutExtension(audioAttachment.Filename));
+
+        // Check if the message is a reply to another message
+        if (Context.Message.Reference?.MessageId.IsSpecified != true) return (null, null);
+
+        var refMessageId = Context.Message.Reference.MessageId.Value;
+        var referencedMessage = Context.Message.ReferencedMessage
+                                ?? await Context.Channel.GetMessageAsync(refMessageId).ConfigureAwait(false);
+
+        if (referencedMessage == null) return (null, null);
+
+        // Prioritize YouTube / Spotify links from content
+        var url = ExtractTrackUrlFromContent(referencedMessage.Content);
+        if (!string.IsNullOrEmpty(url) && IsPreferredMusicUrl(url))
+            return (url, null);
+
+        // Check for audio attachments in the referenced message
+        var refAudioAttachment = referencedMessage.Attachments.FirstOrDefault(IsAudioAttachment);
+        if (refAudioAttachment != null)
+            return (refAudioAttachment.Url, Path.GetFileNameWithoutExtension(refAudioAttachment.Filename));
+
+        // Fallback to any general URL in content
+        if (!string.IsNullOrEmpty(url))
+            return (url, null);
+
+        // Check embeds if content didn't contain URLs
+        foreach (var embed in referencedMessage.Embeds)
+            if (!string.IsNullOrWhiteSpace(embed.Url))
+                return (embed.Url, embed.Title);
+
+        return (null, null);
+    }
+
+    private static bool IsAudioAttachment(IAttachment attachment)
+    {
+        if (attachment.ContentType != null &&
+            (attachment.ContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase) ||
+             attachment.ContentType.StartsWith("video/ogg", StringComparison.OrdinalIgnoreCase) ||
+             attachment.ContentType.StartsWith("video/webm", StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        var ext = Path.GetExtension(attachment.Filename);
+        return !string.IsNullOrEmpty(ext) && AudioExtensions.Contains(ext);
+    }
+
+    private static string? ExtractTrackUrlFromContent(string? content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return null;
+
+        var matches = RegexPatterns.Url().Matches(content);
+        if (matches.Count == 0) return null;
+
+        foreach (Match match in matches)
+        {
+            var url = CleanUrl(match.Groups["url"].Value);
+            if (IsPreferredMusicUrl(url))
+                return url;
+        }
+
+        return CleanUrl(matches[0].Groups["url"].Value);
+    }
+
+    private static string CleanUrl(string url)
+    {
+        var trimmed = url.Trim();
+
+        if (trimmed.StartsWith('<') && trimmed.EndsWith('>'))
+            trimmed = trimmed[1..^1].Trim();
+
+        while (trimmed.EndsWith('>') || trimmed.EndsWith(']') || trimmed.EndsWith('*'))
+            trimmed = trimmed[..^1].TrimEnd();
+
+        while (trimmed.EndsWith(')') && trimmed.Count(c => c == ')') > trimmed.Count(c => c == '('))
+            trimmed = trimmed[..^1].TrimEnd();
+
+        return trimmed;
+    }
+
+    private static bool IsPreferredMusicUrl(string url) =>
+        url.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+        url.Contains("youtu.be", StringComparison.OrdinalIgnoreCase) ||
+        url.Contains("spotify.com", StringComparison.OrdinalIgnoreCase);
 }

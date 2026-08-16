@@ -175,8 +175,11 @@ public class MusicService(
         }
     }
 
-    public async Task<TrackLoadResultInfo> LoadAndQueueTrackAsync(CustomPlayer player, string query, IUser requester)
+    public async Task<TrackLoadResultInfo> LoadAndQueueTrackAsync(CustomPlayer player, string query, IUser requester,
+        string? preferredTitle = null)
     {
+        query = CleanQuery(query);
+
         logger.LogDebug("[MusicService:{GuildId}] Received play request by {User} with query: {Query}",
             player.GuildId, requester.Username, query);
 
@@ -211,14 +214,27 @@ public class MusicService(
         }
 
         if (searchMode != TrackSearchMode.None && !lavalinkResult.Tracks.IsEmpty)
-
             return TrackLoadResultInfo.FromSearchResults(lavalinkResult.Tracks, query);
 
         if (lavalinkResult.Track is not null)
         {
-            await player.Queue.AddAsync(new CustomTrackQueueItem(lavalinkResult.Track, requester.Id))
+            var track = lavalinkResult.Track;
+            if (!string.IsNullOrWhiteSpace(preferredTitle) &&
+                (string.IsNullOrWhiteSpace(track.Title) ||
+                 track.Title.Equals("Unknown title", StringComparison.OrdinalIgnoreCase)))
+                track = track with { Title = preferredTitle };
+            else if (string.IsNullOrWhiteSpace(track.Title) ||
+                     track.Title.Equals("Unknown title", StringComparison.OrdinalIgnoreCase))
+                if (Uri.TryCreate(query, UriKind.Absolute, out var uri))
+                {
+                    var filename = Path.GetFileNameWithoutExtension(Uri.UnescapeDataString(uri.AbsolutePath));
+                    if (!string.IsNullOrWhiteSpace(filename))
+                        track = track with { Title = filename };
+                }
+
+            await player.Queue.AddAsync(new CustomTrackQueueItem(track, requester.Id))
                 .ConfigureAwait(false);
-            return TrackLoadResultInfo.FromSuccess(lavalinkResult.Track, query);
+            return TrackLoadResultInfo.FromSuccess(track, query);
         }
 
         if (lavalinkResult.Exception is null) return TrackLoadResultInfo.FromNoMatches(query);
@@ -227,6 +243,25 @@ public class MusicService(
             player.GuildId, query, lavalinkResult.Exception?.Message, lavalinkResult.Exception?.Severity,
             lavalinkResult.Exception?.Cause);
         return TrackLoadResultInfo.FromError(lavalinkResult.Exception?.Message ?? "Unknown error", query);
+    }
+
+    private static string CleanQuery(string query)
+    {
+        var trimmed = query.Trim();
+
+        if (trimmed.StartsWith('<') && trimmed.EndsWith('>'))
+            trimmed = trimmed[1..^1].Trim();
+
+        if (!trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+            !trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return trimmed;
+
+        while (trimmed.EndsWith('>') || trimmed.EndsWith(']') || trimmed.EndsWith('*'))
+            trimmed = trimmed[..^1].TrimEnd();
+
+        while (trimmed.EndsWith(')') && trimmed.Count(c => c == ')') > trimmed.Count(c => c == '('))
+            trimmed = trimmed[..^1].TrimEnd();
+
+        return trimmed;
     }
 
     public async Task<LavalinkTrack?> GetTrackFromSearchSelectionAsync(CustomPlayer player, string uri)
