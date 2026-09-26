@@ -20,7 +20,7 @@ public class DmRelayModule(
 {
     [Command("dm", RunMode = RunMode.Async)]
     [Summary("Sends a direct message to a user.")]
-    [RequireBotOwner]
+    [RequireBotOwnerCommand]
     public async Task DmCommandAsync(IUser user, [Remainder] string? msg = null)
     {
         if (string.IsNullOrWhiteSpace(msg) && Context.Message.Attachments.Count == 0)
